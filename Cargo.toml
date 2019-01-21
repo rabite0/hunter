@@ -1,0 +1,11 @@
+[package]
+name = "hunter"
+version = "0.1.0"
+authors = ["project"]
+edition = "2018"
+
+[dependencies]
+termion = "*"
+unicode-width = "0.1.5"
+lazy_static = "*"
+x11-clipboard = "*"
