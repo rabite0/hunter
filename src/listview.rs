@@ -42,15 +42,14 @@ impl<T: 'static> ListView<T> where ListView<T>: Widget {
         self.selection -= 1;
     }
     fn move_down(&mut self) {
-        let len = self.buffer.len();
+        let lines = self.buffer.len();
         let y_size = self.dimensions.1 as usize;
 
-        if self.selection == len - 1 {
+        if self.selection == lines - 1 {
             return;
         }
 
-        if self.selection >= y_size - HEADER_MARGIN - STATUS_BAR_MARGIN
-            && self.selection - self.offset >= y_size - HEADER_MARGIN - STATUS_BAR_MARGIN
+        if self.selection + 1 >= y_size && self.selection + 1 - self.offset >= y_size
         {
             self.offset += 1;
         }
@@ -97,16 +96,19 @@ impl Widget for ListView<Files> {
             if i == (self.selection - self.offset) {
                 output += &term::invert();
             }
-            output += &format!("{}{}{}", term::goto_xy(xpos, i as u16 + ypos - 1 ), item, term::reset());
+            output += &format!("{}{}{}",
+                               term::goto_xy(xpos, i as u16 + ypos),
+                               item,
+                               term::reset());
         }
 
         
-        // if ysize as usize > self.buffer.len() {
-        //     let start_y = self.buffer.len() + 1 + ypos as usize;
-        //     for i in start_y..ysize as usize { 
-        //        output += &format!("{}{:xsize$}{}", term::gotoy(i), " ", xsize = xsize as usize);
-        //     }
-        // }
+        if ysize as usize > self.buffer.len() {
+            let start_y = self.buffer.len() + 1 + ypos as usize;
+            for i in start_y..ysize as usize { 
+               output += &format!("{}{:xsize$}{}", term::gotoy(i), " ", xsize = xsize as usize);
+            }
+        }
 
         output
     }
