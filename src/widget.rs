@@ -41,6 +41,14 @@ pub trait Widget {
         lenstr
     }
 
+    fn on_event(&mut self, event: Event) {
+        match event {
+            Event::Key(Key::Char('q')) => panic!("It's your fault!"),
+            Event::Key(key) => self.on_key(key),
+            Event::Mouse(button) => self.on_mouse(button),
+            Event::Unsupported(wtf) => self.on_wtf(wtf),
+        }
+    }
       
     fn on_key(&mut self, key: Key) {
         match key {

@@ -1,4 +1,4 @@
-use termion::event::{Key};
+use termion::event::{Key,Event};
 
 use crate::term;
 use crate::files::Files;
@@ -81,7 +81,7 @@ impl Widget for ListView<Files> {
     
     fn get_drawlist(&mut self) -> String {
         let mut output = term::reset();
-        let (_xsize, ysize) = self.dimensions;
+        let (xsize, ysize) = self.dimensions;
         let (xpos, ypos) = self.position;
         output += &term::reset();
 
@@ -102,7 +102,7 @@ impl Widget for ListView<Files> {
 
         
         // if ysize as usize > self.buffer.len() {
-        //     let start_y = self.buffer.len() + 1;
+        //     let start_y = self.buffer.len() + 1 + ypos as usize;
         //     for i in start_y..ysize as usize { 
         //        output += &format!("{}{:xsize$}{}", term::gotoy(i), " ", xsize = xsize as usize);
         //     }
@@ -119,7 +119,7 @@ impl Widget for ListView<Files> {
             Key::Up => { self.move_up(); self.refresh() },
             Key::Down => { self.move_down(); self.refresh() },
             //Key::Right => self.go(),
-            _ => {}
+            _ => { self.bad(Event::Key(key)); }
         }
     }
 }

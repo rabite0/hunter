@@ -1,4 +1,13 @@
+use termion::event::{Event};
+
 use crate::widget::Widget;
+
+// pub struct Child<T> {
+//     widget: T,
+//     position: (u16, u16),
+//     size: (u16, u16),
+//     active: bool
+// }
 
 pub struct HBox {
     dimensions: (u16, u16),
@@ -20,9 +29,7 @@ impl HBox {
 
 impl Widget for HBox {
     fn render(&self) -> Vec<String> {
-        // self.children.iter().map(|child| {
-        //     child.render()
-        // }).collect()
+        // HBox doesnt' draw anything itself
         vec![]                  
     }
 
@@ -47,5 +54,9 @@ impl Widget for HBox {
     }
     fn get_position(&self) -> (u16, u16) {
         self.position
-    }   
+    }
+
+    fn on_event(&mut self, event: Event) {
+        self.children[self.main].on_event(event);
+    }
 }

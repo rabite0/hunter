@@ -44,11 +44,6 @@ where
         win
     }
 
-    pub fn run(&mut self) {
-        self.draw();
-        self.handle_input();
-    }
-
     pub fn draw(&mut self) {
         let output = self.widget.get_drawlist();
         self.screen.write(output.as_ref()).unwrap();
@@ -99,33 +94,13 @@ where
         None
     }
 
-    pub fn quit(&mut self) {
-        panic!("It's your fault!");
-    }
-
     pub fn handle_input(&mut self) {
         self.draw();
         for event in stdin().events() {
             Self::clear_status();
             self.draw();
             let event = event.unwrap();
-            match event {
-                Event::Key(Key::Char('q')) => {
-                    self.quit();
-                }
-                Event::Key(Key::Left) => {
-                    return;
-                }
-                Event::Key(key) => {
-                    self.widget.on_key(key);
-                }
-                Event::Mouse(button) => {
-                    self.widget.on_mouse(button);
-                }
-                Event::Unsupported(value) => {
-                    self.widget.on_wtf(value);
-                }
-            }
+            self.widget.on_event(event);
             self.draw();
         }
     }
