@@ -50,6 +50,17 @@ pub trait Widget {
         self.show_status(&format!("Stop the nasty stuff!! {:?} does nothing!", event));
     }
 
+    fn get_header_drawlist(&mut self) -> String {
+        format!(
+            "{}{}{}{:xsize$}",
+            crate::term::goto_xy(1,1),
+            crate::term::header_color(),
+            self.render_header(),
+            " ",
+            xsize = crate::term::xsize()
+        )
+    }
+
     //fn get_window(&self) -> Window<Widget>;
     //fn get_window_mut(&mut self) -> &mut Window<dyn Widget>;
 

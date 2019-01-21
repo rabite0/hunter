@@ -37,7 +37,7 @@ impl Widget for HBox {
     }
 
     fn render_header(&self) -> String {
-        self.children[self.main].render_header()
+        self.children[self.active].render_header()
     }
 
     fn refresh(&mut self) {
@@ -67,6 +67,6 @@ impl Widget for HBox {
 
 
     fn on_event(&mut self, event: Event) {
-        self.children[self.main].on_event(event);
+        self.children[self.active].on_event(event);
     }
 }

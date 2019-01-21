@@ -17,14 +17,14 @@ pub struct ListView<T> {
 }
 
 impl<T: 'static> ListView<T> where ListView<T>: Widget {
-    pub fn new(content: T, dimensions: (u16, u16), position: (u16, u16)) -> Self {
+    pub fn new(content: T) -> Self {
         let view = ListView::<T> {
             content: content,
             selection: 0,
             offset: 0,
             buffer: Vec::new(),
-            dimensions: dimensions,
-            position: position
+            dimensions: (1,1),
+            position: (1,1)
         };
         view
     }

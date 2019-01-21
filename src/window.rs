@@ -42,7 +42,7 @@ where
     }
 
     pub fn draw(&mut self) {
-        let output = self.widget.get_drawlist();
+        let output = self.widget.get_drawlist() + &self.widget.get_header_drawlist();
         self.screen.write(output.as_ref()).unwrap();
 
         self.screen.flush().unwrap();
