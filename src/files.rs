@@ -45,6 +45,23 @@ impl File {
             // mtime: None
         }
     }
+    pub fn calculate_size(&self) -> (usize, String) {
+        let mut unit = 0;
+        let mut size = self.size.unwrap();
+        while size > 1024 {
+            size /= 1024;
+            unit += 1;
+        }
+        let unit = match unit {
+            0 => "",
+            1 => " KB",
+            2 => " GB",
+            3 => " TB",
+            4 => "wtf are you doing",
+            _ => ""
+        }.to_string();
+        (size, unit)
+    }
 }
 
 pub fn get_files(dir: &str) -> Result<Files, std::io::Error> {

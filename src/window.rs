@@ -1,6 +1,5 @@
 use std::cell::RefCell;
 use std::io::{stdin, stdout, Stdout, Write};
-use std::process::exit;
 use std::rc::*;
 use std::sync::{Arc, Mutex};
 
@@ -23,8 +22,6 @@ where T: Widget
     pub dimensions: (u16, u16),
 }
 
-pub const HEADER_MARGIN: usize = 1;
-pub const STATUS_BAR_MARGIN: usize = 2;
 
 impl<T> Window<T>
 where

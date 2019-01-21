@@ -1,45 +1,13 @@
 use termion::event::{Key, MouseEvent, Event};
-use unicode_width::{UnicodeWidthStr};
-
-use crate::term;
-
 
 pub trait Widget {
     fn render(&self) -> Vec<String>;
     fn get_dimensions(&self) -> (u16, u16);
     fn get_position(&self) -> (u16, u16);
-    fn render_line(&self, left: &str, right: &str, highlight: bool) -> String {
-        let (xsize, _) = self.get_dimensions();
-        let text_color = match highlight {
-            true => term::highlight_color(),
-            false => term::normal_color(),
-        };
-        let sized_string = self.sized_string(left);
-        let padding = xsize - sized_string.width() as u16;
-
-        format!(
-            "{}{}{:padding$}{}{}{}",
-            text_color,
-            sized_string,
-            " ",
-            term::highlight_color(),
-            term::cursor_left(right.width()),
-            right,
-            padding = padding as usize
-        )
-    }
-    // fn add_highlight(&self, line: &str) -> String {
-    //     line.to_string()
-    // }
+    fn set_dimensions(&mut self, size: (u16, u16));
+    fn set_position(&mut self, position: (u16, u16));
     fn render_header(&self) -> String;
-    fn sized_string(&self, string: &str) -> String {
-        let (xsize, _) = self.get_dimensions();
-        let lenstr: String = string.chars().fold("".into(), |acc,ch| {
-            if acc.width() + 1  >= xsize as usize { acc }
-            else { acc + &ch.to_string() }
-        });
-        lenstr
-    }
+
 
     fn on_event(&mut self, event: Event) {
         match event {
@@ -49,7 +17,7 @@ pub trait Widget {
             Event::Unsupported(wtf) => self.on_wtf(wtf),
         }
     }
-      
+
     fn on_key(&mut self, key: Key) {
         match key {
             _ => {
@@ -57,7 +25,7 @@ pub trait Widget {
             }
         }
     }
-    
+
     fn on_mouse(&mut self, event: MouseEvent) {
         match event {
             _ => {
@@ -73,13 +41,11 @@ pub trait Widget {
             }
         }
     }
-        
-                
 
     fn show_status(&mut self, status: &str) {
         crate::window::show_status(status);
     }
-    
+
     fn bad(&mut self, event: Event) {
         self.show_status(&format!("Stop the nasty stuff!! {:?} does nothing!", event));
     }

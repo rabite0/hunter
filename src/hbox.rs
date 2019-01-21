@@ -17,12 +17,15 @@ pub struct HBox {
 }
 
 impl HBox {
-    pub fn new(widgets: Vec<Box<Widget>>) -> HBox {
+    pub fn new(widgets: Vec<Box<Widget>>,
+               dimensions: (u16, u16),
+               position: (u16, u16),
+               main: usize) -> HBox {
         HBox {
-            dimensions: (100, 100),
-            position: (1, 1),
+            dimensions: dimensions,
+            position: position,
             children: widgets,
-            main: 0
+            main: main
         }
     }
 }
@@ -30,7 +33,7 @@ impl HBox {
 impl Widget for HBox {
     fn render(&self) -> Vec<String> {
         // HBox doesnt' draw anything itself
-        vec![]                  
+        vec![]
     }
 
     fn render_header(&self) -> String {
@@ -55,6 +58,13 @@ impl Widget for HBox {
     fn get_position(&self) -> (u16, u16) {
         self.position
     }
+    fn set_dimensions(&mut self, size: (u16, u16)) {
+        self.dimensions = size;
+    }
+    fn set_position(&mut self, position: (u16, u16)) {
+        self.position = position;
+    }
+
 
     fn on_event(&mut self, event: Event) {
         self.children[self.main].on_event(event);

@@ -1,3 +1,5 @@
+use unicode_width::UnicodeWidthStr;
+
 use std::io::{Stdout, Write};
 use termion;
 use termion::screen::AlternateScreen;
@@ -16,6 +18,10 @@ pub trait ScreenExt: Write {
 
 impl ScreenExt for AlternateScreen<Box<Stdout>> {}
 
+pub fn size() ->  (u16, u16) {
+    termion::terminal_size().unwrap()
+}
+
 pub fn xsize() -> usize {
     let (xsize, _) = termion::terminal_size().unwrap();
     xsize as usize
@@ -25,6 +31,17 @@ pub fn ysize() -> usize {
     let (_, ysize) = termion::terminal_size().unwrap();
     ysize as usize
 }
+
+pub fn sized_string(string: &str, xsize: u16) -> String {
+    let lenstr: String = string.chars().fold("".into(), |acc,ch| {
+            if acc.width() + 1  >= xsize as usize { acc }
+            else { acc + &ch.to_string() }
+    });
+    lenstr
+}
+
+// Do these as constants
+
 
 pub fn highlight_color() -> String {
     format!(
@@ -41,6 +58,7 @@ pub fn normal_color() -> String {
         termion::color::Bg(termion::color::Black)
     )
 }
+
 
 pub fn cursor_left(n: usize) -> String {
     format!("{}", termion::cursor::Left(n as u16))
@@ -81,4 +99,3 @@ pub fn header_color() -> String {
 pub fn status_bg() -> String {
     format!("{}", termion::color::Bg(termion::color::LightBlue))
 }
-
