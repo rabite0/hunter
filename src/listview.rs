@@ -75,8 +75,8 @@ impl<T: 'static> ListView<T> where ListView<T>: Widget {
             term::cursor_left(size.to_string().width() + unit.width()),
             size,
             unit,
-            padding = padding as usize
-        )
+            padding = padding as usize)
+
     }
 
 }

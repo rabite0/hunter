@@ -46,7 +46,7 @@ where
         self.screen.write(output.as_ref()).unwrap();
 
         self.screen.flush().unwrap();
-        Self::draw_status(); 
+        Self::draw_status();
     }
 
     pub fn show_status(status: &str) {
