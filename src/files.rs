@@ -1,4 +1,7 @@
 use std::ops::Index;
+use std::error::Error;
+use std::path::PathBuf;
+use std::ffi::OsStr;
 
 pub struct Files(Vec<File>);
 
@@ -10,6 +13,22 @@ impl Index<usize> for Files {
 }
 
 impl Files {
+    pub fn new_from_path<S: AsRef<OsStr> + Sized>(path: S)
+                                              -> Result<Files, Box<dyn Error>>
+    where S: std::convert::AsRef<std::path::Path> {
+        let mut files = Vec::new();
+        for file in std::fs::read_dir(path)? {
+            let file = file?;
+            let name = file.file_name();
+            let name = name.to_string_lossy();
+            let path = file.path();
+            let size = file.metadata()?.len() / 1024;
+            files.push(File::new(&name, path, size as usize));
+        }
+        Ok(Files(files))
+    }
+
+    
     pub fn iter(&self) -> std::slice::Iter<File> {
         self.0.iter()
     }
@@ -22,7 +41,7 @@ impl Files {
 #[derive(Debug)]
 pub struct File {
     pub name: String,
-    pub path: String,
+    pub path: PathBuf,
     pub size: Option<usize>,
     // owner: Option<String>,
     // group: Option<String>,
@@ -33,10 +52,10 @@ pub struct File {
 
 
 impl File {
-    pub fn new(name: &str, path: &str, size: usize) -> File {
+    pub fn new(name: &str, path: PathBuf, size: usize) -> File {
         File {
             name: name.to_string(),
-            path: path.to_string(),
+            path: path,
             size: Some(size),
             // owner: None,
             // group: None,
@@ -62,18 +81,13 @@ impl File {
         }.to_string();
         (size, unit)
     }
-}
 
-pub fn get_files(dir: &str) -> Result<Files, std::io::Error> {
-    let mut files = Vec::new();
-    for file in std::fs::read_dir(dir)? {
-        let name = file.as_ref().unwrap().file_name().into_string().unwrap();
-        file.as_ref().unwrap().path().pop();
-        let path = file.as_ref().unwrap().path().into_os_string().into_string().unwrap();
-        let size = file.unwrap().metadata()?.len() / 1024;
-        files.push(File::new(&name, &path, size as usize));
+    pub fn grand_parent(&self) -> Option<PathBuf> {
+        Some(self.path.parent()?.parent()?.to_path_buf())
     }
-    Ok(Files(files))
-}
 
+    pub fn path(&self) -> PathBuf {
+        self.path.clone()
+    }
+}
 

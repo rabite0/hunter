@@ -9,7 +9,6 @@ use crate::widget::Widget;
 //     active: bool
 // }
 
-
 pub struct HBox {
     dimensions: (u16, u16),
     position: (u16, u16),
@@ -39,27 +38,20 @@ impl HBox {
         let hbox_position = dbg!(self.position);
         let cell_size = dbg!(hbox_size.0 / self.children.len() as u16);
         let mut current_pos = dbg!(hbox_position.1);
-        let mut current_edge = dbg!(cell_size);
-
-        for mut widget in &mut self.children {
+        
+        for widget in &mut self.children {
             widget.set_dimensions(dbg!((cell_size, hbox_size.1)));
             widget.set_position(dbg!((current_pos, hbox_position.1)));
             widget.refresh();
             dbg!(current_pos += cell_size);
-            dbg!(current_edge += cell_size);
         }
     }
 
-    pub fn resize_child(&mut self, index: usize, size: (u16, u16)) {
-        self.children[index].set_dimensions(size);
-    }
+    // pub fn widget(&self, index: usize) -> &Box<Widget> {
+    //     &self.children[index]
+    // }
 
-
-    pub fn widget(&self, index: usize) -> &Box<Widget> {
-        &self.children[index]
-    }
-
-    pub fn active_widget(&self, index: usize) -> &Box<Widget> {
+    pub fn active_widget(&self) -> &Box<Widget> {
         &self.children[self.active]
     }
 
@@ -75,7 +67,7 @@ impl Widget for HBox {
     }
 
     fn render_header(&self) -> String {
-        self.children[self.active].render_header()
+        self.active_widget().render_header()
     }
 
     fn refresh(&mut self) {

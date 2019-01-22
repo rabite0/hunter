@@ -1,5 +1,6 @@
 use termion::event::{Key, MouseEvent, Event};
 
+
 pub trait Widget {
     fn render(&self) -> Vec<String>;
     fn get_dimensions(&self) -> (u16, u16);

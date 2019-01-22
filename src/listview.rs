@@ -1,8 +1,10 @@
 use unicode_width::{UnicodeWidthStr};
 use termion::event::{Key,Event};
 
+use std::path::{Path, PathBuf};
+
 use crate::term;
-use crate::files::Files;
+use crate::files::{File, Files};
 use crate::widget::Widget;
 
 // Maybe also buffer drawlist for efficiency when it doesn't change every draw
@@ -79,8 +81,54 @@ impl<T: 'static> ListView<T> where ListView<T>: Widget {
 
     }
 
+    
 }
 
+impl ListView<Files> where
+    ListView<Files>: Widget,
+    Files: std::ops::Index<usize, Output=File>,
+    Files: std::marker::Sized
+{
+    fn selected_file(&self) -> &File {
+        let selection = self.selection;
+        let file = &self.content[selection];
+        file
+    }
+
+    fn grand_parent(&self) -> Option<PathBuf> {
+        self.selected_file().grand_parent()
+    }
+
+    fn goto_grand_parent(&mut self) {
+        match self.grand_parent() {
+            Some(grand_parent) => self.goto_path(&grand_parent),
+            None => self.show_status("Can't go further!")
+        }
+    }
+
+    fn goto_selected(&mut self) {
+        let path = self.selected_file().path();
+
+        self.goto_path(&path);
+    }
+
+    fn goto_path(&mut self, path: &Path) {
+        match crate::files::Files::new_from_path(path){
+            Ok(files) => {                
+                self.content = files;
+                self.selection = 0;
+                self.offset = 0;
+                self.refresh(); 
+            },
+            Err(err) => {
+                self.show_status(&format!("Can't open this path: {}", err));
+                return;
+            }
+        }
+    }
+}
+
+    
 impl Widget for ListView<Files> {
     fn get_dimensions(&self) -> (u16, u16) {
         self.dimensions
@@ -147,9 +195,14 @@ impl Widget for ListView<Files> {
 
     fn on_key(&mut self, key: Key) {
         match key {
-            Key::Up => { self.move_up(); self.refresh() },
-            Key::Down => { self.move_down(); self.refresh() },
-            //Key::Right => self.go(),
+            Key::Up => { self.move_up(); self.refresh(); },
+            Key::Down => { self.move_down(); self.refresh(); },
+            Key::Left => {
+                self.goto_grand_parent()
+            },
+            Key::Right => {
+                self.goto_selected()
+            },
             _ => { self.bad(Event::Key(key)); }
         }
     }
