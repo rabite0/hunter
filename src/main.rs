@@ -2,6 +2,7 @@ extern crate termion;
 extern crate unicode_width;
 #[macro_use]
 extern crate lazy_static;
+extern crate alphanumeric_sort;
 
 use std::io::{stdout, Write};
 
