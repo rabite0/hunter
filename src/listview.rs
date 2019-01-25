@@ -30,6 +30,7 @@ impl<T: 'static> ListView<T> where ListView<T>: Widget {
         };
         view
     }
+
     pub fn to_trait(self) -> Box<Widget> {
         Box::new(self)
     }
@@ -170,6 +171,29 @@ impl ListView<Files> where
         self.refresh();
         self.show_status(&format!("Direcories first: {}", self.content.dirs_first));
     }
+
+    fn exec_cmd(&mut self) {
+        match self.minibuffer("exec ($s for selected files)") {
+            Some(cmd) => {
+                let filename = self.selected_file().name.clone();
+                let cmd = cmd.replace("$s", &filename);
+                self.show_status(&format!("Running: \"{}\"", &cmd));
+                let mut parts = cmd.split_whitespace();
+                let exe = parts.next().unwrap();
+                let status = std::process::Command::new(exe).args(parts)
+                                                            .status();
+                match status {
+                    Ok(status) => self.show_status(&format!("\"{}\" exited with {}",
+                                                            cmd,
+                                                            status)),
+                    Err(err) => self.show_status(&format!("Can't run this \"{}\": {}",
+                                                          cmd,
+                                                          err))
+                }
+            },
+            None => self.show_status("")
+        }
+    }
 }
 
     
@@ -248,6 +272,7 @@ impl Widget for ListView<Files> {
             },
             Key::Char('s') => { self.cycle_sort() } ,
             Key::Char('d') => self.toggle_dirs_first() ,
+            Key::Char('!') => self.exec_cmd() ,
             _ => { self.bad(Event::Key(key)); }
         }
     }

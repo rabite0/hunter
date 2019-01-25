@@ -43,8 +43,12 @@ pub trait Widget {
         }
     }
 
-    fn show_status(&mut self, status: &str) {
+    fn show_status(&self, status: &str) {
         crate::window::show_status(status);
+    }
+
+    fn minibuffer(&self, query: &str) -> Option<String> {
+        crate::window::minibuffer(query)
     }
 
     fn bad(&mut self, event: Event) {

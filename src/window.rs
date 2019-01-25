@@ -1,6 +1,4 @@
-use std::cell::RefCell;
 use std::io::{stdin, stdout, Stdout, Write};
-use std::rc::*;
 use std::sync::{Arc, Mutex};
 
 use termion::event::{Event, Key};
@@ -61,35 +59,7 @@ where
         Self::show_status("");
     }
 
-    pub fn minibuffer(&mut self, query: &str) -> Option<String> {
-        Self::show_status(&(query.to_string() + ": "));
-        let reply = Rc::new(RefCell::new(String::new()));
-
-        for key in stdin().events() {
-            let key = key.unwrap();
-            match key {
-                Event::Key(Key::Esc) => {
-                    return None;
-                }
-                Event::Key(Key::Char('\n')) => {
-                    if reply.borrow().len() == 0 {
-                        return None;
-                    } else {
-                        return Some(reply.borrow().to_string());
-                    }
-                }
-                Event::Key(Key::Char(c)) => {
-                    reply.borrow_mut().push(c);
-                }
-                Event::Key(Key::Backspace) => {
-                    reply.borrow_mut().pop();
-                }
-                _ => {}
-            };
-            Self::show_status(&(query.to_string() + ": " + &reply.borrow()));
-        }
-        None
-    }
+    
 
     pub fn handle_input(&mut self) {
         self.draw();
@@ -147,4 +117,27 @@ pub fn show_status(status: &str) {
             *status_content = Some(status.to_string());
         }
         draw_status();
+}
+
+pub fn minibuffer(query: &str) -> Option<String> {
+    show_status(&(query.to_string() + ": "));
+    let mut buffer = "".to_string();
+
+    for key in stdin().events() {
+        match key {
+            Ok(Event::Key(key)) => {
+                match key {
+                    Key::Esc => { return None },
+                    Key::Char('\n') => { return Some(buffer) },
+                    Key::Backspace => { buffer.pop(); },
+                    Key::Char(key) => { buffer = buffer + &format!("{}", key); },
+                    _ => {}
+                }
+            },
+            _ => {}
+        }
+        show_status(&(query.to_string() + ": " + &buffer));
+                
+    };
+    None
 }
