@@ -156,9 +156,19 @@ impl ListView<Files> where
     fn cycle_sort(&mut self) {
         let file = self.clone_selected_file();
         self.content.cycle_sort();
+        self.content.sort();
         self.select_file(&file);
         self.refresh();
         self.show_status(&format!("Sorting by: {}", self.content.sort));
+    }
+
+    fn toggle_dirs_first(&mut self) {
+        let file = self.clone_selected_file();
+        self.content.dirs_first = !self.content.dirs_first;
+        self.content.sort();
+        self.select_file(&file);
+        self.refresh();
+        self.show_status(&format!("Direcories first: {}", self.content.dirs_first));
     }
 }
 
@@ -237,6 +247,7 @@ impl Widget for ListView<Files> {
                 self.goto_selected()
             },
             Key::Char('s') => { self.cycle_sort() } ,
+            Key::Char('d') => self.toggle_dirs_first() ,
             _ => { self.bad(Event::Key(key)); }
         }
     }

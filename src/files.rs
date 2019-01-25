@@ -3,6 +3,7 @@ use std::error::Error;
 use std::path::PathBuf;
 use std::ffi::OsStr;
 use std::cmp::{Ord, Ordering};
+use std::time::SystemTime;
 
 use lscolors::{LsColors, Style};
 
@@ -14,6 +15,7 @@ lazy_static! {
 pub struct Files {
     pub files: Vec<File>,
     pub sort: SortBy,
+    pub dirs_first: bool,
 }
 
 impl Index<usize> for Files {
@@ -45,17 +47,20 @@ impl Files {
             let path = file.path();
             let meta = file.metadata()?;
             let size = meta.len() / 1024;
+            let mtime = meta.modified()?;
+
             let style
                 = match COLORS.style_for_path_with_metadata(file.path(), Some(&meta)) {
                     Some(style) => Some(style.clone()),
                     None => None
                 };
-            let file = File::new(&name, path, kind, size as usize, style);
+            let file = File::new(&name, path, kind, size as usize, mtime, style);
             files.push(file)
         }
                 
         let mut files = Files { files: files,
-                                sort: SortBy::Name };
+                                sort: SortBy::Name,
+                                dirs_first: true };
 
         files.sort();
         Ok(files)
@@ -76,25 +81,31 @@ impl Files {
                     a.size.cmp(&b.size).reverse()
                 });
             },
-            _ => {}
+            SortBy::MTime => {
+                self.files.sort_by(|a,b| {
+                    if a.mtime == b.mtime {
+                        return alphanumeric_sort::compare_str(&a.name, &b.name)
+                    }
+                    a.mtime.cmp(&b.mtime)
+                });
+            }
         };
 
-        // Direcories first
-        self.files.sort_by(|a,b| {
-            if a.is_dir() && !b.is_dir() {
-                Ordering::Less
-            } else { Ordering::Equal }
-        });
+        if self.dirs_first {
+            self.files.sort_by(|a,b| {
+                if a.is_dir() && !b.is_dir() {
+                    Ordering::Less
+                } else { Ordering::Equal }
+            });
+        }
     }
 
-    pub fn cycle_sort(&mut self) -> SortBy {
+    pub fn cycle_sort(&mut self) {
         self.sort = match self.sort {
             SortBy::Name => SortBy::Size,
-            SortBy::Size => SortBy::Name,
-            _ => { SortBy::Name }
+            SortBy::Size => SortBy::MTime,
+            SortBy::MTime => SortBy::Name
         };
-        self.sort();
-        self.sort
     }
     
     pub fn iter(&self) -> std::slice::Iter<File> {
@@ -120,8 +131,7 @@ impl std::fmt::Display for SortBy {
         let text = match self {
             SortBy::Name => "name",
             SortBy::Size => "size",
-            SortBy::MDate => "mdate",
-            SortBy::CDate => "cdate"
+            SortBy::MTime => "mtime"
         };
         write!(formatter, "{}", text)
     }
@@ -131,8 +141,7 @@ impl std::fmt::Display for SortBy {
 pub enum SortBy {
     Name,
     Size,
-    MDate,
-    CDate
+    MTime,
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -141,12 +150,11 @@ pub struct File {
     pub path: PathBuf,
     pub size: Option<usize>,
     pub kind: Kind,
-    pub style: Option<Style>
+    pub mtime: SystemTime,
+    pub style: Option<Style>,
     // owner: Option<String>,
     // group: Option<String>,
     // flags: Option<String>,
-    // ctime: Option<u32>,
-    // mtime: Option<u32>,
 }
 
 
@@ -155,18 +163,18 @@ impl File {
                path: PathBuf,
                kind: Kind,
                size: usize,
+               mtime: SystemTime,
                style: Option<Style>) -> File {
         File {
             name: name.to_string(),
             path: path,
             size: Some(size),
             kind: kind,
+            mtime: mtime,
             style: style
             // owner: None,
             // group: None,
             // flags: None,
-            // ctime: None,
-            // mtime: None
         }
     }
     pub fn calculate_size(&self) -> (usize, String) {
