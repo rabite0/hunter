@@ -4,27 +4,22 @@ use std::path::PathBuf;
 use std::ffi::OsStr;
 use std::cmp::{Ord, Ordering};
 
-pub struct Files(Vec<File>);
 use lscolors::{LsColors, Style};
 
-impl Index<usize> for Files {
-    type Output = File;
-    fn index(&self, pos: usize) -> &Self::Output {
-        &self.0[pos]
-    }
 lazy_static! {
     static ref COLORS: LsColors = LsColors::from_env().unwrap();
 }
 
-impl PartialOrd for File {
-    fn partial_cmp(&self, other: &File) -> Option<Ordering> {
-        Some(alphanumeric_sort::compare_str(&self.name, &other.name))
-    }
+#[derive(PartialEq)]
+pub struct Files {
+    pub files: Vec<File>,
+    pub sort: SortBy,
 }
 
-impl Ord for File {
-    fn cmp(&self, other: &File) -> Ordering {
-        alphanumeric_sort::compare_str(&self.name, &other.name)
+impl Index<usize> for Files {
+    type Output = File;
+    fn index(&self, pos: usize) -> &Self::Output {
+        &self.files[pos]
     }
 }
 
@@ -41,7 +36,7 @@ impl Files {
                                               -> Result<Files, Box<dyn Error>>
     where S: std::convert::AsRef<std::path::Path> {
         let mut files = Vec::new();
-        let mut dirs = Vec::new();
+
         for file in std::fs::read_dir(path)? {
             let file = file?;
             let name = file.file_name();
@@ -56,26 +51,58 @@ impl Files {
                     None => None
                 };
             let file = File::new(&name, path, kind, size as usize, style);
-            match kind {
-                Kind::Directory => dirs.push(file),
-                _ => files.push(file),
-            }
+            files.push(file)
         }
+                
+        let mut files = Files { files: files,
+                                sort: SortBy::Name };
+
         files.sort();
-        dirs.sort();
-        dirs.append(&mut files);
-        
-        let files = dirs;
-        
-        Ok(Files(files))
+        Ok(files)
+    }
+
+    pub fn sort(&mut self) {
+        match self.sort {
+            SortBy::Name => {
+                self.files.sort_by(|a,b| {
+                    alphanumeric_sort::compare_str(&a.name, &b.name)
+                })
+            },
+            SortBy::Size => {
+                self.files.sort_by(|a,b| {
+                    if a.size == b.size {
+                        return alphanumeric_sort::compare_str(&b.name, &a.name)
+                    }
+                    a.size.cmp(&b.size).reverse()
+                });
+            },
+            _ => {}
+        };
+
+        // Direcories first
+        self.files.sort_by(|a,b| {
+            if a.is_dir() && !b.is_dir() {
+                Ordering::Less
+            } else { Ordering::Equal }
+        });
+    }
+
+    pub fn cycle_sort(&mut self) -> SortBy {
+        self.sort = match self.sort {
+            SortBy::Name => SortBy::Size,
+            SortBy::Size => SortBy::Name,
+            _ => { SortBy::Name }
+        };
+        self.sort();
+        self.sort
     }
     
     pub fn iter(&self) -> std::slice::Iter<File> {
-        self.0.iter()
+        self.files.iter()
     }
 
     pub fn len(&self) -> usize {
-        self.0.len()
+        self.files.len()
     }
 }
 
@@ -87,7 +114,28 @@ pub enum Kind {
     Pipe
 }
 
-#[derive(Debug, PartialEq, Eq)]
+impl std::fmt::Display for SortBy {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_> )
+           -> Result<(), std::fmt::Error>  {
+        let text = match self {
+            SortBy::Name => "name",
+            SortBy::Size => "size",
+            SortBy::MDate => "mdate",
+            SortBy::CDate => "cdate"
+        };
+        write!(formatter, "{}", text)
+    }
+}
+
+#[derive(Debug,Copy,Clone,PartialEq)]
+pub enum SortBy {
+    Name,
+    Size,
+    MDate,
+    CDate
+}
+
+#[derive(Debug, PartialEq, Clone)]
 pub struct File {
     pub name: String,
     pub path: PathBuf,
@@ -141,6 +189,10 @@ impl File {
 
     pub fn grand_parent(&self) -> Option<PathBuf> {
         Some(self.path.parent()?.parent()?.to_path_buf())
+    }
+
+    pub fn is_dir(&self) -> bool {
+        self.kind == Kind::Directory
     }
 
     pub fn path(&self) -> PathBuf {

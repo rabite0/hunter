@@ -61,6 +61,16 @@ impl<T: 'static> ListView<T> where ListView<T>: Widget {
         self.selection += 1;
     }
 
+    fn set_selection(&mut self, position: usize) {
+        let ysize = self.dimensions.1 as usize;
+        let mut offset = 0;
+
+        while position + 1 > ysize + offset { offset += 1 }
+
+        self.offset = offset;
+        self.selection = position;
+    }
+
     fn render_line(&self, file: &File) -> String {
         let name = &file.name;
         let (size, unit) = file.calculate_size();
@@ -100,6 +110,12 @@ impl ListView<Files> where
         file
     }
 
+    fn clone_selected_file(&self) -> File {
+        let selection = self.selection;
+        let file = self.content[selection].clone();
+        file
+    }
+
     fn grand_parent(&self) -> Option<PathBuf> {
         self.selected_file().grand_parent()
     }
@@ -130,6 +146,19 @@ impl ListView<Files> where
                 return;
             }
         }
+    }
+
+    fn select_file(&mut self, file: &File) {
+        let pos = self.content.files.iter().position(|item| item == file).unwrap();
+        self.set_selection(pos);
+    }
+
+    fn cycle_sort(&mut self) {
+        let file = self.clone_selected_file();
+        self.content.cycle_sort();
+        self.select_file(&file);
+        self.refresh();
+        self.show_status(&format!("Sorting by: {}", self.content.sort));
     }
 }
 
@@ -207,6 +236,7 @@ impl Widget for ListView<Files> {
             Key::Right => {
                 self.goto_selected()
             },
+            Key::Char('s') => { self.cycle_sort() } ,
             _ => { self.bad(Event::Key(key)); }
         }
     }
