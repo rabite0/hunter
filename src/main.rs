@@ -3,6 +3,7 @@ extern crate unicode_width;
 #[macro_use]
 extern crate lazy_static;
 extern crate alphanumeric_sort;
+extern crate lscolors;
 
 use std::io::{stdout, Write};
 

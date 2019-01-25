@@ -61,17 +61,22 @@ impl<T: 'static> ListView<T> where ListView<T>: Widget {
         self.selection += 1;
     }
 
-    fn render_line(&self, name: &str, size: usize, unit: &str) -> String {
+    fn render_line(&self, file: &File) -> String {
+        let name = &file.name;
+        let (size, unit) = file.calculate_size();
+                
         let (xsize, _) = self.get_dimensions();
-        let sized_string = term::sized_string(name, xsize);
+        let sized_string = term::sized_string(&name, xsize);
         let padding = xsize - sized_string.width() as u16;
-
-
+        let styled_string = match &file.style {
+            Some(style) => style.to_ansi_term_style().paint(sized_string).to_string(),
+            _ => format!("{}{}", term::normal_color(), sized_string),
+        };
+        
 
         format!(
-            "{}{}{:padding$}{}{}{}{}",
-            term::normal_color(),
-            sized_string,
+            "{}{:padding$}{}{}{}{}",
+            styled_string,
             " ",
             term::highlight_color(),
             term::cursor_left(size.to_string().width() + unit.width()),
@@ -150,8 +155,7 @@ impl Widget for ListView<Files> {
 
     fn render(&self) -> Vec<String> {
         self.content.iter().map(|file| {
-            let (size, unit) = file.calculate_size();
-            self.render_line(&file.name, size, &unit)
+            self.render_line(&file)
         }).collect()
     }
 

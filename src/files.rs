@@ -5,12 +5,15 @@ use std::ffi::OsStr;
 use std::cmp::{Ord, Ordering};
 
 pub struct Files(Vec<File>);
+use lscolors::{LsColors, Style};
 
 impl Index<usize> for Files {
     type Output = File;
     fn index(&self, pos: usize) -> &Self::Output {
         &self.0[pos]
     }
+lazy_static! {
+    static ref COLORS: LsColors = LsColors::from_env().unwrap();
 }
 
 impl PartialOrd for File {
@@ -45,8 +48,14 @@ impl Files {
             let name = name.to_string_lossy();
             let kind = get_kind(&file);
             let path = file.path();
-            let size = file.metadata()?.len() / 1024;
-            let file = File::new(&name, path, kind, size as usize);
+            let meta = file.metadata()?;
+            let size = meta.len() / 1024;
+            let style
+                = match COLORS.style_for_path_with_metadata(file.path(), Some(&meta)) {
+                    Some(style) => Some(style.clone()),
+                    None => None
+                };
+            let file = File::new(&name, path, kind, size as usize, style);
             match kind {
                 Kind::Directory => dirs.push(file),
                 _ => files.push(file),
@@ -84,6 +93,7 @@ pub struct File {
     pub path: PathBuf,
     pub size: Option<usize>,
     pub kind: Kind,
+    pub style: Option<Style>
     // owner: Option<String>,
     // group: Option<String>,
     // flags: Option<String>,
@@ -93,12 +103,17 @@ pub struct File {
 
 
 impl File {
-    pub fn new(name: &str, path: PathBuf, kind: Kind, size: usize) -> File {
+    pub fn new(name: &str,
+               path: PathBuf,
+               kind: Kind,
+               size: usize,
+               style: Option<Style>) -> File {
         File {
             name: name.to_string(),
             path: path,
             size: Some(size),
-            kind: kind
+            kind: kind,
+            style: style
             // owner: None,
             // group: None,
             // flags: None,
