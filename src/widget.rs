@@ -68,16 +68,41 @@ pub trait Widget {
         )
     }
 
-    //fn get_window(&self) -> Window<Widget>;
-    //fn get_window_mut(&mut self) -> &mut Window<dyn Widget>;
+    fn get_clearlist(&self) -> String {
+        let (xpos, ypos) = self.get_position().position();
+        let (xsize, ysize) = self.get_size().size();
 
-    //fn run(&mut self) {
-        // self.draw();
-        // self.handle_input();
-    //}
+        let mut clearcmd = String::from("");
+        for line in ypos..ysize {
+            clearcmd += &format!("{}{:xsize$}",
+                                 crate::term::goto_xy(xpos, line),
+                                 " ",
+                                 xsize=xsize as usize);
+        }
+
+        clearcmd
+    }
+
+    fn get_redraw_empty_list(&self, lines: usize) -> String {
+        let (xpos, ypos) = self.get_position().position();
+        let (xsize, ysize) = self.get_size().size();
+        
+        let mut output = String::new();
+
+        if ysize as usize > lines {
+            let start_y = lines + 1 + ypos as usize;
+            for i in start_y..(ysize+2) as usize {
+                output += &format!("{}{:xsize$}",
+                                   crate::term::goto_xy(xpos,i as u16),
+                                   " ",
+                                   xsize = xsize as usize);
+            }
+        }
+
+        output
+    }
 
 
-    //fn get_buffer(&self) -> &Vec<String>;
     fn refresh(&mut self);
     fn get_drawlist(&self) -> String;
 }

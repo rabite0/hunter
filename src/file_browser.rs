@@ -1,12 +1,12 @@
-use termion::event::{Key,Event};
+use termion::event::{Key};
 
 
 use crate::widget::Widget;
 use crate::files::Files;
 //use crate::hbox::HBox;
 use crate::listview::ListView;
-use crate::coordinates::{Coordinates, Size,Position};
-use crate::files::File;
+use crate::coordinates::{Size,Position};
+use crate::preview::Previewer;
 use crate::miller_columns::MillerColumns;
 
 pub struct FileBrowser {
@@ -14,9 +14,6 @@ pub struct FileBrowser {
 }
 
 impl FileBrowser {
-    pub fn set_left_directory(&mut self) {
-        
-    }
 }
 
 
@@ -40,26 +37,22 @@ impl Widget for FileBrowser {
         "".to_string()
     }
     fn refresh(&mut self) {
+        let file
+            = self.columns.get_main_widget().as_ref().unwrap().selected_file().clone();
+        let (_, _, preview_coordinates) = self.columns.calculate_coordinates();
+
+        match &mut self.columns.preview {
+            Some(preview) => preview.set_file(&file),
+            None => {
+                let preview = Previewer::new(&file, &preview_coordinates);
+                self.columns.preview = Some(preview);
+            }
+        }
         self.columns.refresh();
     }
     
     fn get_drawlist(&self) -> String {
         self.columns.get_drawlist()
-        // let view_count = self.columns.widgets.len();
-
-        // if view_count < 2 {
-        //     // TODO: Special handling
-        // } else if view_count < 1 {
-        //     // etc.
-        // }
-        
-        // self.views
-        //     .iter()
-        //     .skip(view_count - 2)
-        //     .map(|view| {
-        //         eprintln!("{}", view.get_drawlist());
-        //         view.get_drawlist()
-        //     }).collect()
     }
             
 
@@ -71,6 +64,8 @@ impl Widget for FileBrowser {
                         let path = widget.selected_file().path();
                         let files = Files::new_from_path(&path).unwrap();
                         let view = ListView::new(files);
+                        let selected_file = view.selected_file();
+                        self.columns.set_preview(selected_file);
                         self.columns.widgets.push(view);
                         self.refresh();
                     }, None => { }
@@ -86,7 +81,6 @@ impl Widget for FileBrowser {
                 match self.columns.get_main_widget_mut() {
                     Some(widget) => {
                         widget.on_key(key);
-                        self.set_left_directory();
                         self.refresh();
                     }, None => { self.refresh(); }
                     

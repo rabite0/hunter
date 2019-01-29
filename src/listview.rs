@@ -220,9 +220,6 @@ impl Widget for ListView<Files> {
     fn refresh(&mut self) {
         self.buffer = self.render();
     }
-
-
-
     fn render(&self) -> Vec<String> {
         self.content.iter().map(|file| {
             self.render_line(&file)
@@ -251,16 +248,7 @@ impl Widget for ListView<Files> {
                                term::reset());
         }
 
-
-        if ysize as usize > self.buffer.len() {
-            let start_y = self.buffer.len() + 1 + ypos as usize;
-            for i in start_y..(ysize+2) as usize {
-                output += &format!("{}{:xsize$}",
-                                   term::goto_xy(xpos,i as u16),
-                                   " ",
-                                   xsize = xsize as usize);
-            }
-        }
+        output += &self.get_redraw_empty_list(self.buffer.len());
 
         output
     }

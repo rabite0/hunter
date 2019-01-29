@@ -7,14 +7,15 @@ use crate::files::Files;
 use crate::listview::ListView;
 use crate::coordinates::{Coordinates, Size,Position};
 use crate::files::File;
+use crate::preview::Previewer;
 
 pub struct MillerColumns<T> {
     pub widgets: Vec<T>,
     // pub left: Option<T>,
     // pub main: Option<T>,
-    // pub preview: Option<T>,
-    ratio: (u16,u16,u16),
-    coordinates: Coordinates,
+    pub preview: Option<Previewer>,
+    pub ratio: (u16,u16,u16),
+    pub coordinates: Coordinates,
 }
 
 
@@ -27,7 +28,8 @@ impl<T> MillerColumns<T> where T: Widget {
                ratio: (u16, u16, u16))
                -> Self { Self { widgets: widgets,
                                 coordinates: coordinates,
-                                ratio: ratio } }       
+                                ratio: ratio,
+                                preview: None } }
 
 
     pub fn push_widget(&mut self, widget: T) {
@@ -51,7 +53,7 @@ impl<T> MillerColumns<T> where T: Widget {
 
         let preview_xsize = xsize * ratio.2 / 100;
         let preview_size = Size ( (preview_xsize, ysize) );
-        let preview_pos = Position ( (left_xsize + main_xsize + 2, top) );
+        let preview_pos = Position ( (left_xsize + main_xsize + 3, top) );
 
         let left_coords = Coordinates { size: left_size,
                                         position: left_pos };
@@ -83,8 +85,12 @@ impl<T> MillerColumns<T> where T: Widget {
     pub fn get_main_widget_mut(&mut self) -> Option<&mut T> {
         self.widgets.last_mut()
     }
-
-    
+    pub fn set_preview(&mut self, file: &File) {
+        match &mut self.preview {
+            Some(preview) => preview.set_file(file),
+            None => {}
+        };
+    }
 }
 
 impl<T> Widget for MillerColumns<T> where T: Widget {
@@ -107,17 +113,6 @@ impl<T> Widget for MillerColumns<T> where T: Widget {
         "".to_string()
     }
     fn refresh(&mut self) {
-        let (left_coords, main_coords, preview_coords) = self.calculate_coordinates(); 
-        
-        // self.left.as_mut().unwrap().set_size(left_coords.size);
-        // self.left.as_mut().unwrap().set_position(left_coords.position);
-
-        // self.get_main_widget_mut().map(|widget| {
-        //     widget.set_size(main_coords.size);
-        //     widget.set_position(main_coords.position);
-        // });
-
-        
         let (left_coords, main_coords, preview_coords) = self.calculate_coordinates();  
 
         let widget2 = self.get_left_widget_mut().unwrap();
@@ -130,39 +125,20 @@ impl<T> Widget for MillerColumns<T> where T: Widget {
         widget.set_size(main_coords.size);
         widget.set_position(main_coords.position);
         widget.refresh();
-        
-        
-        // self.main.as_mut().unwrap().set_size(main_coords.size);
-        // self.main.as_mut().unwrap().set_position(main_coords.position);
 
-        // self.preview.as_mut().unwrap().set_size(preview_coords.size);
-        // self.preview.as_mut().unwrap().set_position(preview_coords.position);
-
-        // self.left.as_mut().unwrap().refresh();
-        // self.main.as_mut().unwrap().refresh();
-        // self.preview.as_mut().unwrap().refresh()
+        match &mut self.preview {
+            Some(preview) => { preview.set_size(preview_coords.size);
+                               preview.set_position(preview_coords.position);
+                               preview.refresh(); },
+            None => {}
+        };
     }
     
     fn get_drawlist(&self) -> String {
         let left_widget = self.get_left_widget().unwrap().get_drawlist();
         let main_widget = self.get_main_widget().unwrap().get_drawlist();
-        format!("{}{}", main_widget, left_widget)
-        // let left_drawlist = &self.left.as_ref().unwrap().get_drawlist();
-        // let main_drawlist = &self.main.as_ref().unwrap().get_drawlist();
-        // let preview_drawlist = &self.preview.as_ref().unwrap().get_drawlist();
-        
-        // format!("{}{}{}", left_drawlist, &main_drawlist, &preview_drawlist)
-        // let main_widget_drawlist = self.get_main_widget().map(|widget| {
-            
-        //     widget.get_drawlist()
-        // });
-
-        
-        // match main_widget_drawlist {
-        //     Some(drawlist) => { drawlist },
-        //     None => "Can't draw this".to_string()
-        // }
-    
+        let preview = self.preview.as_ref().unwrap().get_drawlist();
+        format!("{}{}{}", main_widget, left_widget, preview)
     }
 
     fn on_key(&mut self, key: Key) {
