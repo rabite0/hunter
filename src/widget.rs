@@ -1,12 +1,14 @@
 use termion::event::{Key, MouseEvent, Event};
 
+use crate::coordinates::{Coordinates, Size, Position};
+
 
 pub trait Widget {
     fn render(&self) -> Vec<String>;
-    fn get_dimensions(&self) -> (u16, u16);
-    fn get_position(&self) -> (u16, u16);
-    fn set_dimensions(&mut self, size: (u16, u16));
-    fn set_position(&mut self, position: (u16, u16));
+    fn get_size(&self) -> &Size;
+    fn get_position(&self) -> &Position;
+    fn set_size(&mut self, size: Size);
+    fn set_position(&mut self, position: Position);
     fn render_header(&self) -> String;
 
 
@@ -77,5 +79,5 @@ pub trait Widget {
 
     //fn get_buffer(&self) -> &Vec<String>;
     fn refresh(&mut self);
-    fn get_drawlist(&mut self) -> String;
+    fn get_drawlist(&self) -> String;
 }

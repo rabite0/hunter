@@ -1,6 +1,7 @@
 use termion::event::{Event};
 
 use crate::widget::Widget;
+use crate::coordinates::{Coordinates, Size, Position};
 
 // pub struct Child<T> {
 //     widget: T,
@@ -12,6 +13,7 @@ use crate::widget::Widget;
 pub struct HBox {
     dimensions: (u16, u16),
     position: (u16, u16),
+    coordinates: Coordinates,
     children: Vec<Box<Widget>>,
     active: usize
 }
@@ -20,10 +22,14 @@ pub struct HBox {
 impl HBox {
     pub fn new(widgets: Vec<Box<Widget>>,
                dimensions: (u16, u16),
+               coordinates: Coordinates,
                position: (u16, u16),
                main: usize) -> HBox {
         let mut hbox = HBox {
             dimensions: dimensions,
+            coordinates: Coordinates { size: Size (dimensions),
+                                       position: Position (position),
+                                       parent: None },
             position: position,
             children: widgets,
             active: main
@@ -40,7 +46,7 @@ impl HBox {
         let mut current_pos = dbg!(hbox_position.1);
         
         for widget in &mut self.children {
-            widget.set_dimensions(dbg!((cell_size, hbox_size.1)));
+            widget.set_size(Size ( (cell_size, hbox_size.1)) );
             widget.set_position(dbg!((current_pos, hbox_position.1)));
             widget.refresh();
             dbg!(current_pos += cell_size);
@@ -76,23 +82,23 @@ impl Widget for HBox {
         }
     }
 
-    fn get_drawlist(&mut self) -> String {
-        self.children.iter_mut().map(|child| {
+    fn get_drawlist(&self) -> String {
+        self.children.iter().map(|child| {
             child.get_drawlist()
         }).collect()
     }
 
-    fn get_dimensions(&self) -> (u16, u16) {
-        self.dimensions
+    fn get_size(&self) -> Size {
+        Size( self.dimensions )
     }
-    fn get_position(&self) -> (u16, u16) {
-        self.position
+    fn get_position(&self) -> Position {
+        Position ( self.position )
     }
-    fn set_dimensions(&mut self, size: (u16, u16)) {
-        self.dimensions = size;
+    fn set_size(&mut self, size: Size) {
+        self.dimensions = size.0;
     }
-    fn set_position(&mut self, position: (u16, u16)) {
-        self.position = position;
+    fn set_position(&mut self, position: Position) {
+        self.position = position.0;
     }
 
 

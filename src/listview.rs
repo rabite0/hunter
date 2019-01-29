@@ -6,6 +6,7 @@ use std::path::{Path, PathBuf};
 use crate::term;
 use crate::files::{File, Files};
 use crate::widget::Widget;
+use crate::coordinates::{Coordinates,Size,Position};
 
 // Maybe also buffer drawlist for efficiency when it doesn't change every draw
 
@@ -14,8 +15,9 @@ pub struct ListView<T> {
     selection: usize,
     offset: usize,
     buffer: Vec<String>,
-    dimensions: (u16, u16),
-    position: (u16, u16),
+    // dimensions: (u16, u16),
+    // position: (u16, u16),
+    coordinates: Coordinates,
 }
 
 impl<T: 'static> ListView<T> where ListView<T>: Widget {
@@ -25,8 +27,10 @@ impl<T: 'static> ListView<T> where ListView<T>: Widget {
             selection: 0,
             offset: 0,
             buffer: Vec::new(),
-            dimensions: (1,1),
-            position: (1,1)
+            coordinates: Coordinates { size: Size ((1,1)),
+                                       position: Position((1,1)) }
+            // dimensions: (1,1),
+            // position: (1,1)
         };
         view
     }
@@ -48,7 +52,7 @@ impl<T: 'static> ListView<T> where ListView<T>: Widget {
     }
     fn move_down(&mut self) {
         let lines = self.buffer.len();
-        let y_size = self.dimensions.1 as usize;
+        let y_size = self.coordinates.ysize() as usize;
 
         if self.selection == lines - 1 {
             return;
@@ -63,7 +67,7 @@ impl<T: 'static> ListView<T> where ListView<T>: Widget {
     }
 
     fn set_selection(&mut self, position: usize) {
-        let ysize = self.dimensions.1 as usize;
+        let ysize = self.coordinates.ysize() as usize;
         let mut offset = 0;
 
         while position + 1 > ysize + offset { offset += 1 }
@@ -76,7 +80,7 @@ impl<T: 'static> ListView<T> where ListView<T>: Widget {
         let name = &file.name;
         let (size, unit) = file.calculate_size();
                 
-        let (xsize, _) = self.get_dimensions();
+        let xsize = self.get_size().xsize();
         let sized_string = term::sized_string(&name, xsize);
         let padding = xsize - sized_string.width() as u16;
         let styled_string = match &file.style {
@@ -105,23 +109,23 @@ impl ListView<Files> where
     Files: std::ops::Index<usize, Output=File>,
     Files: std::marker::Sized
 {
-    fn selected_file(&self) -> &File {
+    pub fn selected_file(&self) -> &File {
         let selection = self.selection;
         let file = &self.content[selection];
         file
     }
 
-    fn clone_selected_file(&self) -> File {
+    pub fn clone_selected_file(&self) -> File {
         let selection = self.selection;
         let file = self.content[selection].clone();
         file
     }
 
-    fn grand_parent(&self) -> Option<PathBuf> {
+    pub fn grand_parent(&self) -> Option<PathBuf> {
         self.selected_file().grand_parent()
     }
 
-    fn goto_grand_parent(&mut self) {
+    pub fn goto_grand_parent(&mut self) {
         match self.grand_parent() {
             Some(grand_parent) => self.goto_path(&grand_parent),
             None => self.show_status("Can't go further!")
@@ -134,7 +138,7 @@ impl ListView<Files> where
         self.goto_path(&path);
     }
 
-    fn goto_path(&mut self, path: &Path) {
+    pub fn goto_path(&mut self, path: &Path) {
         match crate::files::Files::new_from_path(path){
             Ok(files) => {                
                 self.content = files;
@@ -198,17 +202,17 @@ impl ListView<Files> where
 
     
 impl Widget for ListView<Files> {
-    fn get_dimensions(&self) -> (u16, u16) {
-        self.dimensions
+    fn get_size(&self) -> &Size {
+        &self.coordinates.size
     }
-    fn get_position(&self) -> (u16, u16) {
-        self.position
+    fn get_position(&self) -> &Position {
+        &self.coordinates.position
     }
-    fn set_dimensions(&mut self, size: (u16, u16)) {
-        self.dimensions = size;
+    fn set_size(&mut self, size: Size) {
+        self.coordinates.size = size;
     }
-    fn set_position(&mut self, position: (u16, u16)) {
-        self.position = position;
+    fn set_position(&mut self, position: Position) {
+        self.coordinates.position = position;
     }
     fn refresh(&mut self) {
         self.buffer = self.render();
@@ -222,10 +226,10 @@ impl Widget for ListView<Files> {
         }).collect()
     }
 
-    fn get_drawlist(&mut self) -> String {
+    fn get_drawlist(&self) -> String {
         let mut output = term::reset();
-        let (xsize, ysize) = self.dimensions;
-        let (xpos, ypos) = self.position;
+        let (xsize, ysize) = self.coordinates.size().size();
+        let (xpos, ypos) = self.coordinates.position().position();
         output += &term::reset();
 
 

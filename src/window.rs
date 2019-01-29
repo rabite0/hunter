@@ -68,6 +68,7 @@ where
             self.draw();
             let event = event.unwrap();
             self.widget.on_event(event);
+            self.widget.refresh();
             self.draw();
         }
     }
