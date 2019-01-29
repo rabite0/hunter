@@ -45,18 +45,40 @@ pub fn sized_string(string: &str, xsize: u16) -> String {
 
 pub fn highlight_color() -> String {
     format!(
-        "{}{}",
+        "{}",
         termion::color::Fg(termion::color::LightGreen),
-        termion::color::Bg(termion::color::Black)
+        //termion::color::Bg(termion::color::Black)
     )
 }
 
 pub fn normal_color() -> String {
     format!(
-        "{}{}",
+        "{}",
         termion::color::Fg(termion::color::LightBlue),
-        termion::color::Bg(termion::color::Black)
+        //termion::color::Bg(termion::color::Black)
     )
+}
+
+pub fn from_lscolor(color: &lscolors::Color) -> String {
+    match color {
+        lscolors::Color::Black => {
+            format!("{}", termion::color::Fg(termion::color::Black)) },
+        lscolors::Color::Red => {
+            format!("{}", termion::color::Fg(termion::color::Red)) }
+        lscolors::Color::Green => {
+            format!("{}",termion::color::Fg(termion::color::Green)) }
+        lscolors::Color::Yellow => {
+            format!("{}",termion::color::Fg(termion::color::Yellow)) }
+        lscolors::Color::Blue => {
+            format!("{}",termion::color::Fg(termion::color::Blue)) }
+        lscolors::Color::Magenta => {
+            format!("{}", termion::color::Fg(termion::color::Magenta)) }
+        lscolors::Color::Cyan => {
+            format!("{}",termion::color::Fg(termion::color::Cyan)) }
+        lscolors::Color::White => {
+            format!("{}",termion::color::Fg(termion::color::White)) } ,
+        _ => { format!("{}", normal_color()) }
+    }
 }
 
 

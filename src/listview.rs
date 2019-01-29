@@ -79,29 +79,32 @@ impl<T: 'static> ListView<T> where ListView<T>: Widget {
     fn render_line(&self, file: &File) -> String {
         let name = &file.name;
         let (size, unit) = file.calculate_size();
-                
+
         let xsize = self.get_size().xsize();
         let sized_string = term::sized_string(&name, xsize);
-        let padding = xsize - sized_string.width() as u16;
-        let styled_string = match &file.style {
-            Some(style) => style.to_ansi_term_style().paint(sized_string).to_string(),
-            _ => format!("{}{}", term::normal_color(), sized_string),
+        let padding = xsize as usize - sized_string.width();
+        let padded_string = format!("{:padding$}",
+                                    sized_string,
+                                    padding = xsize as usize);
+        let styled_string = match &file.color {
+            Some(color) => format!("{}{}",
+                                   term::from_lscolor(color),
+                                   &padded_string),
+            _ => format!("{}{}",
+                         term::normal_color(),
+                         padded_string)
         };
-        
+
 
         format!(
-            "{}{:padding$}{}{}{}{}",
+            "{}{}{}{}{}",
             styled_string,
-            " ",
             term::highlight_color(),
             term::cursor_left(size.to_string().width() + unit.width()),
             size,
-            unit,
-            padding = padding as usize)
-
+            unit)
     }
 
-    
 }
 
 impl ListView<Files> where
@@ -140,11 +143,11 @@ impl ListView<Files> where
 
     pub fn goto_path(&mut self, path: &Path) {
         match crate::files::Files::new_from_path(path){
-            Ok(files) => {                
+            Ok(files) => {
                 self.content = files;
                 self.selection = 0;
                 self.offset = 0;
-                self.refresh(); 
+                self.refresh();
             },
             Err(err) => {
                 self.show_status(&format!("Can't open this path: {}", err));
@@ -228,10 +231,8 @@ impl Widget for ListView<Files> {
 
     fn get_drawlist(&self) -> String {
         let mut output = term::reset();
-        let (xsize, ysize) = self.coordinates.size().size();
+        let (xsize, ysize) = self.get_size().size();
         let (xpos, ypos) = self.coordinates.position().position();
-        output += &term::reset();
-
 
         for (i, item) in self.buffer
             .iter()
@@ -253,8 +254,11 @@ impl Widget for ListView<Files> {
 
         if ysize as usize > self.buffer.len() {
             let start_y = self.buffer.len() + 1 + ypos as usize;
-            for i in start_y..ysize as usize {
-               output += &format!("{}{:xsize$}{}", term::gotoy(i), " ", xsize = xsize as usize);
+            for i in start_y..(ysize+2) as usize {
+                output += &format!("{}{:xsize$}",
+                                   term::goto_xy(xpos,i as u16),
+                                   " ",
+                                   xsize = xsize as usize);
             }
         }
 

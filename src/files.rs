@@ -49,12 +49,12 @@ impl Files {
             let size = meta.len() / 1024;
             let mtime = meta.modified()?;
 
-            let style
+            let color
                 = match COLORS.style_for_path_with_metadata(file.path(), Some(&meta)) {
-                    Some(style) => Some(style.clone()),
+                    Some(style) => { style.clone().foreground },
                     None => None
                 };
-            let file = File::new(&name, path, kind, size as usize, mtime, style);
+            let file = File::new(&name, path, kind, size as usize, mtime, color);
             files.push(file)
         }
                 
@@ -151,7 +151,7 @@ pub struct File {
     pub size: Option<usize>,
     pub kind: Kind,
     pub mtime: SystemTime,
-    pub style: Option<Style>,
+    pub color: Option<lscolors::Color>,
     // owner: Option<String>,
     // group: Option<String>,
     // flags: Option<String>,
@@ -164,14 +164,14 @@ impl File {
                kind: Kind,
                size: usize,
                mtime: SystemTime,
-               style: Option<Style>) -> File {
+               color: Option<lscolors::Color>) -> File {
         File {
             name: name.to_string(),
             path: path,
             size: Some(size),
             kind: kind,
             mtime: mtime,
-            style: style
+            color: color
             // owner: None,
             // group: None,
             // flags: None,
