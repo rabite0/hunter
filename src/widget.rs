@@ -9,6 +9,8 @@ pub trait Widget {
     fn get_position(&self) -> &Position;
     fn set_size(&mut self, size: Size);
     fn set_position(&mut self, position: Position);
+    fn get_coordinates(&self) -> &Coordinates;
+    fn set_coordinates(&mut self, coordinates: &Coordinates);
     fn render_header(&self) -> String;
 
 
@@ -73,8 +75,9 @@ pub trait Widget {
         let (xsize, ysize) = self.get_size().size();
 
         let mut clearcmd = String::from("");
-        for line in ypos..ysize {
-            clearcmd += &format!("{}{:xsize$}",
+        for line in ypos..ysize+2 {
+            clearcmd += &format!("{}{}{:xsize$}",
+                                 crate::term::reset(),
                                  crate::term::goto_xy(xpos, line),
                                  " ",
                                  xsize=xsize as usize);
@@ -86,11 +89,11 @@ pub trait Widget {
     fn get_redraw_empty_list(&self, lines: usize) -> String {
         let (xpos, ypos) = self.get_position().position();
         let (xsize, ysize) = self.get_size().size();
-        
+
         let mut output = String::new();
 
         if ysize as usize > lines {
-            let start_y = lines + 1 + ypos as usize;
+            let start_y = lines + ypos as usize;
             for i in start_y..(ysize+2) as usize {
                 output += &format!("{}{:xsize$}",
                                    crate::term::goto_xy(xpos,i as u16),

@@ -121,3 +121,4 @@ pub fn header_color() -> String {
 pub fn status_bg() -> String {
     format!("{}", termion::color::Bg(termion::color::LightBlue))
 }
+

@@ -1,16 +1,19 @@
-#[derive(Debug,Clone)]
+#[derive(Debug,Clone,PartialEq)]
 pub struct Size(pub (u16,u16));
-#[derive(Debug,Clone)]
+#[derive(Debug,Clone,PartialEq)]
 pub struct Position(pub (u16,u16));
 
 
-#[derive(Debug,Clone)]
+#[derive(Debug,Clone,PartialEq)]
 pub struct Coordinates {
     pub size: Size,
     pub position: Position,
 }
 
 impl Coordinates {
+    pub fn new() -> Coordinates {
+        Coordinates { size: Size ((1,1)), position: Position ((1,1)) }
+    }
     pub fn size(&self) -> &Size {
         &self.size
     }

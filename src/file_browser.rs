@@ -5,7 +5,7 @@ use crate::widget::Widget;
 use crate::files::Files;
 //use crate::hbox::HBox;
 use crate::listview::ListView;
-use crate::coordinates::{Size,Position};
+use crate::coordinates::{Size,Position,Coordinates};
 use crate::preview::Previewer;
 use crate::miller_columns::MillerColumns;
 
@@ -14,6 +14,59 @@ pub struct FileBrowser {
 }
 
 impl FileBrowser {
+    pub fn new() -> FileBrowser {
+        let cwd = std::env::current_dir().unwrap();
+        let mut miller = MillerColumns::new();
+
+        let mut lists: Vec<_> = cwd.ancestors().map(|path| {
+            ListView::new(Files::new_from_path(path).unwrap())
+        }).collect();
+        lists.reverse();
+
+        for widget in lists {
+            miller.push_widget(widget);
+        }
+
+        FileBrowser { columns: miller }
+    }
+
+    pub fn enter_dir(&mut self) {
+        let fileview = self.columns.get_main_widget();
+
+        let path = fileview.selected_file().path();
+        match Files::new_from_path(&path) {
+            Ok(files) => {
+                let view = ListView::new(files);
+                self.columns.push_widget(view);
+                self.update_preview();
+            },
+            Err(err) => {
+                self.show_status(&format!("Can't open this path: {}", err));
+            }
+        };
+    }
+
+    pub fn go_back(&mut self) {
+        if self.columns.get_left_widget().is_none() { return }
+        self.columns.pop_widget();
+
+        // Make sure there's a directory on the left unless it's /
+        if self.columns.get_left_widget().is_none() {
+            let file = self.columns.get_main_widget().selected_file().clone();
+            if let Some(grand_parent) = file.grand_parent() {
+                let left_view
+                    = ListView::new(Files::new_from_path(grand_parent).unwrap());
+                self.columns.prepend_widget(left_view);
+            }
+        }
+
+    }
+
+    pub fn update_preview(&mut self) {
+        let file = self.columns.get_main_widget().selected_file().clone();
+        let preview = &mut self.columns.preview;
+        preview.set_file(&file);
+    }
 }
 
 
@@ -33,61 +86,34 @@ impl Widget for FileBrowser {
     fn set_position(&mut self, position: Position) {
         self.columns.set_position(position);
     }
+    fn get_coordinates(&self) -> &Coordinates {
+        &self.columns.coordinates
+    }
+    fn set_coordinates(&mut self, coordinates: &Coordinates) {
+        self.columns.coordinates = coordinates.clone();
+    }
     fn render_header(&self) -> String {
         "".to_string()
     }
     fn refresh(&mut self) {
-        let file
-            = self.columns.get_main_widget().as_ref().unwrap().selected_file().clone();
-        let (_, _, preview_coordinates) = self.columns.calculate_coordinates();
-
-        match &mut self.columns.preview {
-            Some(preview) => preview.set_file(&file),
-            None => {
-                let preview = Previewer::new(&file, &preview_coordinates);
-                self.columns.preview = Some(preview);
-            }
-        }
         self.columns.refresh();
     }
-    
+
     fn get_drawlist(&self) -> String {
-        self.columns.get_drawlist()
+        if self.columns.get_left_widget().is_none() {
+            self.columns.get_clearlist() + &self.columns.get_drawlist()
+        } else {
+            self.columns.get_drawlist()
+        }
     }
-            
+
 
     fn on_key(&mut self, key: Key) {
         match key {
-            Key::Right => {
-                match self.columns.get_main_widget() {
-                    Some(widget) => {
-                        let path = widget.selected_file().path();
-                        let files = Files::new_from_path(&path).unwrap();
-                        let view = ListView::new(files);
-                        let selected_file = view.selected_file();
-                        self.columns.set_preview(selected_file);
-                        self.columns.widgets.push(view);
-                        self.refresh();
-                    }, None => { }
-                }
-            },
-            Key::Left => {
-                if self.columns.get_left_widget().is_some() {
-                    self.columns.widgets.pop();
-                }
-            }
-           
-            _ => {
-                match self.columns.get_main_widget_mut() {
-                    Some(widget) => {
-                        widget.on_key(key);
-                        self.refresh();
-                    }, None => { self.refresh(); }
-                    
-                }
-                //_ => { self.bad(Event::Key(key)); }
-            }
+            Key::Right => self.enter_dir(),
+            Key::Left => self.go_back(),
+            _ =>  self.columns.get_main_widget_mut().on_key(key)
         }
+        self.update_preview();
     }
 }
-

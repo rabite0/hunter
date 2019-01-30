@@ -6,6 +6,7 @@ use std::cmp::{Ord, Ordering};
 use std::time::SystemTime;
 
 use lscolors::{LsColors, Style};
+use mime_detective;
 
 lazy_static! {
     static ref COLORS: LsColors = LsColors::from_env().unwrap();
@@ -57,7 +58,7 @@ impl Files {
             let file = File::new(&name, path, kind, size as usize, mtime, color);
             files.push(file)
         }
-                
+
         let mut files = Files { files: files,
                                 sort: SortBy::Name,
                                 dirs_first: true };
@@ -107,7 +108,7 @@ impl Files {
             SortBy::MTime => SortBy::Name
         };
     }
-    
+
     pub fn iter(&self) -> std::slice::Iter<File> {
         self.files.iter()
     }
@@ -195,6 +196,12 @@ impl File {
         (size, unit)
     }
 
+    pub fn get_mime(&self) -> Option<String> {
+        let detective = mime_detective::MimeDetective::new().ok()?;
+        let mime = detective.detect_filepath(&self.path).ok()?;
+        Some(mime.type_().as_str().to_string())
+    }
+
     pub fn grand_parent(&self) -> Option<PathBuf> {
         Some(self.path.parent()?.parent()?.to_path_buf())
     }
@@ -207,4 +214,3 @@ impl File {
         self.path.clone()
     }
 }
-

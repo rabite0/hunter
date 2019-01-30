@@ -11,3 +11,4 @@ lazy_static = "*"
 x11-clipboard = "*"
 alphanumeric-sort = "1.0.6"
 lscolors = { version = "0.5.0", features = [ "ansi_term" ]  }
+mime-detective = "*"

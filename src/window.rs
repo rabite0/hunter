@@ -9,6 +9,7 @@ use crate::term;
 use crate::term::ScreenExt;
 
 use crate::widget::Widget;
+use crate::coordinates::{Coordinates, Size, Position};
 
 pub struct Window<T>
 where T: Widget
@@ -17,7 +18,7 @@ where T: Widget
     pub widget: T,
     pub status: Arc<Mutex<Option<String>>>,
     pub screen: AlternateScreen<Box<Stdout>>,
-    pub dimensions: (u16, u16),
+    pub coordinates: Coordinates,
 }
 
 
@@ -28,13 +29,18 @@ where
     pub fn new(widget: T) -> Window<T> {
         let mut screen = AlternateScreen::from(Box::new(stdout()));
         screen.cursor_hide();
+        let (xsize, ysize) = termion::terminal_size().unwrap();
         let mut win = Window::<T> {
             selection: 0,
             widget: widget,
             status: STATUS_BAR_CONTENT.clone(),
             screen: screen,
-            dimensions: termion::terminal_size().unwrap(),
+            coordinates: Coordinates { size: Size ((xsize, ysize)) ,
+                                       position: Position( (1, 1 )) }
         };
+
+        win.widget.set_coordinates( &Coordinates { size: Size ((xsize, ysize - 2)),
+                                                   position: Position( (1, 2)) });
         win.widget.refresh();
         win
     }
@@ -59,7 +65,7 @@ where
         Self::show_status("");
     }
 
-    
+
 
     pub fn handle_input(&mut self) {
         self.draw();
@@ -68,7 +74,7 @@ where
             self.draw();
             let event = event.unwrap();
             self.widget.on_event(event);
-            self.widget.refresh();
+            //self.widget.refresh();
             self.draw();
         }
     }
@@ -138,7 +144,7 @@ pub fn minibuffer(query: &str) -> Option<String> {
             _ => {}
         }
         show_status(&(query.to_string() + ": " + &buffer));
-                
+
     };
     None
 }

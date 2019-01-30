@@ -203,7 +203,7 @@ impl ListView<Files> where
     }
 }
 
-    
+
 impl Widget for ListView<Files> {
     fn get_size(&self) -> &Size {
         &self.coordinates.size
@@ -216,6 +216,14 @@ impl Widget for ListView<Files> {
     }
     fn set_position(&mut self, position: Position) {
         self.coordinates.position = position;
+    }
+    fn get_coordinates(&self) -> &Coordinates {
+        &self.coordinates
+    }
+    fn set_coordinates(&mut self, coordinates: &Coordinates) {
+        if self.coordinates == *coordinates { return }
+        self.coordinates = coordinates.clone();
+        self.refresh();
     }
     fn refresh(&mut self) {
         self.buffer = self.render();

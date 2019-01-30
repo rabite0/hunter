@@ -13,7 +13,7 @@ pub struct MillerColumns<T> {
     pub widgets: Vec<T>,
     // pub left: Option<T>,
     // pub main: Option<T>,
-    pub preview: Option<Previewer>,
+    pub preview: Previewer,
     pub ratio: (u16,u16,u16),
     pub coordinates: Coordinates,
 }
@@ -23,17 +23,29 @@ pub struct MillerColumns<T> {
 
 
 impl<T> MillerColumns<T> where T: Widget {
-    pub fn new(widgets: Vec<T>,
-               coordinates: Coordinates, 
-               ratio: (u16, u16, u16))
-               -> Self { Self { widgets: widgets,
-                                coordinates: coordinates,
-                                ratio: ratio,
-                                preview: None } }
+    pub fn new() -> Self { Self { widgets: vec![],
+                                  coordinates: Coordinates::new(),
+                                  ratio: (33, 33, 33),
+                                  preview: Previewer::new() } }
 
 
-    pub fn push_widget(&mut self, widget: T) {
-        
+    pub fn push_widget(&mut self, mut widget: T) {
+        let mcoords = self.calculate_coordinates().1;
+        widget.set_coordinates(&mcoords);
+        self.widgets.push(widget);
+        self.refresh();
+    }
+
+    pub fn pop_widget(&mut self) -> Option<T> {
+        let widget = self.widgets.pop();
+        self.refresh();
+        widget
+    }
+
+    pub fn prepend_widget(&mut self, mut widget: T) {
+        let lcoords = self.calculate_coordinates().0;
+        widget.set_coordinates(&lcoords);
+        self.widgets.insert(0, widget);
     }
 
     pub fn calculate_coordinates(&self) -> (Coordinates, Coordinates, Coordinates) {
@@ -41,11 +53,11 @@ impl<T> MillerColumns<T> where T: Widget {
         let ysize = self.coordinates.ysize();
         let top = self.coordinates.top().x();
         let ratio = self.ratio;
-        
+
         let left_xsize = xsize * ratio.0 / 100;
         let left_size = Size ((left_xsize, ysize));
         let left_pos = self.coordinates.top();
-        
+
 
         let main_xsize = xsize * ratio.1 / 100;
         let main_size = Size ( (main_xsize, ysize) );
@@ -57,39 +69,35 @@ impl<T> MillerColumns<T> where T: Widget {
 
         let left_coords = Coordinates { size: left_size,
                                         position: left_pos };
-                                        
-        
+
+
         let main_coords = Coordinates { size: main_size,
                                         position: main_pos };
-                                        
-        
+
+
         let preview_coords = Coordinates { size: preview_size,
                                            position: preview_pos };
-                                           
+
 
         (left_coords, main_coords, preview_coords)
     }
 
     pub fn get_left_widget(&self) -> Option<&T> {
         let len = self.widgets.len();
+        if len < 2 { return None }
         self.widgets.get(len-2)
     }
     pub fn get_left_widget_mut(&mut self) -> Option<&mut T> {
         let len = self.widgets.len();
-        dbg!((self.widgets[len-2]).get_position());
-        Some(&mut self.widgets[len-2])
-    } 
-    pub fn get_main_widget(&self) -> Option<&T> {
-        self.widgets.last()
+        if len < 2 { return None }
+        self.widgets.get(len-2)?.get_position();
+        self.widgets.get_mut(len-2)
     }
-    pub fn get_main_widget_mut(&mut self) -> Option<&mut T> {
-        self.widgets.last_mut()
+    pub fn get_main_widget(&self) -> &T {
+        self.widgets.last().unwrap()
     }
-    pub fn set_preview(&mut self, file: &File) {
-        match &mut self.preview {
-            Some(preview) => preview.set_file(file),
-            None => {}
-        };
+    pub fn get_main_widget_mut(&mut self) -> &mut T {
+        self.widgets.last_mut().unwrap()
     }
 }
 
@@ -109,63 +117,42 @@ impl<T> Widget for MillerColumns<T> where T: Widget {
     fn set_position(&mut self, position: Position) {
         self.coordinates.position = position;
     }
+    fn get_coordinates(&self) -> &Coordinates {
+        &self.coordinates
+    }
+    fn set_coordinates(&mut self, coordinates: &Coordinates) {
+        if self.coordinates == *coordinates { return }
+        self.coordinates = coordinates.clone();
+        self.refresh();
+    }
     fn render_header(&self) -> String {
         "".to_string()
     }
     fn refresh(&mut self) {
-        let (left_coords, main_coords, preview_coords) = self.calculate_coordinates();  
+        let (left_coords, main_coords, preview_coords) = self.calculate_coordinates();
 
-        let widget2 = self.get_left_widget_mut().unwrap();
-        widget2.set_size( left_coords.size );
-        widget2.set_position( left_coords.position );
-        widget2.refresh();
-        
+        if let Some(left_widget) = self.get_left_widget_mut() {
+            left_widget.set_coordinates(&left_coords);
+        }
 
-        let widget = self.get_main_widget_mut().unwrap();
-        widget.set_size(main_coords.size);
-        widget.set_position(main_coords.position);
-        widget.refresh();
+        let main_widget = self.get_main_widget_mut();
+        main_widget.set_coordinates(&main_coords);
 
-        match &mut self.preview {
-            Some(preview) => { preview.set_size(preview_coords.size);
-                               preview.set_position(preview_coords.position);
-                               preview.refresh(); },
-            None => {}
-        };
+        let preview_widget = &mut self.preview;
+        preview_widget.set_coordinates(&preview_coords);
     }
-    
+
     fn get_drawlist(&self) -> String {
-        let left_widget = self.get_left_widget().unwrap().get_drawlist();
-        let main_widget = self.get_main_widget().unwrap().get_drawlist();
-        let preview = self.preview.as_ref().unwrap().get_drawlist();
+        let left_widget = match self.get_left_widget() {
+            Some(widget) => widget.get_drawlist(),
+            None => "".into()
+        };
+        let main_widget = self.get_main_widget().get_drawlist();
+        let preview = self.preview.get_drawlist();
         format!("{}{}{}", main_widget, left_widget, preview)
     }
 
     fn on_key(&mut self, key: Key) {
-        match key {
-            _ => {
-                self.refresh();
-                self.get_main_widget_mut().unwrap().on_key(key);
-                //self.set_left_directory();
-                self.refresh();
-            },
-            //_ => { self.bad(Event::Key(key)); }
-        }
+        self.get_main_widget_mut().on_key(key);
     }
-// }
-
-// impl MillerColumns<ListView<Files>>
-// {
-    // pub fn godir(&mut self) -> Result<(),Box<dyn std::error::Error>> {
-    //     let current_dir = self.widgets.iter().last().unwrap();
-    //     let selected_path = &current_dir.selected_file().path;
-    //     let files = Files::new_from_path(selected_path)?;
-    //     let dir_list = ListView::new(files);
-    //     Ok(())
-    // }
-    // fn set_left_directory(&mut self, dir: File) {
-    //     let parent_dir = self.main.as_ref().unwrap().grand_parent().unwrap();
-    //     self.left.as_mut().unwrap().goto_path(&parent_dir);
-    // }
 }
-
