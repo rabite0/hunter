@@ -1,5 +1,6 @@
 use termion::event::{Key};
 
+use std::io::Write;
 
 use crate::widget::Widget;
 use crate::files::Files;
@@ -67,6 +68,19 @@ impl FileBrowser {
         let preview = &mut self.columns.preview;
         preview.set_file(&file);
     }
+
+    pub fn quit_with_dir(&self) {
+        let selected_file = self.columns.get_main_widget().selected_file();
+        let cwd = selected_file.path();
+        let cwd = cwd.parent().unwrap();
+
+        let mut filepath = std::env::home_dir().unwrap();
+        filepath.push(".hunter_cwd");
+
+        let mut file = std::fs::File::create(filepath).unwrap();
+        file.write(cwd.to_str().unwrap().as_bytes());
+        panic!("Quitting!");
+    }
 }
 
 
@@ -110,6 +124,7 @@ impl Widget for FileBrowser {
 
     fn on_key(&mut self, key: Key) {
         match key {
+            Key::Char('Q') => self.quit_with_dir(),
             Key::Right => self.enter_dir(),
             Key::Left => self.go_back(),
             _ =>  self.columns.get_main_widget_mut().on_key(key)
