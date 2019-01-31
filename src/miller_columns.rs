@@ -1,33 +1,30 @@
-use termion::event::{Key,Event};
+use termion::event::Key;
 
-
-use crate::widget::Widget;
-use crate::files::Files;
-//use crate::hbox::HBox;
-use crate::listview::ListView;
-use crate::coordinates::{Coordinates, Size,Position};
-use crate::files::File;
+use crate::coordinates::{Coordinates, Position, Size};
 use crate::preview::Previewer;
+use crate::widget::Widget;
 
 pub struct MillerColumns<T> {
     pub widgets: Vec<T>,
     // pub left: Option<T>,
     // pub main: Option<T>,
     pub preview: Previewer,
-    pub ratio: (u16,u16,u16),
+    pub ratio: (u16, u16, u16),
     pub coordinates: Coordinates,
 }
 
-
-
-
-
-impl<T> MillerColumns<T> where T: Widget {
-    pub fn new() -> Self { Self { widgets: vec![],
-                                  coordinates: Coordinates::new(),
-                                  ratio: (33, 33, 33),
-                                  preview: Previewer::new() } }
-
+impl<T> MillerColumns<T>
+where
+    T: Widget,
+{
+    pub fn new() -> Self {
+        Self {
+            widgets: vec![],
+            coordinates: Coordinates::new(),
+            ratio: (33, 33, 33),
+            preview: Previewer::new(),
+        }
+    }
 
     pub fn push_widget(&mut self, mut widget: T) {
         let mcoords = self.calculate_coordinates().1;
@@ -55,43 +52,49 @@ impl<T> MillerColumns<T> where T: Widget {
         let ratio = self.ratio;
 
         let left_xsize = xsize * ratio.0 / 100;
-        let left_size = Size ((left_xsize, ysize));
+        let left_size = Size((left_xsize, ysize));
         let left_pos = self.coordinates.top();
 
-
         let main_xsize = xsize * ratio.1 / 100;
-        let main_size = Size ( (main_xsize, ysize) );
-        let main_pos = Position ( (left_xsize + 2,  top ));
+        let main_size = Size((main_xsize, ysize));
+        let main_pos = Position((left_xsize + 2, top));
 
         let preview_xsize = xsize * ratio.2 / 100;
-        let preview_size = Size ( (preview_xsize, ysize) );
-        let preview_pos = Position ( (left_xsize + main_xsize + 3, top) );
+        let preview_size = Size((preview_xsize, ysize));
+        let preview_pos = Position((left_xsize + main_xsize + 3, top));
 
-        let left_coords = Coordinates { size: left_size,
-                                        position: left_pos };
+        let left_coords = Coordinates {
+            size: left_size,
+            position: left_pos,
+        };
 
+        let main_coords = Coordinates {
+            size: main_size,
+            position: main_pos,
+        };
 
-        let main_coords = Coordinates { size: main_size,
-                                        position: main_pos };
-
-
-        let preview_coords = Coordinates { size: preview_size,
-                                           position: preview_pos };
-
+        let preview_coords = Coordinates {
+            size: preview_size,
+            position: preview_pos,
+        };
 
         (left_coords, main_coords, preview_coords)
     }
 
     pub fn get_left_widget(&self) -> Option<&T> {
         let len = self.widgets.len();
-        if len < 2 { return None }
-        self.widgets.get(len-2)
+        if len < 2 {
+            return None;
+        }
+        self.widgets.get(len - 2)
     }
     pub fn get_left_widget_mut(&mut self) -> Option<&mut T> {
         let len = self.widgets.len();
-        if len < 2 { return None }
-        self.widgets.get(len-2)?.get_position();
-        self.widgets.get_mut(len-2)
+        if len < 2 {
+            return None;
+        }
+        self.widgets.get(len - 2)?.get_position();
+        self.widgets.get_mut(len - 2)
     }
     pub fn get_main_widget(&self) -> &T {
         self.widgets.last().unwrap()
@@ -101,7 +104,10 @@ impl<T> MillerColumns<T> where T: Widget {
     }
 }
 
-impl<T> Widget for MillerColumns<T> where T: Widget {
+impl<T> Widget for MillerColumns<T>
+where
+    T: Widget,
+{
     fn render(&self) -> Vec<String> {
         vec![]
     }
@@ -121,7 +127,9 @@ impl<T> Widget for MillerColumns<T> where T: Widget {
         &self.coordinates
     }
     fn set_coordinates(&mut self, coordinates: &Coordinates) {
-        if self.coordinates == *coordinates { return }
+        if self.coordinates == *coordinates {
+            return;
+        }
         self.coordinates = coordinates.clone();
         self.refresh();
     }
@@ -145,7 +153,7 @@ impl<T> Widget for MillerColumns<T> where T: Widget {
     fn get_drawlist(&self) -> String {
         let left_widget = match self.get_left_widget() {
             Some(widget) => widget.get_drawlist(),
-            None => "".into()
+            None => "".into(),
         };
         let main_widget = self.get_main_widget().get_drawlist();
         let preview = self.preview.get_drawlist();

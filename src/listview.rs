@@ -1,16 +1,20 @@
-use unicode_width::{UnicodeWidthStr};
-use termion::event::{Key,Event};
+use rayon::prelude::*;
+use termion::event::{Event, Key};
+use unicode_width::UnicodeWidthStr;
 
 use std::path::{Path, PathBuf};
 
-use crate::term;
+use crate::coordinates::{Coordinates, Position, Size};
 use crate::files::{File, Files};
+use crate::term;
 use crate::widget::Widget;
-use crate::coordinates::{Coordinates,Size,Position};
 
 // Maybe also buffer drawlist for efficiency when it doesn't change every draw
 
-pub struct ListView<T> {
+pub struct ListView<T>
+where
+    T: Send,
+{
     pub content: T,
     selection: usize,
     offset: usize,
@@ -20,23 +24,24 @@ pub struct ListView<T> {
     coordinates: Coordinates,
 }
 
-impl<T: 'static> ListView<T> where ListView<T>: Widget {
+impl<T> ListView<T>
+where
+    ListView<T>: Widget,
+    T: Send,
+{
     pub fn new(content: T) -> Self {
         let view = ListView::<T> {
             content: content,
             selection: 0,
             offset: 0,
             buffer: Vec::new(),
-            coordinates: Coordinates { size: Size ((1,1)),
-                                       position: Position((1,1)) }
-            // dimensions: (1,1),
-            // position: (1,1)
+            coordinates: Coordinates {
+                size: Size((1, 1)),
+                position: Position((1, 1)),
+            }, // dimensions: (1,1),
+               // position: (1,1)
         };
         view
-    }
-
-    pub fn to_trait(self) -> Box<Widget> {
-        Box::new(self)
     }
 
     fn move_up(&mut self) {
@@ -58,8 +63,7 @@ impl<T: 'static> ListView<T> where ListView<T>: Widget {
             return;
         }
 
-        if self.selection + 1 >= y_size && self.selection + 1 - self.offset >= y_size
-        {
+        if self.selection + 1 >= y_size && self.selection + 1 - self.offset >= y_size {
             self.offset += 1;
         }
 
@@ -70,7 +74,9 @@ impl<T: 'static> ListView<T> where ListView<T>: Widget {
         let ysize = self.coordinates.ysize() as usize;
         let mut offset = 0;
 
-        while position + 1 > ysize + offset { offset += 1 }
+        while position + 1 > ysize + offset {
+            offset += 1
+        }
 
         self.offset = offset;
         self.selection = position;
@@ -82,19 +88,12 @@ impl<T: 'static> ListView<T> where ListView<T>: Widget {
 
         let xsize = self.get_size().xsize();
         let sized_string = term::sized_string(&name, xsize);
-        let padding = xsize as usize - sized_string.width();
-        let padded_string = format!("{:padding$}",
-                                    sized_string,
-                                    padding = xsize as usize);
-        let styled_string = match &file.color {
-            Some(color) => format!("{}{}",
-                                   term::from_lscolor(color),
-                                   &padded_string),
-            _ => format!("{}{}",
-                         term::normal_color(),
-                         padded_string)
-        };
 
+        let padded_string = format!("{:padding$}", sized_string, padding = xsize as usize);
+        let styled_string = match &file.color {
+            Some(color) => format!("{}{}", term::from_lscolor(color), &padded_string),
+            _ => format!("{}{}", term::normal_color(), padded_string),
+        };
 
         format!(
             "{}{}{}{}{}",
@@ -102,15 +101,16 @@ impl<T: 'static> ListView<T> where ListView<T>: Widget {
             term::highlight_color(),
             term::cursor_left(size.to_string().width() + unit.width()),
             size,
-            unit)
+            unit
+        )
     }
-
 }
 
-impl ListView<Files> where
+impl ListView<Files>
+where
     ListView<Files>: Widget,
-    Files: std::ops::Index<usize, Output=File>,
-    Files: std::marker::Sized
+    Files: std::ops::Index<usize, Output = File>,
+    Files: std::marker::Sized,
 {
     pub fn selected_file(&self) -> &File {
         let selection = self.selection;
@@ -131,7 +131,7 @@ impl ListView<Files> where
     pub fn goto_grand_parent(&mut self) {
         match self.grand_parent() {
             Some(grand_parent) => self.goto_path(&grand_parent),
-            None => self.show_status("Can't go further!")
+            None => self.show_status("Can't go further!"),
         }
     }
 
@@ -142,13 +142,13 @@ impl ListView<Files> where
     }
 
     pub fn goto_path(&mut self, path: &Path) {
-        match crate::files::Files::new_from_path(path){
+        match crate::files::Files::new_from_path(path) {
             Ok(files) => {
                 self.content = files;
                 self.selection = 0;
                 self.offset = 0;
                 self.refresh();
-            },
+            }
             Err(err) => {
                 self.show_status(&format!("Can't open this path: {}", err));
                 return;
@@ -156,8 +156,13 @@ impl ListView<Files> where
         }
     }
 
-    fn select_file(&mut self, file: &File) {
-        let pos = self.content.files.iter().position(|item| item == file).unwrap();
+    pub fn select_file(&mut self, file: &File) {
+        let pos = self
+            .content
+            .files
+            .par_iter()
+            .position_any(|item| item == file)
+            .unwrap();
         self.set_selection(pos);
     }
 
@@ -182,27 +187,24 @@ impl ListView<Files> where
     fn exec_cmd(&mut self) {
         match self.minibuffer("exec ($s for selected files)") {
             Some(cmd) => {
-                let filename = self.selected_file().name.clone();
-                let cmd = cmd.replace("$s", &filename);
                 self.show_status(&format!("Running: \"{}\"", &cmd));
-                let mut parts = cmd.split_whitespace();
-                let exe = parts.next().unwrap();
-                let status = std::process::Command::new(exe).args(parts)
-                                                            .status();
+
+                let filename = self.selected_file().name.clone();
+                let cmd = cmd.replace("$s", &format!("{}", &filename));
+
+                let status = std::process::Command::new("sh")
+                    .arg("-c")
+                    .arg(&cmd)
+                    .status();
                 match status {
-                    Ok(status) => self.show_status(&format!("\"{}\" exited with {}",
-                                                            cmd,
-                                                            status)),
-                    Err(err) => self.show_status(&format!("Can't run this \"{}\": {}",
-                                                          cmd,
-                                                          err))
+                    Ok(status) => self.show_status(&format!("\"{}\" exited with {}", cmd, status)),
+                    Err(err) => self.show_status(&format!("Can't run this \"{}\": {}", cmd, err)),
                 }
-            },
-            None => self.show_status("")
+            }
+            None => self.show_status(""),
         }
     }
 }
-
 
 impl Widget for ListView<Files> {
     fn get_size(&self) -> &Size {
@@ -221,7 +223,9 @@ impl Widget for ListView<Files> {
         &self.coordinates
     }
     fn set_coordinates(&mut self, coordinates: &Coordinates) {
-        if self.coordinates == *coordinates { return }
+        if self.coordinates == *coordinates {
+            return;
+        }
         self.coordinates = coordinates.clone();
         self.refresh();
     }
@@ -229,32 +233,39 @@ impl Widget for ListView<Files> {
         self.buffer = self.render();
     }
     fn render(&self) -> Vec<String> {
-        self.content.iter().map(|file| {
-            self.render_line(&file)
-        }).collect()
+        self.content
+            .files
+            .par_iter()
+            .map(|file| self.render_line(&file))
+            .collect()
     }
 
     fn get_drawlist(&self) -> String {
         let mut output = term::reset();
-        let (xsize, ysize) = self.get_size().size();
+        let (_, ysize) = self.get_size().size();
         let (xpos, ypos) = self.coordinates.position().position();
 
-        for (i, item) in self.buffer
-            .iter()
+        output += &self
+            .buffer
+            .par_iter()
             .skip(self.offset)
             .take(ysize as usize)
             .enumerate()
-        {
-            output += &term::normal_color();
+            .map(|(i, item)| {
+                let mut output = term::normal_color();
 
-            if i == (self.selection - self.offset) {
-                output += &term::invert();
-            }
-            output += &format!("{}{}{}",
-                               term::goto_xy(xpos, i as u16 + ypos),
-                               item,
-                               term::reset());
-        }
+                if i == (self.selection - self.offset) {
+                    output += &term::invert();
+                }
+                output += &format!(
+                    "{}{}{}",
+                    term::goto_xy(xpos, i as u16 + ypos),
+                    item,
+                    term::reset()
+                );
+                String::from(output)
+            })
+            .collect::<String>();
 
         output += &self.get_redraw_empty_list(self.buffer.len());
 
@@ -266,18 +277,22 @@ impl Widget for ListView<Files> {
 
     fn on_key(&mut self, key: Key) {
         match key {
-            Key::Up => { self.move_up(); self.refresh(); },
-            Key::Down => { self.move_down(); self.refresh(); },
-            Key::Left => {
-                self.goto_grand_parent()
-            },
-            Key::Right => {
-                self.goto_selected()
-            },
-            Key::Char('s') => { self.cycle_sort() } ,
-            Key::Char('d') => self.toggle_dirs_first() ,
-            Key::Char('!') => self.exec_cmd() ,
-            _ => { self.bad(Event::Key(key)); }
+            Key::Up => {
+                self.move_up();
+                self.refresh();
+            }
+            Key::Down => {
+                self.move_down();
+                self.refresh();
+            }
+            Key::Left => self.goto_grand_parent(),
+            Key::Right => self.goto_selected(),
+            Key::Char('s') => self.cycle_sort(),
+            Key::Char('d') => self.toggle_dirs_first(),
+            Key::Char('!') => self.exec_cmd(),
+            _ => {
+                self.bad(Event::Key(key));
+            }
         }
     }
 }

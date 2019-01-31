@@ -1,6 +1,5 @@
 //use crate::listview::ListView;
 
-
 // struct MainWindow {
 //     active_widget: usize,
 //     main: ListView<Files>,
@@ -17,7 +16,7 @@
 //     //     let name = &self.content.content[pos].name.clone();
 //     //     let path = &self.content.content[pos].path.clone();
 //     //     let newfiles = crate::files::get_files(path).unwrap();
-        
+
 //     //     let listview = ListView::new(newfiles, (80,80), (10,10));
 
 //     //     let mut win = Window::new(listview);

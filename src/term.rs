@@ -18,10 +18,6 @@ pub trait ScreenExt: Write {
 
 impl ScreenExt for AlternateScreen<Box<Stdout>> {}
 
-pub fn size() ->  (u16, u16) {
-    termion::terminal_size().unwrap()
-}
-
 pub fn xsize() -> usize {
     let (xsize, _) = termion::terminal_size().unwrap();
     xsize as usize
@@ -33,15 +29,17 @@ pub fn ysize() -> usize {
 }
 
 pub fn sized_string(string: &str, xsize: u16) -> String {
-    let lenstr: String = string.chars().fold("".into(), |acc,ch| {
-            if acc.width() + 1  >= xsize as usize { acc }
-            else { acc + &ch.to_string() }
+    let lenstr: String = string.chars().fold("".into(), |acc, ch| {
+        if acc.width() + 1 >= xsize as usize {
+            acc
+        } else {
+            acc + &ch.to_string()
+        }
     });
     lenstr
 }
 
 // Do these as constants
-
 
 pub fn highlight_color() -> String {
     format!(
@@ -61,26 +59,17 @@ pub fn normal_color() -> String {
 
 pub fn from_lscolor(color: &lscolors::Color) -> String {
     match color {
-        lscolors::Color::Black => {
-            format!("{}", termion::color::Fg(termion::color::Black)) },
-        lscolors::Color::Red => {
-            format!("{}", termion::color::Fg(termion::color::Red)) }
-        lscolors::Color::Green => {
-            format!("{}",termion::color::Fg(termion::color::Green)) }
-        lscolors::Color::Yellow => {
-            format!("{}",termion::color::Fg(termion::color::Yellow)) }
-        lscolors::Color::Blue => {
-            format!("{}",termion::color::Fg(termion::color::Blue)) }
-        lscolors::Color::Magenta => {
-            format!("{}", termion::color::Fg(termion::color::Magenta)) }
-        lscolors::Color::Cyan => {
-            format!("{}",termion::color::Fg(termion::color::Cyan)) }
-        lscolors::Color::White => {
-            format!("{}",termion::color::Fg(termion::color::White)) } ,
-        _ => { format!("{}", normal_color()) }
+        lscolors::Color::Black => format!("{}", termion::color::Fg(termion::color::Black)),
+        lscolors::Color::Red => format!("{}", termion::color::Fg(termion::color::Red)),
+        lscolors::Color::Green => format!("{}", termion::color::Fg(termion::color::Green)),
+        lscolors::Color::Yellow => format!("{}", termion::color::Fg(termion::color::Yellow)),
+        lscolors::Color::Blue => format!("{}", termion::color::Fg(termion::color::Blue)),
+        lscolors::Color::Magenta => format!("{}", termion::color::Fg(termion::color::Magenta)),
+        lscolors::Color::Cyan => format!("{}", termion::color::Fg(termion::color::Cyan)),
+        lscolors::Color::White => format!("{}", termion::color::Fg(termion::color::White)),
+        _ => format!("{}", normal_color()),
     }
 }
-
 
 pub fn cursor_left(n: usize) -> String {
     format!("{}", termion::cursor::Left(n as u16))
@@ -121,4 +110,3 @@ pub fn header_color() -> String {
 pub fn status_bg() -> String {
     format!("{}", termion::color::Bg(termion::color::LightBlue))
 }
-

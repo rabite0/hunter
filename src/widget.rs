@@ -1,7 +1,6 @@
-use termion::event::{Key, MouseEvent, Event};
+use termion::event::{Event, Key, MouseEvent};
 
-use crate::coordinates::{Coordinates, Size, Position};
-
+use crate::coordinates::{Coordinates, Position, Size};
 
 pub trait Widget {
     fn render(&self) -> Vec<String>;
@@ -12,7 +11,6 @@ pub trait Widget {
     fn get_coordinates(&self) -> &Coordinates;
     fn set_coordinates(&mut self, coordinates: &Coordinates);
     fn render_header(&self) -> String;
-
 
     fn on_event(&mut self, event: Event) {
         match event {
@@ -25,25 +23,19 @@ pub trait Widget {
 
     fn on_key(&mut self, key: Key) {
         match key {
-            _ => {
-                self.bad(Event::Key(key))
-            }
+            _ => self.bad(Event::Key(key)),
         }
     }
 
     fn on_mouse(&mut self, event: MouseEvent) {
         match event {
-            _ => {
-                self.bad(Event::Mouse(event))
-            }
+            _ => self.bad(Event::Mouse(event)),
         }
     }
 
     fn on_wtf(&mut self, event: Vec<u8>) {
         match event {
-            _ => {
-                self.bad(Event::Unsupported(event))
-            }
+            _ => self.bad(Event::Unsupported(event)),
         }
     }
 
@@ -62,7 +54,7 @@ pub trait Widget {
     fn get_header_drawlist(&mut self) -> String {
         format!(
             "{}{}{}{:xsize$}",
-            crate::term::goto_xy(1,1),
+            crate::term::goto_xy(1, 1),
             crate::term::header_color(),
             self.render_header(),
             " ",
@@ -74,37 +66,35 @@ pub trait Widget {
         let (xpos, ypos) = self.get_position().position();
         let (xsize, ysize) = self.get_size().size();
 
-        let mut clearcmd = String::from("");
-        for line in ypos..ysize+2 {
-            clearcmd += &format!("{}{}{:xsize$}",
-                                 crate::term::reset(),
-                                 crate::term::goto_xy(xpos, line),
-                                 " ",
-                                 xsize=xsize as usize);
-        }
-
-        clearcmd
+        (ypos..ysize + 2)
+            .map(|line| {
+                format!(
+                    "{}{}{:xsize$}",
+                    crate::term::reset(),
+                    crate::term::goto_xy(xpos, line),
+                    " ",
+                    xsize = xsize as usize
+                )
+            })
+            .collect()
     }
 
     fn get_redraw_empty_list(&self, lines: usize) -> String {
         let (xpos, ypos) = self.get_position().position();
         let (xsize, ysize) = self.get_size().size();
 
-        let mut output = String::new();
-
-        if ysize as usize > lines {
-            let start_y = lines + ypos as usize;
-            for i in start_y..(ysize+2) as usize {
-                output += &format!("{}{:xsize$}",
-                                   crate::term::goto_xy(xpos,i as u16),
-                                   " ",
-                                   xsize = xsize as usize);
-            }
-        }
-
-        output
+        let start_y = lines + ypos as usize;
+        (start_y..(ysize + 2) as usize)
+            .map(|i| {
+                format!(
+                    "{}{:xsize$}",
+                    crate::term::goto_xy(xpos, i as u16),
+                    " ",
+                    xsize = xsize as usize
+                )
+            })
+            .collect()
     }
-
 
     fn refresh(&mut self);
     fn get_drawlist(&self) -> String;

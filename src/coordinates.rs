@@ -1,10 +1,9 @@
-#[derive(Debug,Clone,PartialEq)]
-pub struct Size(pub (u16,u16));
-#[derive(Debug,Clone,PartialEq)]
-pub struct Position(pub (u16,u16));
+#[derive(Debug, Clone, PartialEq)]
+pub struct Size(pub (u16, u16));
+#[derive(Debug, Clone, PartialEq)]
+pub struct Position(pub (u16, u16));
 
-
-#[derive(Debug,Clone,PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Coordinates {
     pub size: Size,
     pub position: Position,
@@ -12,11 +11,15 @@ pub struct Coordinates {
 
 impl Coordinates {
     pub fn new() -> Coordinates {
-        Coordinates { size: Size ((1,1)), position: Position ((1,1)) }
+        Coordinates {
+            size: Size((1, 1)),
+            position: Position((1, 1)),
+        }
     }
-    pub fn size(&self) -> &Size {
-        &self.size
-    }
+
+    // pub fn size(&self) -> &Size {
+    //     &self.size
+    // }
 
     pub fn xsize(&self) -> u16 {
         self.size.xsize()
@@ -34,11 +37,11 @@ impl Coordinates {
         self.position().clone()
     }
 
-//    pub fn left(&self) -> /
+    //    pub fn left(&self) -> /
 }
 
 impl Size {
-    pub fn size(&self) -> (u16,u16) {
+    pub fn size(&self) -> (u16, u16) {
         self.0
     }
     pub fn xsize(&self) -> u16 {
@@ -50,13 +53,13 @@ impl Size {
 }
 
 impl Position {
-    pub fn position(&self) -> (u16,u16) {
+    pub fn position(&self) -> (u16, u16) {
         self.0
     }
     pub fn x(&self) -> u16 {
         (self.0).1
     }
-    pub fn y(&self) -> u16 {
-        (self.0).1
-    }
+    // pub fn y(&self) -> u16 {
+    //     (self.0).1
+    // }
 }

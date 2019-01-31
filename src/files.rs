@@ -1,12 +1,12 @@
-use std::ops::Index;
-use std::error::Error;
-use std::path::PathBuf;
-use std::ffi::OsStr;
 use std::cmp::{Ord, Ordering};
+use std::error::Error;
+use std::ops::Index;
+use std::path::{Path, PathBuf};
 use std::time::SystemTime;
 
-use lscolors::{LsColors, Style};
+use lscolors::LsColors;
 use mime_detective;
+use rayon::prelude::*;
 
 lazy_static! {
     static ref COLORS: LsColors = LsColors::from_env().unwrap();
@@ -14,6 +14,7 @@ lazy_static! {
 
 #[derive(PartialEq)]
 pub struct Files {
+    pub directory: File,
     pub files: Vec<File>,
     pub sort: SortBy,
     pub dirs_first: bool,
@@ -28,40 +29,52 @@ impl Index<usize> for Files {
 
 fn get_kind(file: &std::fs::DirEntry) -> Kind {
     let file = file.file_type().unwrap();
-    if file.is_file() { return Kind::File; }
-    if file.is_dir() { return Kind::Directory; }
-    if file.is_symlink() { return Kind::Link; }
+    if file.is_file() {
+        return Kind::File;
+    }
+    if file.is_dir() {
+        return Kind::Directory;
+    }
+    if file.is_symlink() {
+        return Kind::Link;
+    }
     Kind::Pipe
 }
 
+fn get_color(path: &Path, meta: &std::fs::Metadata) -> Option<lscolors::Color> {
+    match COLORS.style_for_path_with_metadata(path, Some(&meta)) {
+        Some(style) => style.clone().foreground,
+        None => None,
+    }
+}
+
 impl Files {
-    pub fn new_from_path<S: AsRef<OsStr> + Sized>(path: S)
-                                              -> Result<Files, Box<dyn Error>>
-    where S: std::convert::AsRef<std::path::Path> {
-        let mut files = Vec::new();
+    pub fn new_from_path(path: &Path) -> Result<Files, Box<dyn Error>> {
+        let direntries: Result<Vec<_>, _> = std::fs::read_dir(&path)?.collect();
 
-        for file in std::fs::read_dir(path)? {
-            let file = file?;
-            let name = file.file_name();
-            let name = name.to_string_lossy();
-            let kind = get_kind(&file);
-            let path = file.path();
-            let meta = file.metadata()?;
-            let size = meta.len() / 1024;
-            let mtime = meta.modified()?;
+        let files: Vec<_> = direntries?
+            .par_iter()
+            .map(|file| {
+                //let file = file?;
+                let name = file.file_name();
+                let name = name.to_string_lossy();
+                let kind = get_kind(&file);
+                let path = file.path();
+                let meta = file.metadata().unwrap();
+                let size = meta.len() / 1024;
+                let mtime = meta.modified().unwrap();
 
-            let color
-                = match COLORS.style_for_path_with_metadata(file.path(), Some(&meta)) {
-                    Some(style) => { style.clone().foreground },
-                    None => None
-                };
-            let file = File::new(&name, path, kind, size as usize, mtime, color);
-            files.push(file)
-        }
+                let color = get_color(&path, &meta);
+                File::new(&name, path, kind, size as usize, mtime, color)
+            })
+            .collect();
 
-        let mut files = Files { files: files,
-                                sort: SortBy::Name,
-                                dirs_first: true };
+        let mut files = Files {
+            directory: File::new_from_path(&path)?,
+            files: files,
+            sort: SortBy::Name,
+            dirs_first: true,
+        };
 
         files.sort();
         Ok(files)
@@ -69,23 +82,21 @@ impl Files {
 
     pub fn sort(&mut self) {
         match self.sort {
-            SortBy::Name => {
-                self.files.sort_by(|a,b| {
-                    alphanumeric_sort::compare_str(&a.name, &b.name)
-                })
-            },
+            SortBy::Name => self
+                .files
+                .sort_by(|a, b| alphanumeric_sort::compare_str(&a.name, &b.name)),
             SortBy::Size => {
-                self.files.sort_by(|a,b| {
+                self.files.sort_by(|a, b| {
                     if a.size == b.size {
-                        return alphanumeric_sort::compare_str(&b.name, &a.name)
+                        return alphanumeric_sort::compare_str(&b.name, &a.name);
                     }
                     a.size.cmp(&b.size).reverse()
                 });
-            },
+            }
             SortBy::MTime => {
-                self.files.sort_by(|a,b| {
+                self.files.sort_by(|a, b| {
                     if a.mtime == b.mtime {
-                        return alphanumeric_sort::compare_str(&a.name, &b.name)
+                        return alphanumeric_sort::compare_str(&a.name, &b.name);
                     }
                     a.mtime.cmp(&b.mtime)
                 });
@@ -93,10 +104,12 @@ impl Files {
         };
 
         if self.dirs_first {
-            self.files.sort_by(|a,b| {
+            self.files.sort_by(|a, b| {
                 if a.is_dir() && !b.is_dir() {
                     Ordering::Less
-                } else { Ordering::Equal }
+                } else {
+                    Ordering::Equal
+                }
             });
         }
     }
@@ -105,12 +118,8 @@ impl Files {
         self.sort = match self.sort {
             SortBy::Name => SortBy::Size,
             SortBy::Size => SortBy::MTime,
-            SortBy::MTime => SortBy::Name
+            SortBy::MTime => SortBy::Name,
         };
-    }
-
-    pub fn iter(&self) -> std::slice::Iter<File> {
-        self.files.iter()
     }
 
     pub fn len(&self) -> usize {
@@ -123,22 +132,21 @@ pub enum Kind {
     Directory,
     File,
     Link,
-    Pipe
+    Pipe,
 }
 
 impl std::fmt::Display for SortBy {
-    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_> )
-           -> Result<(), std::fmt::Error>  {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> Result<(), std::fmt::Error> {
         let text = match self {
             SortBy::Name => "name",
             SortBy::Size => "size",
-            SortBy::MTime => "mtime"
+            SortBy::MTime => "mtime",
         };
         write!(formatter, "{}", text)
     }
 }
 
-#[derive(Debug,Copy,Clone,PartialEq)]
+#[derive(Debug, Copy, Clone, PartialEq)]
 pub enum SortBy {
     Name,
     Size,
@@ -158,14 +166,15 @@ pub struct File {
     // flags: Option<String>,
 }
 
-
 impl File {
-    pub fn new(name: &str,
-               path: PathBuf,
-               kind: Kind,
-               size: usize,
-               mtime: SystemTime,
-               color: Option<lscolors::Color>) -> File {
+    pub fn new(
+        name: &str,
+        path: PathBuf,
+        kind: Kind,
+        size: usize,
+        mtime: SystemTime,
+        color: Option<lscolors::Color>,
+    ) -> File {
         File {
             name: name.to_string(),
             path: path,
@@ -178,6 +187,22 @@ impl File {
             // flags: None,
         }
     }
+
+    pub fn new_from_path(path: &Path) -> Result<File, Box<Error>> {
+        let pathbuf = path.to_path_buf();
+        let name = path
+            .file_name()
+            .map(|name| name.to_string_lossy().to_string())
+            .unwrap_or("/".to_string());
+
+        let kind = Kind::Directory; //get_kind(&path);
+        let meta = &path.metadata().unwrap();
+        let size = meta.len() / 1024;
+        let mtime = meta.modified().unwrap();
+        let color = get_color(&path, meta);
+        Ok(File::new(&name, pathbuf, kind, size as usize, mtime, color))
+    }
+
     pub fn calculate_size(&self) -> (usize, String) {
         let mut unit = 0;
         let mut size = self.size.unwrap();
@@ -191,8 +216,9 @@ impl File {
             2 => " GB",
             3 => " TB",
             4 => "wtf are you doing",
-            _ => ""
-        }.to_string();
+            _ => "",
+        }
+        .to_string();
         (size, unit)
     }
 

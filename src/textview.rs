@@ -1,15 +1,15 @@
-use termion::event::{Key};
+use ::rayon::prelude::*;
 
 use std::io::BufRead;
 
-use crate::widget::Widget;
+use crate::coordinates::{Coordinates, Position, Size};
 use crate::files::File;
-use crate::coordinates::{Coordinates,Size,Position};
 use crate::term::sized_string;
+use crate::widget::Widget;
 
 pub struct TextView {
     pub lines: Vec<String>,
-    pub buffer: Vec<String>,
+    pub buffer: String,
     pub coordinates: Coordinates,
 }
 
@@ -17,11 +17,11 @@ impl TextView {
     pub fn new_from_file(file: &File) -> TextView {
         let file = std::fs::File::open(&file.path).unwrap();
         let file = std::io::BufReader::new(file);
-        let lines = file.lines().take(100).map(|line| line.unwrap() ).collect();
+        let lines = file.lines().take(100).map(|line| line.unwrap()).collect();
 
         TextView {
             lines: lines,
-            buffer: vec![],
+            buffer: String::new(),
             coordinates: Coordinates::new(),
         }
     }
@@ -49,34 +49,30 @@ impl Widget for TextView {
     fn set_coordinates(&mut self, coordinates: &Coordinates) {
         self.coordinates = coordinates.clone();
     }
-    fn render_header(&self) -> String { "".to_string() }
-    fn refresh(&mut self) {
-        let (xsize,ysize) = self.get_size().size();
-        let (xpos, ypos) = self.get_position().position();
-
-        let lines = self.lines
-            .iter()
-            .take(ysize as usize)
-            .map(|line| sized_string(&line, xsize)).collect();
-
-
-        self.buffer = lines;
+    fn render_header(&self) -> String {
+        "".to_string()
     }
-    fn get_drawlist(&self) -> String {
-        let (xsize,ysize) = self.get_size().size();
-        let (xpos, ypos) = self.get_position().position();
+    fn refresh(&mut self) {
+        let (xsize, ysize) = self.get_size().size();
+        let (xpos, _) = self.get_position().position();
 
-        self.buffer
-            .iter()
+        self.buffer = self
+            .lines
+            .par_iter()
             .take(ysize as usize)
             .enumerate()
-            .map(|(i, line)|{
-                format!("{}{:xsize$}",
-                        crate::term::goto_xy(xpos,i as u16),
-                        line,
-                        xsize = xsize as usize)
+            .map(|(i, line)| {
+                format!(
+                    "{}{:xsize$}",
+                    crate::term::goto_xy(xpos, i as u16),
+                    sized_string(&line, xsize),
+                    xsize = xsize as usize
+                )
+            })
+            .collect();
+    }
 
-        }).collect()
-
+    fn get_drawlist(&self) -> String {
+        self.buffer.clone()
     }
 }

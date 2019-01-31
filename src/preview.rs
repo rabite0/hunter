@@ -1,8 +1,8 @@
-use crate::widget::Widget;
-use crate::coordinates::{Coordinates, Size, Position};
+use crate::coordinates::{Coordinates, Position, Size};
 use crate::files::{File, Files, Kind};
 use crate::listview::ListView;
 use crate::textview::TextView;
+use crate::widget::Widget;
 
 pub struct Previewer {
     pub file: Option<File>,
@@ -44,44 +44,49 @@ impl Widget for Previewer {
         &self.coordinates
     }
     fn set_coordinates(&mut self, coordinates: &Coordinates) {
-        if self.coordinates == *coordinates { return }
+        if self.coordinates == *coordinates {
+            return;
+        }
         self.coordinates = coordinates.clone();
         self.refresh();
     }
-    fn render_header(&self) -> String { "".to_string() }
+    fn render_header(&self) -> String {
+        "".to_string()
+    }
     fn refresh(&mut self) {
-        if self.file == None { return }
+        if self.file == None {
+            return;
+        }
 
         let file = self.file.as_ref().unwrap();
-        self.buffer =
-            match &file.kind {
-                Kind::Directory => {
-                    match Files::new_from_path(&file.path) {
-                        Ok(files) => {
-                            let len = files.len();
-                            let mut file_list = ListView::new(files);
-                            file_list.set_size(self.coordinates.size.clone());
-                            file_list.set_position(self.coordinates.position.clone());
-                            file_list.refresh();
-                            file_list.get_drawlist()
-                                + &file_list.get_redraw_empty_list(len)
-                        }, Err(err) => {
-                            self.show_status(&format!("Can't preview because: {}", err));
-                            self.get_clearlist()
-                        }
-                    }
-                },
-                _ => {
-                    if file.get_mime() == Some("text".to_string()) {
-                        let mut textview = TextView::new_from_file(&file);
-                        textview.set_size(self.coordinates.size.clone());
-                        textview.set_position(self.coordinates.position.clone());
-                        textview.refresh();
-                        let len = textview.lines.len();
-                        textview.get_drawlist() + &textview.get_redraw_empty_list(len-1)
-                    } else { self.get_clearlist() }
+        self.buffer = match &file.kind {
+            Kind::Directory => match Files::new_from_path(&file.path) {
+                Ok(files) => {
+                    let len = files.len();
+                    let mut file_list = ListView::new(files);
+                    file_list.set_size(self.coordinates.size.clone());
+                    file_list.set_position(self.coordinates.position.clone());
+                    file_list.refresh();
+                    file_list.get_drawlist() + &file_list.get_redraw_empty_list(len)
                 }
-            };
+                Err(err) => {
+                    self.show_status(&format!("Can't preview because: {}", err));
+                    self.get_clearlist()
+                }
+            },
+            _ => {
+                if file.get_mime() == Some("text".to_string()) {
+                    let mut textview = TextView::new_from_file(&file);
+                    textview.set_size(self.coordinates.size.clone());
+                    textview.set_position(self.coordinates.position.clone());
+                    textview.refresh();
+                    let len = textview.lines.len();
+                    textview.get_drawlist() + &textview.get_redraw_empty_list(len - 1)
+                } else {
+                    self.get_clearlist()
+                }
+            }
+        };
     }
     fn get_drawlist(&self) -> String {
         self.buffer.clone()

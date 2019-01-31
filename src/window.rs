@@ -8,11 +8,12 @@ use termion::screen::AlternateScreen;
 use crate::term;
 use crate::term::ScreenExt;
 
+use crate::coordinates::{Coordinates, Position, Size};
 use crate::widget::Widget;
-use crate::coordinates::{Coordinates, Size, Position};
 
 pub struct Window<T>
-where T: Widget
+where
+    T: Widget,
 {
     pub selection: usize,
     pub widget: T,
@@ -21,10 +22,9 @@ where T: Widget
     pub coordinates: Coordinates,
 }
 
-
 impl<T> Window<T>
 where
-    T: Widget
+    T: Widget,
 {
     pub fn new(widget: T) -> Window<T> {
         let mut screen = AlternateScreen::from(Box::new(stdout()));
@@ -35,12 +35,16 @@ where
             widget: widget,
             status: STATUS_BAR_CONTENT.clone(),
             screen: screen,
-            coordinates: Coordinates { size: Size ((xsize, ysize)) ,
-                                       position: Position( (1, 1 )) }
+            coordinates: Coordinates {
+                size: Size((xsize, ysize)),
+                position: Position((1, 1)),
+            },
         };
 
-        win.widget.set_coordinates( &Coordinates { size: Size ((xsize, ysize - 2)),
-                                                   position: Position( (1, 2)) });
+        win.widget.set_coordinates(&Coordinates {
+            size: Size((xsize, ysize - 2)),
+            position: Position((1, 2)),
+        });
         win.widget.refresh();
         win
     }
@@ -65,8 +69,6 @@ where
         Self::show_status("");
     }
 
-
-
     pub fn handle_input(&mut self) {
         self.draw();
         for event in stdin().events() {
@@ -82,16 +84,23 @@ where
 
 impl<T> Drop for Window<T>
 where
-     T: Widget
+    T: Widget,
 {
     fn drop(&mut self) {
         // When done, restore the defaults to avoid messing with the terminal.
-        self.screen.write(format!("{}{}{}{}{}",
-                                  termion::screen::ToMainScreen,
-                                  termion::clear::All,
-                                  termion::style::Reset,
-                                  termion::cursor::Show,
-                                  termion::cursor::Goto(1, 1)).as_ref()).unwrap();
+        self.screen
+            .write(
+                format!(
+                    "{}{}{}{}{}",
+                    termion::screen::ToMainScreen,
+                    termion::clear::All,
+                    termion::style::Reset,
+                    termion::cursor::Show,
+                    termion::cursor::Goto(1, 1)
+                )
+                .as_ref(),
+            )
+            .unwrap();
     }
 }
 
@@ -113,17 +122,18 @@ pub fn draw_status() {
             term::move_bottom(),
             status,
             xsize = xsize as usize
-        ).ok()
+        )
+        .ok()
     });
     stdout().flush().unwrap();
 }
 
 pub fn show_status(status: &str) {
-        {
-            let mut status_content = STATUS_BAR_CONTENT.try_lock().unwrap();
-            *status_content = Some(status.to_string());
-        }
-        draw_status();
+    {
+        let mut status_content = STATUS_BAR_CONTENT.try_lock().unwrap();
+        *status_content = Some(status.to_string());
+    }
+    draw_status();
 }
 
 pub fn minibuffer(query: &str) -> Option<String> {
@@ -132,19 +142,26 @@ pub fn minibuffer(query: &str) -> Option<String> {
 
     for key in stdin().events() {
         match key {
-            Ok(Event::Key(key)) => {
-                match key {
-                    Key::Esc => { return None },
-                    Key::Char('\n') => { return Some(buffer) },
-                    Key::Backspace => { buffer.pop(); },
-                    Key::Char(key) => { buffer = buffer + &format!("{}", key); },
-                    _ => {}
+            Ok(Event::Key(key)) => match key {
+                Key::Esc => return None,
+                Key::Char('\n') => {
+                    if buffer == "" {
+                        return None;
+                    } else {
+                        return Some(buffer);
+                    }
                 }
+                Key::Backspace => {
+                    buffer.pop();
+                }
+                Key::Char(key) => {
+                    buffer = buffer + &format!("{}", key);
+                }
+                _ => {}
             },
             _ => {}
         }
         show_status(&(query.to_string() + ": " + &buffer));
-
-    };
+    }
     None
 }
