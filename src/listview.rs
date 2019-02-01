@@ -74,7 +74,7 @@ where
         let ysize = self.coordinates.ysize() as usize;
         let mut offset = 0;
 
-        while position + 1 > ysize + offset {
+        while position >= ysize - 2 + offset {
             offset += 1
         }
 

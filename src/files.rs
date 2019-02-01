@@ -77,6 +77,11 @@ impl Files {
         };
 
         files.sort();
+
+        if files.files.len() == 0 {
+            files.files = vec![File::new_placeholder(&path)?];
+        }
+
         Ok(files)
     }
 
@@ -133,6 +138,7 @@ pub enum Kind {
     File,
     Link,
     Pipe,
+    Placeholder
 }
 
 impl std::fmt::Display for SortBy {
@@ -203,6 +209,13 @@ impl File {
         Ok(File::new(&name, pathbuf, kind, size as usize, mtime, color))
     }
 
+    pub fn new_placeholder(path: &Path) -> Result<File, Box<Error>> {
+        let mut file = File::new_from_path(path)?;
+        file.name = "<empty>".to_string();
+        file.kind = Kind::Placeholder;
+        Ok(file)
+    }
+
     pub fn calculate_size(&self) -> (usize, String) {
         let mut unit = 0;
         let mut size = self.size.unwrap();
@@ -235,6 +248,19 @@ impl File {
     pub fn is_dir(&self) -> bool {
         self.kind == Kind::Directory
     }
+
+    pub fn read_dir(&self) -> Result<Files, Box<Error>> {
+        match self.kind {
+            Kind::Placeholder => {
+                let e: Box<Error>
+                    = From::from("placeholder".to_string());
+                Err(e)
+            },
+            _ => Files::new_from_path(&self.path)
+        }
+
+    }
+
 
     pub fn path(&self) -> PathBuf {
         self.path.clone()

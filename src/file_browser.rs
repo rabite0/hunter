@@ -38,32 +38,34 @@ impl FileBrowser {
     }
 
     pub fn enter_dir(&mut self) {
-        let fileview = self.columns.get_main_widget();
+        let file = self.selected_file();
 
-        let path = fileview.selected_file().path();
-        match Files::new_from_path(&path) {
+        match file.read_dir() {
             Ok(files) => {
-                std::env::set_current_dir(path).unwrap();
+                std::env::set_current_dir(&file.path).unwrap();
                 let view = ListView::new(files);
                 self.columns.push_widget(view);
                 self.update_preview();
-            }
-            Err(_) => {
-                //self.show_status(&format!("Can't open this path: {}", err));
+            },
 
+            Err(ref err) if err.description() == "placeholder".to_string() =>
+                self.show_status("No! Can't open this!"),
+            _ => {
                 let status = std::process::Command::new("xdg-open")
-                    .args(dbg!(path.file_name()))
+                    .args(dbg!(file.path.file_name()))
                     .status();
+
                 match status {
-                    Ok(status) => {
-                        self.show_status(&format!("\"{}\" exited with {}", "xdg-open", status))
-                    }
-                    Err(err) => {
-                        self.show_status(&format!("Can't run this \"{}\": {}", "xdg-open", err))
-                    }
+                    Ok(status) =>
+                        self.show_status(&format!("\"{}\" exited with {}",
+                                                  "xdg-open", status)),
+                    Err(err) =>
+                        self.show_status(&format!("Can't run this \"{}\": {}",
+                                                  "xdg-open", err))
+
                 }
             }
-        };
+        }
     }
 
     pub fn go_back(&mut self) {
@@ -87,6 +89,7 @@ impl FileBrowser {
     }
 
     pub fn update_preview(&mut self) {
+        if self.columns.get_main_widget().content.len() == 0 { return }
         let file = self.columns.get_main_widget().selected_file().clone();
         let preview = &mut self.columns.preview;
         preview.set_file(&file);
@@ -101,6 +104,14 @@ impl FileBrowser {
 
     pub fn cwd(&self) -> File {
         self.columns.get_main_widget().content.directory.clone()
+    }
+
+    pub fn selected_file(&self) -> &File {
+        self.main_column().selected_file()
+    }
+
+    pub fn main_column(&self) -> &ListView<Files> {
+        self.columns.get_main_widget()
     }
 
     pub fn quit_with_dir(&self) {
