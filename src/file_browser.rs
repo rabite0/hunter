@@ -4,7 +4,7 @@ use std::error::Error;
 use std::io::Write;
 
 use crate::coordinates::{Coordinates, Position, Size};
-use crate::files::Files;
+use crate::files::{File, Files};
 use crate::listview::ListView;
 use crate::miller_columns::MillerColumns;
 use crate::widget::Widget;
@@ -29,7 +29,12 @@ impl FileBrowser {
             miller.push_widget(widget);
         }
 
-        Ok(FileBrowser { columns: miller })
+        let mut file_browser = FileBrowser { columns: miller };
+
+        file_browser.update_preview();
+        file_browser.fix_selection();
+
+        Ok(file_browser)
     }
 
     pub fn enter_dir(&mut self) {
@@ -72,7 +77,7 @@ impl FileBrowser {
 
         // Make sure there's a directory on the left unless it's /
         if self.columns.get_left_widget().is_none() {
-            let file = self.columns.get_main_widget().selected_file().clone();
+            let file = self.columns.get_main_widget().clone_selected_file();
             if let Some(grand_parent) = file.grand_parent() {
                 let mut left_view = ListView::new(Files::new_from_path(&grand_parent).unwrap());
                 left_view.select_file(&file);
@@ -87,10 +92,19 @@ impl FileBrowser {
         preview.set_file(&file);
     }
 
+    pub fn fix_selection(&mut self) {
+        let cwd = self.cwd();
+        self.columns.get_left_widget_mut()
+            .map(|w|
+                 w.select_file(&cwd));
+    }
+
+    pub fn cwd(&self) -> File {
+        self.columns.get_main_widget().content.directory.clone()
+    }
+
     pub fn quit_with_dir(&self) {
-        let selected_file = self.columns.get_main_widget().selected_file();
-        let cwd = selected_file.path();
-        let cwd = cwd.parent().unwrap();
+        let cwd = self.cwd().path;
 
         let mut filepath = dirs_2::home_dir().unwrap();
         filepath.push(".hunter_cwd");

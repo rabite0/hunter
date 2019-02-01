@@ -58,7 +58,7 @@ pub trait Widget {
             crate::term::header_color(),
             self.render_header(),
             " ",
-            xsize = crate::term::xsize()
+            xsize = self.get_size().xsize() as usize
         )
     }
 

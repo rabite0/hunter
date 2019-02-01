@@ -12,7 +12,7 @@ pub struct Coordinates {
 impl Coordinates {
     pub fn new() -> Coordinates {
         Coordinates {
-            size: Size((1, 1)),
+            size: Size((crate::term::xsize(), crate::term::ysize())),
             position: Position((1, 1)),
         }
     }

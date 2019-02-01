@@ -16,14 +16,14 @@ pub trait ScreenExt: Write {
 
 impl ScreenExt for AlternateScreen<Box<Stdout>> {}
 
-pub fn xsize() -> usize {
+pub fn xsize() -> u16 {
     let (xsize, _) = termion::terminal_size().unwrap();
-    xsize as usize
+    xsize
 }
 
-pub fn ysize() -> usize {
+pub fn ysize() -> u16 {
     let (_, ysize) = termion::terminal_size().unwrap();
-    ysize as usize
+    ysize
 }
 
 pub fn sized_string(string: &str, xsize: u16) -> String {
@@ -69,12 +69,12 @@ pub fn from_lscolor(color: &lscolors::Color) -> String {
     }
 }
 
-pub fn cursor_left(n: usize) -> String {
-    format!("{}", termion::cursor::Left(n as u16))
+pub fn cursor_left(n: u16) -> String {
+    format!("{}", termion::cursor::Left(n))
 }
 
-pub fn gotoy(y: usize) -> String {
-    format!("{}", termion::cursor::Goto(1, y as u16))
+pub fn gotoy(y: u16) -> String {
+    format!("{}", termion::cursor::Goto(1, y))
 }
 
 pub fn goto_xy(x: u16, y: u16) -> String {

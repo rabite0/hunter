@@ -102,7 +102,7 @@ where
                              padding = xsize as usize),
             } ,
             term::highlight_color(),
-            term::cursor_left(size.to_string().width() + unit.width()),
+            term::cursor_left((size.to_string().width() + unit.width()) as u16),
             size,
             unit
         )
