@@ -1,5 +1,3 @@
-use unicode_width::UnicodeWidthStr;
-
 use std::io::{Stdout, Write};
 use termion;
 use termion::screen::AlternateScreen;
@@ -29,14 +27,14 @@ pub fn ysize() -> usize {
 }
 
 pub fn sized_string(string: &str, xsize: u16) -> String {
-    let lenstr: String = string.chars().fold("".into(), |acc, ch| {
-        if acc.width() + 1 >= xsize as usize {
+    string.chars().fold("".to_string(), |acc, ch| {
+        let width: usize = unicode_width::UnicodeWidthStr::width_cjk(acc.as_str());
+        if width + 1 >= xsize as usize {
             acc
         } else {
             acc + &ch.to_string()
         }
-    });
-    lenstr
+    })
 }
 
 // Do these as constants

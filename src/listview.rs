@@ -89,15 +89,18 @@ where
         let xsize = self.get_size().xsize();
         let sized_string = term::sized_string(&name, xsize);
 
-        let padded_string = format!("{:padding$}", sized_string, padding = xsize as usize);
-        let styled_string = match &file.color {
-            Some(color) => format!("{}{}", term::from_lscolor(color), &padded_string),
-            _ => format!("{}{}", term::normal_color(), padded_string),
-        };
-
         format!(
             "{}{}{}{}{}",
-            styled_string,
+            match &file.color {
+                Some(color) => format!("{}{:padding$}",
+                                       term::from_lscolor(color),
+                                       &sized_string,
+                                       padding = xsize as usize),
+                _ => format!("{}{:padding$}",
+                             term::normal_color(),
+                             &sized_string,
+                             padding = xsize as usize),
+            } ,
             term::highlight_color(),
             term::cursor_left(size.to_string().width() + unit.width()),
             size,
@@ -204,6 +207,14 @@ where
             None => self.show_status(""),
         }
     }
+
+    fn render(&self) -> Vec<String> {
+        self.content
+            .files
+            .par_iter()
+            .map(|file| self.render_line(&file))
+            .collect()
+    }
 }
 
 impl Widget for ListView<Files> {
@@ -232,13 +243,7 @@ impl Widget for ListView<Files> {
     fn refresh(&mut self) {
         self.buffer = self.render();
     }
-    fn render(&self) -> Vec<String> {
-        self.content
-            .files
-            .par_iter()
-            .map(|file| self.render_line(&file))
-            .collect()
-    }
+
 
     fn get_drawlist(&self) -> String {
         let mut output = term::reset();

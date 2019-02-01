@@ -28,9 +28,6 @@ impl TextView {
 }
 
 impl Widget for TextView {
-    fn render(&self) -> Vec<String> {
-        vec![]
-    }
     fn get_size(&self) -> &Size {
         &self.coordinates.size
     }

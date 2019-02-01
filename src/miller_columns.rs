@@ -108,9 +108,6 @@ impl<T> Widget for MillerColumns<T>
 where
     T: Widget,
 {
-    fn render(&self) -> Vec<String> {
-        vec![]
-    }
     fn get_size(&self) -> &Size {
         &self.coordinates.size
     }

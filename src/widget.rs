@@ -3,7 +3,7 @@ use termion::event::{Event, Key, MouseEvent};
 use crate::coordinates::{Coordinates, Position, Size};
 
 pub trait Widget {
-    fn render(&self) -> Vec<String>;
+    //fn render(&self) -> Vec<String>;
     fn get_size(&self) -> &Size;
     fn get_position(&self) -> &Position;
     fn set_size(&mut self, size: Size);

@@ -102,9 +102,6 @@ impl FileBrowser {
 }
 
 impl Widget for FileBrowser {
-    fn render(&self) -> Vec<String> {
-        vec![]
-    }
     fn get_size(&self) -> &Size {
         &self.columns.get_size()
     }
