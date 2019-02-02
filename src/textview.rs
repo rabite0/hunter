@@ -17,8 +17,8 @@ impl TextView {
     pub fn new_from_file(file: &File) -> TextView {
         let file = std::fs::File::open(&file.path).unwrap();
         let file = std::io::BufReader::new(file);
-        let lines = file.lines().take(100).map(|line| line.unwrap()).collect();
-
+        let lines = file.lines().map(|line| line.unwrap()).collect();
+        
         TextView {
             lines: lines,
             buffer: String::new(),

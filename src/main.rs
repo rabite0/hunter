@@ -33,6 +33,8 @@ fn main() {
     let mut _screen = AlternateScreen::from(Box::new(stdout()));
     let mut _stdout = MouseTerminal::from(stdout().into_raw_mode().unwrap());
 
+    
+
     let filebrowser = crate::file_browser::FileBrowser::new().unwrap();
 
     let mut win = Window::new(filebrowser);

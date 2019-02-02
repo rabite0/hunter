@@ -53,7 +53,7 @@ impl Files {
         let direntries: Result<Vec<_>, _> = std::fs::read_dir(&path)?.collect();
 
         let files: Vec<_> = direntries?
-            .par_iter()
+            .iter()
             .map(|file| {
                 //let file = file?;
                 let name = file.file_name();
