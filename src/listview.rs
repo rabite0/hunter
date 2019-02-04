@@ -11,6 +11,7 @@ use crate::widget::Widget;
 
 // Maybe also buffer drawlist for efficiency when it doesn't change every draw
 
+#[derive(PartialEq)]
 pub struct ListView<T>
 where
     T: Send,

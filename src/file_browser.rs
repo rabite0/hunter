@@ -9,6 +9,7 @@ use crate::listview::ListView;
 use crate::miller_columns::MillerColumns;
 use crate::widget::Widget;
 
+#[derive(PartialEq)]
 pub struct FileBrowser {
     pub columns: MillerColumns<ListView<Files>>,
 }

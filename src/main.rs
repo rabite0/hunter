@@ -25,6 +25,7 @@ mod textview;
 mod widget;
 mod win_main;
 mod window;
+mod hbox;
 
 use window::Window;
 

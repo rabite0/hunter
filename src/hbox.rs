@@ -3,62 +3,74 @@ use termion::event::{Event};
 use crate::widget::Widget;
 use crate::coordinates::{Coordinates, Size, Position};
 
-// pub struct Child<T> {
-//     widget: T,
-//     position: (u16, u16),
-//     size: (u16, u16),
-//     active: bool
-// }
-
-pub struct HBox {
-    dimensions: (u16, u16),
-    position: (u16, u16),
-    coordinates: Coordinates,
-    children: Vec<Box<Widget>>,
-    active: usize
+#[derive(PartialEq)]
+pub struct HBox<T: Widget> {
+    pub coordinates: Coordinates,
+    pub widgets: Vec<T>,
+    pub active: Option<usize>,
 }
 
 
-impl HBox {
-    pub fn new(widgets: Vec<Box<Widget>>,
-               dimensions: (u16, u16),
-               coordinates: Coordinates,
-               position: (u16, u16),
-               main: usize) -> HBox {
-        let mut hbox = HBox {
-            dimensions: dimensions,
-            coordinates: Coordinates { size: Size (dimensions),
-                                       position: Position (position),
-                                       parent: None },
-            position: position,
-            children: widgets,
-            active: main
-        };
-        hbox.resize_children();
-        hbox
-        }
+impl<T> HBox<T> where T: Widget {
+    pub fn new() -> HBox<T> {
+        HBox { coordinates: Coordinates::new(),
+               widgets: vec![],
+               active: None
+         }
+    }
 
 
     pub fn resize_children(&mut self) {
-        let hbox_size = dbg!(self.dimensions);
-        let hbox_position = dbg!(self.position);
-        let cell_size = dbg!(hbox_size.0 / self.children.len() as u16);
-        let mut current_pos = dbg!(hbox_position.1);
-        
-        for widget in &mut self.children {
-            widget.set_size(Size ( (cell_size, hbox_size.1)) );
-            widget.set_position(dbg!((current_pos, hbox_position.1)));
-            widget.refresh();
-            dbg!(current_pos += cell_size);
+        let coords: Vec<Coordinates>
+            = self.widgets.iter().map(
+                |w|
+                self.calculate_coordinates(w)).collect();
+        for (widget, coord) in self.widgets.iter_mut().zip(coords.iter()) {
+            widget.set_coordinates(coord);
         }
     }
 
-    // pub fn widget(&self, index: usize) -> &Box<Widget> {
-    //     &self.children[index]
-    // }
+    pub fn push_widget(&mut self, widget: T) where T: PartialEq {
+        self.widgets.push(widget);
+        self.resize_children();
+        self.refresh();
+    }
 
-    pub fn active_widget(&self) -> &Box<Widget> {
-        &self.children[self.active]
+    pub fn pop_widget(&mut self) -> Option<T> {
+        let widget = self.widgets.pop();
+        self.resize_children();
+        self.refresh();
+        widget
+    }
+
+    pub fn prepend_widget(&mut self, widget: T) {
+        self.widgets.insert(0, widget);
+        self.resize_children();
+        self.refresh();
+    }
+
+    pub fn calculate_coordinates(&self, widget: &T) 
+                                 -> Coordinates where T: PartialEq  {
+        let xsize = self.coordinates.xsize();
+        let ysize = self.coordinates.ysize();
+        let top = self.coordinates.top().x();
+
+        let pos = self.widgets.iter().position(|w | w == widget).unwrap();
+        let num = self.widgets.len();
+
+        let widget_xsize = (xsize / num as u16) + 1;
+        let widget_xpos = widget_xsize * pos as u16;
+
+        Coordinates {
+            size: Size((widget_xsize,
+                        ysize)),
+            position: Position((widget_xpos,
+                                top))
+        }
+    }
+    
+    pub fn active_widget(&self) -> &T {
+        &self.widgets.last().unwrap()
     }
 
 }
@@ -66,43 +78,47 @@ impl HBox {
 
 
 
-impl Widget for HBox {
-    fn render(&self) -> Vec<String> {
-        // HBox doesnt' draw anything itself
-        vec![]
-    }
-
+impl<T> Widget for HBox<T> where T: Widget {
     fn render_header(&self) -> String {
         self.active_widget().render_header()
     }
 
     fn refresh(&mut self) {
-        for child in &mut self.children {
+        self.resize_children();
+        for child in &mut self.widgets {
             child.refresh();
         }
     }
 
     fn get_drawlist(&self) -> String {
-        self.children.iter().map(|child| {
+        self.widgets.iter().map(|child| {
             child.get_drawlist()
         }).collect()
     }
 
-    fn get_size(&self) -> Size {
-        Size( self.dimensions )
+    fn get_size(&self) -> &Size {
+        &self.coordinates.size
     }
-    fn get_position(&self) -> Position {
-        Position ( self.position )
+    fn get_position(&self) -> &Position {
+        &self.coordinates.position
     }
     fn set_size(&mut self, size: Size) {
-        self.dimensions = size.0;
+        self.coordinates.size = size;
     }
     fn set_position(&mut self, position: Position) {
-        self.position = position.0;
+        self.coordinates.position = position;
     }
-
-
+    fn get_coordinates(&self) -> &Coordinates {
+        &self.coordinates
+    }
+    fn set_coordinates(&mut self, coordinates: &Coordinates) {
+        if self.coordinates == *coordinates {
+            return;
+        }
+        self.coordinates = coordinates.clone();
+        self.refresh();
+    }
     fn on_event(&mut self, event: Event) {
-        self.children[self.active].on_event(event);
+        self.widgets.last_mut().unwrap().on_event(event);
     }
 }

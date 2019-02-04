@@ -3,9 +3,11 @@ use termion::event::Key;
 use crate::coordinates::{Coordinates, Position, Size};
 use crate::preview::Previewer;
 use crate::widget::Widget;
+use crate::hbox::HBox;
 
-pub struct MillerColumns<T> {
-    pub widgets: Vec<T>,
+#[derive(PartialEq)]
+pub struct MillerColumns<T> where T: Widget {
+    pub widgets: HBox<T>,
     // pub left: Option<T>,
     // pub main: Option<T>,
     pub preview: Previewer,
@@ -19,30 +21,26 @@ where
 {
     pub fn new() -> Self {
         Self {
-            widgets: vec![],
+            widgets: HBox::new(),
             coordinates: Coordinates::new(),
             ratio: (33, 33, 33),
             preview: Previewer::new(),
         }
     }
 
-    pub fn push_widget(&mut self, mut widget: T) {
-        let mcoords = self.calculate_coordinates().1;
-        widget.set_coordinates(&mcoords);
-        self.widgets.push(widget);
+    pub fn push_widget(&mut self, widget: T) {
+        self.widgets.push_widget(widget);
         self.refresh();
     }
 
     pub fn pop_widget(&mut self) -> Option<T> {
-        let widget = self.widgets.pop();
+        let widget = self.widgets.pop_widget();
         self.refresh();
         widget
     }
 
-    pub fn prepend_widget(&mut self, mut widget: T) {
-        let lcoords = self.calculate_coordinates().0;
-        widget.set_coordinates(&lcoords);
-        self.widgets.insert(0, widget);
+    pub fn prepend_widget(&mut self, widget: T) {
+        self.widgets.prepend_widget(widget);
     }
 
     pub fn calculate_coordinates(&self) -> (Coordinates, Coordinates, Coordinates) {
@@ -82,25 +80,25 @@ where
     }
 
     pub fn get_left_widget(&self) -> Option<&T> {
-        let len = self.widgets.len();
+        let len = self.widgets.widgets.len();
         if len < 2 {
             return None;
         }
-        self.widgets.get(len - 2)
+        self.widgets.widgets.get(len - 2)
     }
     pub fn get_left_widget_mut(&mut self) -> Option<&mut T> {
-        let len = self.widgets.len();
+        let len = self.widgets.widgets.len();
         if len < 2 {
             return None;
         }
-        self.widgets.get(len - 2)?.get_position();
-        self.widgets.get_mut(len - 2)
+        self.widgets.widgets.get(len - 2)?.get_position();
+        self.widgets.widgets.get_mut(len - 2)
     }
     pub fn get_main_widget(&self) -> &T {
-        self.widgets.last().unwrap()
+        self.widgets.widgets.last().unwrap()
     }
     pub fn get_main_widget_mut(&mut self) -> &mut T {
-        self.widgets.last_mut().unwrap()
+        self.widgets.widgets.last_mut().unwrap()
     }
 }
 

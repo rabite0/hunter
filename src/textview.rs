@@ -7,6 +7,7 @@ use crate::files::File;
 use crate::term::sized_string;
 use crate::widget::Widget;
 
+#[derive(PartialEq)]
 pub struct TextView {
     pub lines: Vec<String>,
     pub buffer: String,
@@ -60,8 +61,9 @@ impl Widget for TextView {
             .enumerate()
             .map(|(i, line)| {
                 format!(
-                    "{}{:xsize$}",
-                    crate::term::goto_xy(xpos, i as u16),
+                    "{}{}{:xsize$}",
+                    crate::term::goto_xy(xpos, i as u16 + 2),
+                    crate::term::reset(),
                     sized_string(&line, xsize),
                     xsize = xsize as usize
                 )

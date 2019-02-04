@@ -2,7 +2,7 @@ use termion::event::{Event, Key, MouseEvent};
 
 use crate::coordinates::{Coordinates, Position, Size};
 
-pub trait Widget {
+pub trait Widget: PartialEq {
     //fn render(&self) -> Vec<String>;
     fn get_size(&self) -> &Size;
     fn get_position(&self) -> &Position;

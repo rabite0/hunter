@@ -17,9 +17,9 @@ impl Coordinates {
         }
     }
 
-    // pub fn size(&self) -> &Size {
-    //     &self.size
-    // }
+    pub fn size(&self) -> &Size {
+         &self.size
+    }
 
     pub fn xsize(&self) -> u16 {
         self.size.xsize()
@@ -59,7 +59,7 @@ impl Position {
     pub fn x(&self) -> u16 {
         (self.0).1
     }
-    // pub fn y(&self) -> u16 {
-    //     (self.0).1
-    // }
+    pub fn y(&self) -> u16 {
+        (self.0).1
+    }
 }

@@ -6,7 +6,7 @@ use std::time::SystemTime;
 
 use lscolors::LsColors;
 use mime_detective;
-use rayon::prelude::*;
+
 
 lazy_static! {
     static ref COLORS: LsColors = LsColors::from_env().unwrap();
