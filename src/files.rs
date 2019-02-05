@@ -61,7 +61,7 @@ impl Files {
                 let kind = get_kind(&file);
                 let path = file.path();
                 let meta = file.metadata().unwrap();
-                let size = meta.len() / 1024;
+                let size = meta.len();
                 let mtime = meta.modified().unwrap();
 
                 let color = get_color(&path, &meta);
@@ -203,7 +203,7 @@ impl File {
 
         let kind = Kind::Directory; //get_kind(&path);
         let meta = &path.metadata().unwrap();
-        let size = meta.len() / 1024;
+        let size = meta.len();
         let mtime = meta.modified().unwrap();
         let color = get_color(&path, meta);
         Ok(File::new(&name, pathbuf, kind, size as usize, mtime, color))
@@ -226,9 +226,10 @@ impl File {
         let unit = match unit {
             0 => "",
             1 => " KB",
-            2 => " GB",
-            3 => " TB",
-            4 => "wtf are you doing",
+            2 => " MB",
+            3 => " GB",
+            4 => " TB",
+            5 => " wtf are you doing",
             _ => "",
         }
         .to_string();

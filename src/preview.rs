@@ -47,7 +47,6 @@ impl Previewer {
 
         //self.threads.install(|| {
         std::thread::spawn(move || {
-            dbg!(&file);
             match &file.kind {
                 Kind::Directory => match Files::new_from_path(&file.path) {
                     Ok(files) => {

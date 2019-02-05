@@ -53,9 +53,10 @@ impl Widget for TextView {
     }
     fn refresh(&mut self) {
         let (xsize, ysize) = self.get_size().size();
-        let (xpos, ypos) = self.get_position().position();
+        let (xpos, ypos) = self.get_coordinates().position().position();
 
-        self.buffer = self
+        self.buffer = self.get_clearlist() +
+            &self
             .lines
             .par_iter()
             .take(ysize as usize)
@@ -69,7 +70,7 @@ impl Widget for TextView {
                     xsize = xsize as usize
                 )
             })
-            .collect();
+            .collect::<String>();
     }
 
     fn get_drawlist(&self) -> String {
