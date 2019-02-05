@@ -18,8 +18,10 @@ impl TextView {
     pub fn new_from_file(file: &File) -> TextView {
         let file = std::fs::File::open(&file.path).unwrap();
         let file = std::io::BufReader::new(file);
-        let lines = file.lines().map(|line| line.unwrap()).collect();
-        
+        let lines = file.lines().map(|line|
+                                     line.unwrap()
+                                     .replace("\t", "    ")).collect();
+
         TextView {
             lines: lines,
             buffer: String::new(),
@@ -63,12 +65,10 @@ impl Widget for TextView {
             .enumerate()
             .map(|(i, line)| {
                 format!(
-                    "{}{}{:xsize$}",
+                    "{}{}{}",
                     crate::term::goto_xy(xpos, i as u16 + ypos),
                     crate::term::reset(),
-                    sized_string(&line, xsize),
-                    xsize = xsize as usize
-                )
+                    sized_string(&line, xsize))
             })
             .collect::<String>();
     }

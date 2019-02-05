@@ -167,14 +167,19 @@ impl Widget for FileBrowser {
         self.refresh();
     }
     fn render_header(&self) -> String {
+        let xsize = self.get_coordinates().xsize();
         let file = self.selected_file();
         let name = &file.name;
+
         let color = if file.is_dir() || file.color.is_none() {
             crate::term::highlight_color() } else {
             crate::term::from_lscolor(file.color.as_ref().unwrap()) };
 
         let path = file.path.parent().unwrap().to_string_lossy().to_string();
-        format!("{}/{}{}", path, &color, name )
+
+        let pretty_path = format!("{}/{}{}", path, &color, name );
+        let sized_path = crate::term::sized_string(&pretty_path, xsize);
+        sized_path
     }
     fn refresh(&mut self) {
         self.columns.refresh();

@@ -89,21 +89,27 @@ where
 
         let xsize = self.get_size().xsize();
         let sized_string = term::sized_string(&name, xsize);
+        let size_pos = xsize - (size.to_string().len() as u16
+                                + unit.to_string().len() as u16);
+        let padding = sized_string.len() - sized_string.width_cjk();
+        let padding = xsize - padding as u16;
 
         format!(
-            "{}{}{}{}{}",
+            "{}{}{}{}{}{}{}",
+            termion::cursor::Save,
             match &file.color {
                 Some(color) => format!("{}{:padding$}",
                                        term::from_lscolor(color),
                                        &sized_string,
-                                       padding = xsize as usize),
+                                       padding = padding as usize),
                 _ => format!("{}{:padding$}",
                              term::normal_color(),
                              &sized_string,
-                             padding = xsize as usize),
+                             padding = padding as usize),
             } ,
+            termion::cursor::Restore,
+            termion::cursor::Right(size_pos),
             term::highlight_color(),
-            term::cursor_left((size.to_string().width() + unit.width()) as u16),
             size,
             unit
         )
@@ -287,6 +293,8 @@ impl Widget for ListView<Files> {
                 self.move_up();
                 self.refresh();
             }
+            Key::Char('P') => for _ in 0..10 { self.move_up() }
+            Key::Char('N') => for _ in 0..10 { self.move_down() }
             Key::Down | Key::Char('n') => {
                 self.move_down();
                 self.refresh();
