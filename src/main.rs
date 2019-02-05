@@ -5,6 +5,8 @@ extern crate lazy_static;
 extern crate alphanumeric_sort;
 extern crate dirs_2;
 extern crate lscolors;
+extern crate users;
+extern crate chrono;
 extern crate mime_detective;
 extern crate rayon;
 

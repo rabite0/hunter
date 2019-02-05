@@ -181,6 +181,17 @@ impl Widget for FileBrowser {
         let sized_path = crate::term::sized_string(&pretty_path, xsize);
         sized_path
     }
+    fn render_footer(&self) -> String {
+        let file = self.selected_file();
+        let permissions = file.pretty_print_permissions();
+
+        let user = file.pretty_user().unwrap_or("NOUSER".into());
+        let group = file.pretty_group().unwrap_or("NOGROUP".into());
+
+        let mtime = file.pretty_mtime();
+
+        format!("{} {}:{} {}", permissions, user, group, mtime)
+     }
     fn refresh(&mut self) {
         self.columns.refresh();
     }

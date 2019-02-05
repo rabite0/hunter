@@ -50,28 +50,28 @@ where
     }
 
     pub fn draw(&mut self) {
-        let output = self.widget.get_drawlist() + &self.widget.get_header_drawlist();
+        let output = self.widget.get_drawlist() + &self.widget.get_header_drawlist()
+            + &self.widget.get_footer_drawlist();
         self.screen.write(output.as_ref()).unwrap();
 
         self.screen.flush().unwrap();
-        Self::draw_status();
     }
 
-    pub fn show_status(status: &str) {
-        show_status(status);
-    }
+    // pub fn show_status(status: &str) {
+    //     show_status(status);
+    // }
 
-    pub fn draw_status() {
-        draw_status();
-    }
+    // pub fn draw_status() {
+    //     draw_status();
+    // }
 
-    pub fn clear_status() {
-        Self::show_status("");
-    }
+    // pub fn clear_status() {
+    //     Self::show_status("");
+    // }
 
     pub fn handle_input(&mut self) {
         for event in stdin().events() {
-            Self::clear_status();
+            //Self::clear_status();
             let event = event.unwrap();
             self.widget.on_event(event);
             self.draw();

@@ -13,6 +13,7 @@ pub trait Widget: PartialEq {
     fn get_coordinates(&self) -> &Coordinates;
     fn set_coordinates(&mut self, coordinates: &Coordinates);
     fn render_header(&self) -> String;
+    fn render_footer(&self) -> String { "".into() }
 
     fn on_event(&mut self, event: Event) {
         match event {
@@ -63,6 +64,19 @@ pub trait Widget: PartialEq {
             self.render_header(),
             xsize = self.get_size().xsize() as usize
         )
+    }
+
+    fn get_footer_drawlist(&mut self) -> String {
+        let xsize = self.get_coordinates().xsize();
+        let ypos = crate::term::ysize();
+        format!(
+            "{}{}{:xsize$}{}{}",
+            crate::term::goto_xy(1, ypos),
+            crate::term::header_color(),
+            " ",
+            crate::term::goto_xy(1, ypos),
+            self.render_footer(),
+            xsize = xsize as usize)
     }
 
     fn get_clearlist(&self) -> String {

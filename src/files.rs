@@ -1,11 +1,13 @@
 use std::cmp::{Ord, Ordering};
 use std::error::Error;
 use std::ops::Index;
+use std::os::unix::fs::MetadataExt;
 use std::path::{Path, PathBuf};
-use std::time::SystemTime;
 
 use lscolors::LsColors;
 use mime_detective;
+use users;
+use chrono::TimeZone;
 
 
 lazy_static! {
@@ -55,17 +57,20 @@ impl Files {
         let files: Vec<_> = direntries?
             .iter()
             .map(|file| {
-                //let file = file?;
+                //let file = file?; 
                 let name = file.file_name();
                 let name = name.to_string_lossy();
                 let kind = get_kind(&file);
                 let path = file.path();
                 let meta = file.metadata().unwrap();
+                let mode = meta.mode();
                 let size = meta.len();
-                let mtime = meta.modified().unwrap();
-
-                let color = get_color(&path, &meta);
-                File::new(&name, path, kind, size as usize, mtime, color)
+                let mtime = meta.mtime();
+                let user = meta.uid();
+                let group = meta.gid();
+                let color = get_color(&path, &meta); 
+                File::new(&name, path, kind, size as usize, mtime, color, mode,
+                          user, group)
             })
             .collect();
 
@@ -165,10 +170,11 @@ pub struct File {
     pub path: PathBuf,
     pub size: Option<usize>,
     pub kind: Kind,
-    pub mtime: SystemTime,
+    pub mtime: i64,
     pub color: Option<lscolors::Color>,
-    // owner: Option<String>,
-    // group: Option<String>,
+    pub mode: u32,
+    pub user: u32,
+    pub group: u32,
     // flags: Option<String>,
 }
 
@@ -178,8 +184,11 @@ impl File {
         path: PathBuf,
         kind: Kind,
         size: usize,
-        mtime: SystemTime,
+        mtime: i64,
         color: Option<lscolors::Color>,
+        mode: u32,
+        user: u32,
+        group: u32
     ) -> File {
         File {
             name: name.to_string(),
@@ -187,7 +196,10 @@ impl File {
             size: Some(size),
             kind: kind,
             mtime: mtime,
-            color: color
+            color: color,
+            mode: mode,
+            user: user,
+            group: group
             // owner: None,
             // group: None,
             // flags: None,
@@ -202,11 +214,17 @@ impl File {
             .unwrap_or("/".to_string());
 
         let kind = Kind::Directory; //get_kind(&path);
-        let meta = &path.metadata().unwrap();
+        let meta = &path.metadata()?;
         let size = meta.len();
-        let mtime = meta.modified().unwrap();
+        let user = meta.uid();
+        let group = meta.gid();
         let color = get_color(&path, meta);
-        Ok(File::new(&name, pathbuf, kind, size as usize, mtime, color))
+        let mode = meta.mode();
+        let mtime = meta.mtime();
+        Ok(
+            File::new(&name, pathbuf, kind, size as usize, mtime, color, mode, user
+                     , group)
+        )
     }
 
     pub fn new_placeholder(path: &Path) -> Result<File, Box<Error>> {
@@ -265,5 +283,60 @@ impl File {
 
     pub fn path(&self) -> PathBuf {
         self.path.clone()
+    }
+
+    pub fn pretty_print_permissions(&self) -> String {
+        let perms: usize = format!("{:o}", self.mode).parse().unwrap();
+        let perms: usize  = perms % 800;
+        let perms = format!("{}", perms);
+
+        let r = format!("{}r", crate::term::color_green());
+        let w = format!("{}w", crate::term::color_yellow());
+        let x = format!("{}x", crate::term::color_red());
+        let n = format!("{}-", crate::term::highlight_color());
+
+        let perms = perms.chars().map(|c| match c.to_string().parse().unwrap() {
+            1 => format!("{}{}{}", n,n,x),
+            2 => format!("{}{}{}", n,w,n),
+            3 => format!("{}{}{}", n,w,x),
+            4 => format!("{}{}{}", r,n,n),
+            5 => format!("{}{}{}", r,n,x),
+            6 => format!("{}{}{}", r,w,n),
+            7 => format!("{}{}{}", r,w,x),
+            _ => format!("---")
+        }).collect();
+
+        perms
+    }
+
+    pub fn pretty_user(&self) -> Option<String> {
+        let uid = self.user;
+        let file_user = users::get_user_by_uid(uid)?;
+        let cur_user = users::get_current_username()?;
+        let color =
+            if file_user.name() == cur_user {
+                crate::term::color_green()
+            } else {
+                crate::term::color_yellow()  };
+        Some(format!("{}{}", color, file_user.name().to_string_lossy()))
+    }
+
+    pub fn pretty_group(&self) -> Option<String> {
+        let gid = self.group;
+        let file_group = users::get_group_by_gid(gid)?;
+        let cur_group = users::get_current_groupname()?;
+        let color =
+            if file_group.name() == cur_group {
+                crate::term::color_green()
+            } else {
+                crate::term::color_yellow()  };
+        Some(format!("{}{}", color, file_group.name().to_string_lossy()))
+    }
+
+    pub fn pretty_mtime(&self) -> String {
+        //let time = chrono::DateTime::from_timestamp(self.mtime, 0);
+        let time: chrono::DateTime<chrono::Local>
+            = chrono::Local.timestamp(self.mtime, 0);
+        time.format("%F %R").to_string()
     }
 }

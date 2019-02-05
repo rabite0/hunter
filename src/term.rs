@@ -55,6 +55,18 @@ pub fn normal_color() -> String {
     )
 }
 
+pub fn color_red() -> String {
+    format!("{}", termion::color::Fg(termion::color::Red))
+}
+
+pub fn color_yellow() -> String {
+    format!("{}", termion::color::Fg(termion::color::Yellow))
+}
+
+pub fn color_green() -> String {
+    format!("{}", termion::color::Fg(termion::color::Green))
+}
+
 pub fn from_lscolor(color: &lscolors::Color) -> String {
     match color {
         lscolors::Color::Black => format!("{}", termion::color::Fg(termion::color::Black)),
@@ -69,9 +81,9 @@ pub fn from_lscolor(color: &lscolors::Color) -> String {
     }
 }
 
-pub fn cursor_left(n: u16) -> String {
-    format!("{}", termion::cursor::Left(n))
-}
+// pub fn cursor_left(n: u16) -> String {
+//     format!("{}", termion::cursor::Left(n))
+// }
 
 pub fn gotoy(y: u16) -> String {
     format!("{}", termion::cursor::Goto(1, y))
