@@ -85,7 +85,7 @@ impl Previewer {
                             .output().unwrap();
 
                                                 
-                        if output.status.code().unwrap() == 5 {
+                        if output.status.code().unwrap() != 0 {
                             write!(std::io::stdout(), "{}", redraw).unwrap(); 
                         } else {
                             let output = std::str::from_utf8(&output.stdout)

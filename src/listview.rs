@@ -283,11 +283,11 @@ impl Widget for ListView<Files> {
 
     fn on_key(&mut self, key: Key) {
         match key {
-            Key::Up => {
+            Key::Up | Key::Char('p') => {
                 self.move_up();
                 self.refresh();
             }
-            Key::Down => {
+            Key::Down | Key::Char('n') => {
                 self.move_down();
                 self.refresh();
             }

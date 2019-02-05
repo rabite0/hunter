@@ -117,12 +117,17 @@ impl FileBrowser {
 
     pub fn quit_with_dir(&self) {
         let cwd = self.cwd().path;
+        let selected_file = self.selected_file().path.to_string_lossy();
 
         let mut filepath = dirs_2::home_dir().unwrap();
         filepath.push(".hunter_cwd");
 
+        let output = format!("HUNTER_CWD=\"{}\"\nF=\"{}\"",
+                             cwd.to_str().unwrap(),
+                             selected_file);
+
         let mut file = std::fs::File::create(filepath).unwrap();
-        file.write(cwd.to_str().unwrap().as_bytes()).unwrap();
+        file.write(output.as_bytes()).unwrap();
         panic!("Quitting!");
     }
 }
@@ -147,7 +152,14 @@ impl Widget for FileBrowser {
         self.columns.coordinates = coordinates.clone();
     }
     fn render_header(&self) -> String {
-        "".to_string()
+        let file = self.selected_file();
+        let name = &file.name;
+        let color = if file.is_dir() || file.color.is_none() {
+            crate::term::highlight_color() } else {
+            crate::term::from_lscolor(file.color.as_ref().unwrap()) };
+
+        let path = file.path.parent().unwrap().to_string_lossy().to_string();
+        format!("{}/{}{}", path, &color, name )
     }
     fn refresh(&mut self) {
         self.columns.refresh();
@@ -164,8 +176,8 @@ impl Widget for FileBrowser {
     fn on_key(&mut self, key: Key) {
         match key {
             Key::Char('Q') => self.quit_with_dir(),
-            Key::Right => self.enter_dir(),
-            Key::Left => self.go_back(),
+            Key::Right | Key::Char('f') => self.enter_dir(),
+            Key::Left | Key::Char('b') => self.go_back(),
             _ => self.columns.get_main_widget_mut().on_key(key),
         }
         self.update_preview();

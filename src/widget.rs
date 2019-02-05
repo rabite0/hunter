@@ -53,11 +53,12 @@ pub trait Widget: PartialEq {
 
     fn get_header_drawlist(&mut self) -> String {
         format!(
-            "{}{}{}{:xsize$}",
+            "{}{}{:xsize$}{}{}",
             crate::term::goto_xy(1, 1),
             crate::term::header_color(),
-            self.render_header(),
             " ",
+            crate::term::goto_xy(1, 1),
+            self.render_header(),
             xsize = self.get_size().xsize() as usize
         )
     }
