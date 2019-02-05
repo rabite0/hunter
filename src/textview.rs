@@ -46,13 +46,14 @@ impl Widget for TextView {
     }
     fn set_coordinates(&mut self, coordinates: &Coordinates) {
         self.coordinates = coordinates.clone();
+        self.refresh();
     }
     fn render_header(&self) -> String {
         "".to_string()
     }
     fn refresh(&mut self) {
         let (xsize, ysize) = self.get_size().size();
-        let (xpos, _) = self.get_position().position();
+        let (xpos, ypos) = self.get_position().position();
 
         self.buffer = self
             .lines
@@ -62,7 +63,7 @@ impl Widget for TextView {
             .map(|(i, line)| {
                 format!(
                     "{}{}{:xsize$}",
-                    crate::term::goto_xy(xpos, i as u16 + 2),
+                    crate::term::goto_xy(xpos, i as u16 + ypos),
                     crate::term::reset(),
                     sized_string(&line, xsize),
                     xsize = xsize as usize

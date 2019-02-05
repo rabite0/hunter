@@ -2,6 +2,8 @@ use termion::event::{Event, Key, MouseEvent};
 
 use crate::coordinates::{Coordinates, Position, Size};
 
+use std::io::Write;
+
 pub trait Widget: PartialEq {
     //fn render(&self) -> Vec<String>;
     fn get_size(&self) -> &Size;
@@ -95,6 +97,30 @@ pub trait Widget: PartialEq {
                 )
             })
             .collect()
+    }
+
+    fn animate_slide_up(&mut self) {
+        let coords = self.get_coordinates().clone();
+        let xpos = coords.position().x();
+        let ypos = coords.position().y();
+        let xsize = coords.xsize();
+        let ysize = coords.ysize();
+        let clear = self.get_clearlist();
+        let pause = std::time::Duration::from_millis(5);
+
+        for i in (0..10).rev() {
+            let coords = Coordinates { size: Size((xsize,ysize-i)),
+                                       position: Position
+                                           ((xpos,
+                                             ypos+i))
+            };
+            self.set_coordinates(&coords);
+            let buffer = self.get_drawlist();
+            write!(std::io::stdout(), "{}{}",
+                   clear, buffer).unwrap();
+
+            std::thread::sleep(pause);
+        }
     }
 
     fn refresh(&mut self);

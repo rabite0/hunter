@@ -39,6 +39,7 @@ fn main() {
     let filebrowser = crate::file_browser::FileBrowser::new().unwrap();
 
     let mut win = Window::new(filebrowser);
+    win.draw();
     win.handle_input();
 
     write!(_stdout, "{}", termion::cursor::Show).unwrap();

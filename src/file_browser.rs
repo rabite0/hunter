@@ -17,7 +17,14 @@ pub struct FileBrowser {
 impl FileBrowser {
     pub fn new() -> Result<FileBrowser, Box<Error>> {
         let cwd = std::env::current_dir().unwrap();
+        let coords = Coordinates::new_at(crate::term::xsize(),
+                                         crate::term::ysize() - 2,
+                                         1,
+                                         2);
+
         let mut miller = MillerColumns::new();
+        miller.set_coordinates(&coords);
+
 
         let lists: Result<Vec<ListView<Files>>, Box<Error>> = cwd
             .ancestors()
@@ -32,8 +39,10 @@ impl FileBrowser {
 
         let mut file_browser = FileBrowser { columns: miller };
 
-        file_browser.update_preview();
+
         file_browser.fix_selection();
+        file_browser.animate_columns();
+        file_browser.update_preview();
 
         Ok(file_browser)
     }
@@ -130,6 +139,11 @@ impl FileBrowser {
         file.write(output.as_bytes()).unwrap();
         panic!("Quitting!");
     }
+
+    pub fn animate_columns(&mut self) {
+        self.columns.get_left_widget_mut().map(|w| w.animate_slide_up());
+        self.columns.get_main_widget_mut().animate_slide_up();
+    }
 }
 
 impl Widget for FileBrowser {
@@ -150,6 +164,7 @@ impl Widget for FileBrowser {
     }
     fn set_coordinates(&mut self, coordinates: &Coordinates) {
         self.columns.coordinates = coordinates.clone();
+        self.refresh();
     }
     fn render_header(&self) -> String {
         let file = self.selected_file();

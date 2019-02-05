@@ -43,10 +43,11 @@ impl Previewer {
         let coordinates = self.coordinates.clone();
         let file = file.clone();
         let redraw = crate::term::reset() + &self.get_redraw_empty_list(0);
-        
-        
+
+
         //self.threads.install(|| {
         std::thread::spawn(move || {
+            dbg!(&file);
             match &file.kind {
                 Kind::Directory => match Files::new_from_path(&file.path) {
                     Ok(files) => {
@@ -55,26 +56,19 @@ impl Previewer {
                         let mut file_list = ListView::new(files);
                         file_list.set_coordinates(&coordinates);
                         file_list.refresh();
-                        write!(std::io::stdout(),
-                               "{}{}",
-                               &file_list.get_drawlist(),
-                               &file_list.get_redraw_empty_list(len)).unwrap();
-                        
+                        file_list.animate_slide_up();
                     }
                     Err(err) => {
                         crate::window::show_status(&format!("Can't preview because: {}", err));
                     }
-                    
+
                 },
                 _ => {
                     if file.get_mime() == Some("text".to_string()) {
                         let mut textview = TextView::new_from_file(&file);
                         textview.set_coordinates(&coordinates);
                         textview.refresh();
-                        let len = textview.lines.len();
-                        let output = textview.get_drawlist()
-                            + &textview.get_redraw_empty_list(len - 1);
-                        write!(std::io::stdout(), "{}", output).unwrap();
+                        textview.animate_slide_up();
                     } else {
                         let output =
                             std::process::Command::new("scope.sh").arg(&file.name)
@@ -84,10 +78,9 @@ impl Previewer {
                             .arg("false".to_string())
                             .output().unwrap();
 
-                                                
-                        if output.status.code().unwrap() != 0 {
-                            write!(std::io::stdout(), "{}", redraw).unwrap(); 
-                        } else {
+
+
+                        if output.status.code().unwrap() == 0 {
                             let output = std::str::from_utf8(&output.stdout)
                                 .unwrap()
                                 .to_string();
@@ -97,13 +90,14 @@ impl Previewer {
                                 coordinates: Coordinates::new() };
                             textview.set_coordinates(&coordinates);
                             textview.refresh();
-                            let len = textview.lines.len();
-                            let output = textview.get_drawlist()
-                                + &textview.get_redraw_empty_list(len - 1);
-                            write!(std::io::stdout(), "{}", output).unwrap();
-                        } 
+                            textview.animate_slide_up();
+
+                        } else
+                        {
+                            write!(std::io::stdout(), "{}", redraw).unwrap();
+                        }
                     }
-                    
+
                 }
             }
         });
@@ -138,11 +132,10 @@ impl Widget for Previewer {
         "".to_string()
     }
     fn refresh(&mut self) {
-        if self.file == None {
-            return;
+        let file = self.file.clone();
+        if let Some(file) = file {
+            self.set_file(&file);
         }
-
-        
     }
     fn get_drawlist(&self) -> String {
         self.buffer.clone()

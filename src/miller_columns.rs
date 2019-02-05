@@ -46,7 +46,7 @@ where
     pub fn calculate_coordinates(&self) -> (Coordinates, Coordinates, Coordinates) {
         let xsize = self.coordinates.xsize();
         let ysize = self.coordinates.ysize();
-        let top = self.coordinates.top().x();
+        let top = self.coordinates.top().y();
         let ratio = self.ratio;
 
         let left_xsize = xsize * ratio.0 / 100;
@@ -138,8 +138,9 @@ where
             left_widget.set_coordinates(&left_coords);
         }
 
-        let main_widget = self.get_main_widget_mut();
-        main_widget.set_coordinates(&main_coords);
+        if let Some(main_widget) = self.widgets.widgets.last_mut() {
+            main_widget.set_coordinates(&main_coords);
+        }
 
         let preview_widget = &mut self.preview;
         preview_widget.set_coordinates(&preview_coords);

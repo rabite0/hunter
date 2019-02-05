@@ -53,7 +53,7 @@ impl<T> HBox<T> where T: Widget {
                                  -> Coordinates where T: PartialEq  {
         let xsize = self.coordinates.xsize();
         let ysize = self.coordinates.ysize();
-        let top = self.coordinates.top().x();
+        let top = self.coordinates.top().y();
 
         let pos = self.widgets.iter().position(|w | w == widget).unwrap();
         let num = self.widgets.len();

@@ -70,13 +70,10 @@ where
     }
 
     pub fn handle_input(&mut self) {
-        self.draw();
         for event in stdin().events() {
             Self::clear_status();
-            self.draw();
             let event = event.unwrap();
             self.widget.on_event(event);
-            //self.widget.refresh();
             self.draw();
         }
     }
