@@ -9,6 +9,7 @@ extern crate users;
 extern crate chrono;
 extern crate mime_detective;
 extern crate rayon;
+extern crate libc;
 
 use termion::input::MouseTerminal;
 use termion::raw::IntoRawMode;
