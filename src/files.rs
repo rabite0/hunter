@@ -115,7 +115,7 @@ impl Files {
 
         if self.dirs_first {
             self.files.sort_by(|a, b| {
-                if a.is_dir() && !b.is_dir() {
+                if a.is_dir() && !b.is_dir() && a.name.starts_with(".") {
                     Ordering::Less
                 } else {
                     Ordering::Equal
