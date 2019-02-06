@@ -14,12 +14,13 @@ lazy_static! {
     static ref COLORS: LsColors = LsColors::from_env().unwrap();
 }
 
-#[derive(PartialEq)]
+#[derive(PartialEq, Clone)]
 pub struct Files {
     pub directory: File,
     pub files: Vec<File>,
     pub sort: SortBy,
     pub dirs_first: bool,
+    pub reverse: bool,
 }
 
 impl Index<usize> for Files {
@@ -79,6 +80,7 @@ impl Files {
             files: files,
             sort: SortBy::Name,
             dirs_first: true,
+            reverse: false,
         };
 
         files.sort();
@@ -115,12 +117,23 @@ impl Files {
 
         if self.dirs_first {
             self.files.sort_by(|a, b| {
-                if a.is_dir() && !b.is_dir() && a.name.starts_with(".") {
+                if a.is_dir() && !b.is_dir() {
                     Ordering::Less
                 } else {
                     Ordering::Equal
                 }
             });
+            self.files.sort_by(|a, b| {
+                if a.name.starts_with(".") && !b.name.starts_with(".") {
+                    Ordering::Less
+                } else {
+                    Ordering::Equal
+                }
+            });
+        }
+
+        if self.reverse {
+            self.files.reverse();
         }
     }
 
@@ -132,6 +145,9 @@ impl Files {
         };
     }
 
+    pub fn reverse_sort(&mut self) {
+        self.reverse = !self.reverse
+    }
     pub fn len(&self) -> usize {
         self.files.len()
     }

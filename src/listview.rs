@@ -23,6 +23,7 @@ where
     // dimensions: (u16, u16),
     // position: (u16, u16),
     coordinates: Coordinates,
+    seeking: bool,
 }
 
 impl<T> ListView<T>
@@ -39,8 +40,8 @@ where
             coordinates: Coordinates {
                 size: Size((1, 1)),
                 position: Position((1, 1)),
-            }, // dimensions: (1,1),
-               // position: (1,1)
+            },
+            seeking: false
         };
         view
     }
@@ -55,6 +56,7 @@ where
         }
 
         self.selection -= 1;
+        self.seeking = false;
     }
     fn move_down(&mut self) {
         let lines = self.buffer.len();
@@ -69,6 +71,7 @@ where
         }
 
         self.selection += 1;
+        self.seeking = false;
     }
 
     fn set_selection(&mut self, position: usize) {
@@ -183,6 +186,69 @@ where
         self.select_file(&file);
         self.refresh();
         self.show_status(&format!("Sorting by: {}", self.content.sort));
+    }
+
+    fn reverse_sort(&mut self) {
+        let file = self.clone_selected_file();
+        self.content.reverse_sort();
+        self.content.sort();
+        self.select_file(&file);
+        self.refresh();
+        self.show_status(&format!("Reversed sorting by: {}", self.content.sort));
+    }
+
+    fn select_next_mtime(&mut self) {
+        let file = self.clone_selected_file();
+        let dir_settings = self.content.dirs_first;
+        let sort_settings = self.content.sort;
+
+        self.content.dirs_first = false;
+        self.content.sort = crate::files::SortBy::MTime;
+        self.content.sort();
+
+        self.select_file(&file);
+
+        if self.seeking == false || self.selection + 1 == self.content.len() {
+            self.selection = 0;
+            self.offset = 0;
+        } else {
+            self.move_down();
+         }
+
+        let file = self.clone_selected_file();
+        self.content.dirs_first = dir_settings;
+        self.content.sort = sort_settings;
+        self.content.sort();
+        self.select_file(&file);
+        self.seeking = true;
+
+        self.refresh();
+    }
+
+    fn select_prev_mtime(&mut self) {
+        let file = self.clone_selected_file();
+        let dir_settings = self.content.dirs_first;
+        let sort_settings = self.content.sort;
+
+        self.content.dirs_first = false;
+        self.content.sort = crate::files::SortBy::MTime;
+        self.content.sort();
+
+        self.select_file(&file);
+
+        if self.seeking == false || self.selection == 0 {
+            self.set_selection(self.content.len() - 1);
+        } else {
+            self.move_up();
+        }
+
+        let file = self.clone_selected_file();
+        self.content.dirs_first = dir_settings;
+        self.content.sort = sort_settings;
+        self.content.sort();
+        self.select_file(&file);
+
+        self.refresh();
     }
 
     fn toggle_dirs_first(&mut self) {
@@ -301,7 +367,10 @@ impl Widget for ListView<Files> {
             }
             Key::Left => self.goto_grand_parent(),
             Key::Right => self.goto_selected(),
+            Key::Char('r') => self.reverse_sort(),
             Key::Char('s') => self.cycle_sort(),
+            Key::Char('k') => self.select_next_mtime(),
+            Key::Char('K') => self.select_prev_mtime(),
             Key::Char('d') => self.toggle_dirs_first(),
             Key::Char('!') => self.exec_cmd(),
             _ => {
