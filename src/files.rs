@@ -273,6 +273,14 @@ impl File {
     }
 
     pub fn calculate_size(&self) -> (usize, String) {
+        if self.is_dir() {
+            let dir_iterator = std::fs::read_dir(&self.path);
+            match dir_iterator {
+                Ok(dir_iterator) => return (dir_iterator.count(), "".to_string()),
+                Err(_) => return (0, "".to_string())
+            }
+        }
+
         let mut unit = 0;
         let mut size = self.size.unwrap();
         while size > 1024 {
