@@ -82,7 +82,7 @@ where
         let ysize = self.coordinates.ysize() as usize;
         let mut offset = 0;
 
-        while position >= ysize - 2 + offset {
+        while position >= ysize + offset {
             offset += 1
         }
 
@@ -179,7 +179,7 @@ where
             .files
             .par_iter()
             .position_any(|item| item == file)
-            .unwrap();
+            .unwrap_or(0);
         self.set_selection(pos);
     }
 
@@ -247,11 +247,20 @@ where
         }
 
         let file = self.clone_selected_file();
-        self.content.dirs_first = dir_settings;
-        self.content.sort = sort_settings;
-        self.content.sort();
+        // self.content.dirs_first = dir_settings;
+        // self.content.sort = sort_settings;
+        // self.content.sort();
         self.select_file(&file);
+        self.seeking = true;
 
+        self.refresh();
+    }
+
+    fn toggle_hidden(&mut self) {
+        let file = self.clone_selected_file();
+        self.content.toggle_hidden();
+        self.content.reload_files();
+        self.select_file(&file);
         self.refresh();
     }
 
@@ -371,6 +380,7 @@ impl Widget for ListView<Files> {
             }
             Key::Left => self.goto_grand_parent(),
             Key::Right => self.goto_selected(),
+            Key::Char('h') => self.toggle_hidden(),
             Key::Char('r') => self.reverse_sort(),
             Key::Char('s') => self.cycle_sort(),
             Key::Char('k') => self.select_next_mtime(),

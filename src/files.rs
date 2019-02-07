@@ -21,6 +21,7 @@ pub struct Files {
     pub sort: SortBy,
     pub dirs_first: bool,
     pub reverse: bool,
+    pub show_hidden: bool
 }
 
 impl Index<usize> for Files {
@@ -58,7 +59,7 @@ impl Files {
         let files: Vec<_> = direntries?
             .iter()
             .map(|file| {
-                //let file = file?; 
+                //let file = file?;
                 let name = file.file_name();
                 let name = name.to_string_lossy();
                 let kind = get_kind(&file);
@@ -69,7 +70,7 @@ impl Files {
                 let mtime = meta.mtime();
                 let user = meta.uid();
                 let group = meta.gid();
-                let color = get_color(&path, &meta); 
+                let color = get_color(&path, &meta);
                 File::new(&name, path, kind, size as usize, mtime, color, mode,
                           user, group)
             })
@@ -81,6 +82,7 @@ impl Files {
             sort: SortBy::Name,
             dirs_first: true,
             reverse: false,
+            show_hidden: true
         };
 
         files.sort();
@@ -148,6 +150,23 @@ impl Files {
     pub fn reverse_sort(&mut self) {
         self.reverse = !self.reverse
     }
+
+    pub fn toggle_hidden(&mut self) {
+        self.show_hidden = !self.show_hidden
+    }
+
+    pub fn reload_files(&mut self) {
+        let dir = self.directory.clone();
+        let files = Files::new_from_path(&dir.path()).unwrap();
+        let files = files
+            .files
+            .into_iter()
+            .skip_while(|f| f.name.starts_with(".") && !self.show_hidden )
+            .collect();
+
+        self.files = files;
+    }
+
     pub fn len(&self) -> usize {
         self.files.len()
     }
