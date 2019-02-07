@@ -17,7 +17,6 @@ lazy_static! {
 fn kill_procs() {
     let mut pids = PIDS.lock().unwrap();
     for pid in &*pids {
-        let msg = format!("KILLING PROC: {}", pid);
         unsafe { libc::kill(*pid, 9); }
     }
     pids.clear();

@@ -148,11 +148,12 @@ pub fn minibuffer(query: &str) -> Option<String> {
                         return Some(buffer);
                     }
                 }
+                Key::Char('\t') => buffer += "$s",
                 Key::Backspace => {
                     buffer.pop();
                 }
                 Key::Char(key) => {
-                    buffer = buffer + &format!("{}", key);
+                    buffer += &format!("{}", key);
                 }
                 _ => {}
             },

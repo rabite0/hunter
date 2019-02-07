@@ -20,8 +20,6 @@ where
     selection: usize,
     offset: usize,
     buffer: Vec<String>,
-    // dimensions: (u16, u16),
-    // position: (u16, u16),
     coordinates: Coordinates,
     seeking: bool,
 }
@@ -94,6 +92,12 @@ where
         let name = &file.name;
         let (size, unit) = file.calculate_size();
 
+        let selection_gap = "  ".to_string();
+        let (name, selection_color) =  if file.is_selected() {
+            (selection_gap + name, crate::term::color_yellow())
+        } else { (name.clone(), "".to_string()) };
+
+
         let xsize = self.get_size().xsize();
         let sized_string = term::sized_string(&name, xsize);
         let size_pos = xsize - (size.to_string().len() as u16
@@ -105,13 +109,17 @@ where
             "{}{}{}{}{}{}{}",
             termion::cursor::Save,
             match &file.color {
-                Some(color) => format!("{}{:padding$}",
+                Some(color) => format!("{}{}{:padding$}{}",
                                        term::from_lscolor(color),
+                                       selection_color,
                                        &sized_string,
+                                       term::normal_color(),
                                        padding = padding as usize),
-                _ => format!("{}{:padding$}",
+                _ => format!("{}{}{:padding$}{}",
                              term::normal_color(),
+                             selection_color,
                              &sized_string,
+                             term::normal_color(),
                              padding = padding as usize),
             } ,
             termion::cursor::Restore,
@@ -132,6 +140,12 @@ where
     pub fn selected_file(&self) -> &File {
         let selection = self.selection;
         let file = &self.content[selection];
+        file
+    }
+
+    pub fn selected_file_mut(&mut self) -> &mut File {
+        let selection = self.selection;
+        let file = &mut self.content.files[selection];
         file
     }
 
@@ -247,9 +261,9 @@ where
         }
 
         let file = self.clone_selected_file();
-        // self.content.dirs_first = dir_settings;
-        // self.content.sort = sort_settings;
-        // self.content.sort();
+        self.content.dirs_first = dir_settings;
+        self.content.sort = sort_settings;
+        self.content.sort();
         self.select_file(&file);
         self.seeking = true;
 
@@ -273,21 +287,44 @@ where
         self.show_status(&format!("Direcories first: {}", self.content.dirs_first));
     }
 
+    fn multi_select_file(&mut self) {
+        let file = self.selected_file_mut();
+        file.toggle_selection();
+        self.move_down();
+        self.refresh();
+    }
+
     fn exec_cmd(&mut self) {
-        match self.minibuffer("exec ($s for selected files)") {
+        let selected_files = self.content.get_selected();
+        let file_names
+            = selected_files.iter().map(|f| f.name.clone()).collect::<Vec<String>>();
+
+        match self.minibuffer("exec ($s for selected file(s))") {
             Some(cmd) => {
                 self.show_status(&format!("Running: \"{}\"", &cmd));
 
                 let filename = self.selected_file().name.clone();
-                let cmd = cmd.replace("$s", &format!("{}", &filename));
+
+                let cmd = if file_names.len() == 0 {
+                    cmd.replace("$s", &format!("{}", &filename))
+                } else {
+                    let args = file_names.iter().map(|f| {
+                        format!(" \"{}\" ", f)
+                    }).collect::<String>();
+                    let clean_cmd = cmd.replace("$s", "");
+
+                    clean_cmd + &args
+                };
 
                 let status = std::process::Command::new("sh")
                     .arg("-c")
                     .arg(&cmd)
                     .status();
                 match status {
-                    Ok(status) => self.show_status(&format!("\"{}\" exited with {}", cmd, status)),
-                    Err(err) => self.show_status(&format!("Can't run this \"{}\": {}", cmd, err)),
+                    Ok(status) => self.show_status(&format!("\"{}\" exited with {}",
+                                                            cmd, status)),
+                    Err(err) => self.show_status(&format!("Can't run this \"{}\": {}",
+                                                          cmd, err)),
                 }
             }
             None => self.show_status(""),
@@ -380,6 +417,7 @@ impl Widget for ListView<Files> {
             }
             Key::Left => self.goto_grand_parent(),
             Key::Right => self.goto_selected(),
+            Key::Char(' ') => self.multi_select_file(),
             Key::Char('h') => self.toggle_hidden(),
             Key::Char('r') => self.reverse_sort(),
             Key::Char('s') => self.cycle_sort(),

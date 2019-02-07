@@ -170,6 +170,10 @@ impl Files {
     pub fn len(&self) -> usize {
         self.files.len()
     }
+
+    pub fn get_selected(&self) -> Vec<&File> {
+        self.files.iter().filter(|f| f.is_selected()).collect()
+    }
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
@@ -210,6 +214,7 @@ pub struct File {
     pub mode: u32,
     pub user: u32,
     pub group: u32,
+    pub selected: bool
     // flags: Option<String>,
 }
 
@@ -234,10 +239,8 @@ impl File {
             color: color,
             mode: mode,
             user: user,
-            group: group
-            // owner: None,
-            // group: None,
-            // flags: None,
+            group: group,
+            selected: false
         }
     }
 
@@ -318,6 +321,14 @@ impl File {
 
     pub fn path(&self) -> PathBuf {
         self.path.clone()
+    }
+
+    pub fn toggle_selection(&mut self) {
+        self.selected = !self.selected
+    }
+
+    pub fn is_selected(&self) -> bool {
+        self.selected
     }
 
     pub fn pretty_print_permissions(&self) -> String {
