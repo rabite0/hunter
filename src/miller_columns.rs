@@ -23,7 +23,7 @@ where
         Self {
             widgets: HBox::new(),
             coordinates: Coordinates::new(),
-            ratio: (33, 33, 33),
+            ratio: (20, 30, 50),
             preview: Previewer::new(),
         }
     }
@@ -58,7 +58,7 @@ where
         let main_pos = Position((left_xsize + 2, top));
 
         let preview_xsize = xsize * ratio.2 / 100;
-        let preview_size = Size((preview_xsize, ysize));
+        let preview_size = Size((preview_xsize - 1, ysize));
         let preview_pos = Position((left_xsize + main_xsize + 3, top));
 
         let left_coords = Coordinates {
