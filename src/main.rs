@@ -29,6 +29,7 @@ mod widget;
 mod win_main;
 mod window;
 mod hbox;
+mod tabview;
 
 use window::Window;
 
@@ -40,8 +41,10 @@ fn main() {
     
 
     let filebrowser = crate::file_browser::FileBrowser::new().unwrap();
+    let mut tabview = crate::tabview::TabView::new();
+    tabview.push_widget(filebrowser);
 
-    let mut win = Window::new(filebrowser);
+    let mut win = Window::new(tabview);
     win.draw();
     win.handle_input();
 

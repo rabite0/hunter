@@ -8,10 +8,21 @@ use crate::files::{File, Files};
 use crate::listview::ListView;
 use crate::miller_columns::MillerColumns;
 use crate::widget::Widget;
+use crate::tabview::Tabbable;
 
 #[derive(PartialEq)]
 pub struct FileBrowser {
     pub columns: MillerColumns<ListView<Files>>,
+}
+
+impl Tabbable<FileBrowser> for FileBrowser {
+    fn new_tab(&self) -> Self {
+        FileBrowser::new().unwrap()
+    }
+
+    fn on_next_tab(&mut self) {
+        self.update_preview();
+    }
 }
 
 impl FileBrowser {
