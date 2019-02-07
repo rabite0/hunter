@@ -182,15 +182,29 @@ impl Widget for FileBrowser {
         sized_path
     }
     fn render_footer(&self) -> String {
+        let xsize = self.get_coordinates().xsize();
+        let ypos = self.get_coordinates().position().y();
         let file = self.selected_file();
-        let permissions = file.pretty_print_permissions();
 
+        let permissions = file.pretty_print_permissions();
         let user = file.pretty_user().unwrap_or("NOUSER".into());
         let group = file.pretty_group().unwrap_or("NOGROUP".into());
-
         let mtime = file.pretty_mtime();
 
-        format!("{} {}:{} {}", permissions, user, group, mtime)
+
+        let selection = self.main_column().get_selection();
+        let file_count = self.main_column().content.len();
+        let file_count = format!("{}", file_count);
+        let digits = file_count.len();
+        let file_count = format!("{:digits$}/{:digits$}",
+                                 selection,
+                                 file_count,
+                                 digits = digits);
+        let count_xpos = xsize - file_count.len() as u16;
+        let count_ypos = ypos + self.get_coordinates().ysize();
+
+        format!("{} {}:{} {} {} {}", permissions, user, group, mtime,
+                crate::term::goto_xy(count_xpos, count_ypos), file_count)
      }
     fn refresh(&mut self) {
         self.columns.refresh();

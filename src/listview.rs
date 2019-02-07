@@ -74,6 +74,10 @@ where
         self.seeking = false;
     }
 
+    pub fn get_selection(&self) -> usize {
+        self.selection
+    }
+
     fn set_selection(&mut self, position: usize) {
         let ysize = self.coordinates.ysize() as usize;
         let mut offset = 0;
