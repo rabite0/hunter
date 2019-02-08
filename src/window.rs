@@ -135,12 +135,19 @@ pub fn show_status(status: &str) {
 
 pub fn minibuffer(query: &str) -> Option<String> {
     show_status(&(query.to_string() + ": "));
+    write!(stdout(), "{}{}",
+           termion::cursor::Show,
+           termion::cursor::Save).unwrap();
+    stdout().flush().unwrap();
+
     let mut buffer = "".to_string();
+    let mut pos = 0;
 
     for key in stdin().events() {
+
         match key {
             Ok(Event::Key(key)) => match key {
-                Key::Esc => return None,
+                Key::Esc | Key::Ctrl('c') => break,
                 Key::Char('\n') => {
                     if buffer == "" {
                         return None;
@@ -148,18 +155,83 @@ pub fn minibuffer(query: &str) -> Option<String> {
                         return Some(buffer);
                     }
                 }
-                Key::Char('\t') => buffer += "$s",
-                Key::Backspace => {
-                    buffer.pop();
+                Key::Char('\t') => {
+                    if !buffer.ends_with(" ") {
+                        let part = buffer.rsplitn(2, " ").take(1)
+                            .map(|s| s.to_string()).collect::<String>();
+                        let completions = find_bins(&part);
+
+                        if !completions.is_empty() {
+                            buffer = buffer[..buffer.len() - part.len()].to_string();
+                            buffer.push_str(&completions[0]);
+                            pos += &completions[0].len() - part.len();
+                        }
+                    } else {
+                        buffer += "$s";
+                        pos += 2
+                    }
                 }
+                Key::Backspace => {
+                    if pos != 0 {
+                        buffer.remove(pos - 1);
+                        pos -= 1;
+                    }
+                }
+                Key::Delete | Key::Ctrl('d') => {
+                    if pos != buffer.len() {
+                        buffer.remove(pos);
+                    }
+                }
+                Key::Left | Key::Ctrl('b') => {
+                    if pos != 0 {
+                        pos -= 1;
+                    }
+                }
+                Key::Right | Key::Ctrl('f') => {
+                    if pos != buffer.len() {
+                        pos += 1;
+                    }
+                }
+                Key::Ctrl('a') => { pos = 0 },
+                Key::Ctrl('e') => { pos = buffer.len(); },
                 Key::Char(key) => {
-                    buffer += &format!("{}", key);
+                    buffer.insert(pos, key);
+                    pos += 1;
                 }
                 _ => {}
             },
             _ => {}
         }
         show_status(&(query.to_string() + ": " + &buffer));
+
+        write!(stdout(), "{}", termion::cursor::Restore).unwrap();
+        stdout().flush().unwrap();
+        if pos != 0 {
+            write!(stdout(),
+                   "{}",
+                   format!("{}", termion::cursor::Right(pos as u16))).unwrap();
+        }
+        stdout().flush().unwrap();
     }
     None
+}
+
+pub fn find_bins(comp_name: &str) -> Vec<String> {
+    let paths = std::env::var_os("PATH").unwrap()
+        .to_string_lossy()
+        .split(":")
+        .map(|s| s.to_string())
+        .collect::<Vec<String>>();
+
+    paths.iter().map(|path| {
+        std::fs::read_dir(path).unwrap().flat_map(|file| {
+            let file = file.unwrap();
+            let name = file.file_name().into_string().unwrap();
+            if name.starts_with(comp_name) {
+                Some(name)
+            } else {
+                None
+            }
+        }).collect::<Vec<String>>()
+    }).flatten().collect::<Vec<String>>()
 }

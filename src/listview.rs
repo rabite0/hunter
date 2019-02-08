@@ -421,8 +421,8 @@ impl Widget for ListView<Files> {
             Key::Char('h') => self.toggle_hidden(),
             Key::Char('r') => self.reverse_sort(),
             Key::Char('s') => self.cycle_sort(),
-            Key::Char('k') => self.select_next_mtime(),
-            Key::Char('K') => self.select_prev_mtime(),
+            Key::Char('K') => self.select_next_mtime(),
+            Key::Char('k') => self.select_prev_mtime(),
             Key::Char('d') => self.toggle_dirs_first(),
             Key::Char('!') => self.exec_cmd(),
             _ => {
