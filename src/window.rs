@@ -159,8 +159,9 @@ pub fn minibuffer(query: &str) -> Option<String> {
                     if !buffer.ends_with(" ") {
                         let part = buffer.rsplitn(2, " ").take(1)
                             .map(|s| s.to_string()).collect::<String>();
-                        let completions = find_bins(&part);
 
+
+                        let completions = find_files(&part);
                         if !completions.is_empty() {
                             buffer = buffer[..buffer.len() - part.len()].to_string();
                             buffer.push_str(&completions[0]);
@@ -234,4 +235,25 @@ pub fn find_bins(comp_name: &str) -> Vec<String> {
             }
         }).collect::<Vec<String>>()
     }).flatten().collect::<Vec<String>>()
+}
+
+pub fn find_files(comp_name: &str) -> Vec<String> {
+    let mut cwd = std::env::current_dir().unwrap();
+    if comp_name.ends_with("/") {
+        cwd.push(comp_name);
+    }
+
+    std::fs::read_dir(cwd.clone()).unwrap().flat_map(|file| {
+        let file = file.unwrap();
+        let name = file.file_name().into_string().unwrap();
+        if name.starts_with(comp_name) {
+            if file.file_type().unwrap().is_dir() {
+                Some(format!("{}{}/", cwd.parent().unwrap().parent().unwrap().to_string_lossy(), name))
+            } else {
+                Some(name)
+            }
+        } else {
+            None
+        }
+    }).collect::<Vec<String>>()
 }
