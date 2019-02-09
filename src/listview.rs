@@ -3,6 +3,7 @@ use termion::event::{Event, Key};
 use unicode_width::UnicodeWidthStr;
 
 use std::path::{Path, PathBuf};
+use std::io::Write;
 
 use crate::coordinates::{Coordinates, Position, Size};
 use crate::files::{File, Files};
@@ -320,6 +321,11 @@ where
                     .arg("-c")
                     .arg(&cmd)
                     .status();
+
+                write!(std::io::stdout(), "{}{}",
+                       termion::style::Reset,
+                       termion::clear::All).unwrap();
+
                 match status {
                     Ok(status) => self.show_status(&format!("\"{}\" exited with {}",
                                                             cmd, status)),

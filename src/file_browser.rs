@@ -72,17 +72,17 @@ impl FileBrowser {
             Err(ref err) if err.description() == "placeholder".to_string() =>
                 self.show_status("No! Can't open this!"),
             _ => {
-                let status = std::process::Command::new("xdg-open")
-                    .args(dbg!(file.path.file_name()))
+                let status = std::process::Command::new("rifle")
+                    .args(file.path.file_name())
                     .status();
 
                 match status {
                     Ok(status) =>
                         self.show_status(&format!("\"{}\" exited with {}",
-                                                  "xdg-open", status)),
+                                                  "rifle", status)),
                     Err(err) =>
                         self.show_status(&format!("Can't run this \"{}\": {}",
-                                                  "xdg-open", err))
+                                                  "rifle", err))
 
                 }
             }

@@ -74,6 +74,7 @@ where
             //Self::clear_status();
             let event = event.unwrap();
             self.widget.on_event(event);
+            self.screen.cursor_hide();
             self.draw();
         }
     }
@@ -136,8 +137,8 @@ pub fn show_status(status: &str) {
 pub fn minibuffer(query: &str) -> Option<String> {
     show_status(&(query.to_string() + ": "));
     write!(stdout(), "{}{}",
-           termion::cursor::Show,
-           termion::cursor::Save).unwrap();
+            termion::cursor::Show,
+            termion::cursor::Save).unwrap();
     stdout().flush().unwrap();
 
     let mut buffer = "".to_string();
@@ -150,8 +151,12 @@ pub fn minibuffer(query: &str) -> Option<String> {
                 Key::Esc | Key::Ctrl('c') => break,
                 Key::Char('\n') => {
                     if buffer == "" {
+                        write!(stdout(), "{}", termion::cursor::Hide).unwrap();
+                        stdout().flush().unwrap();
                         return None;
                     } else {
+                        write!(stdout(), "{}", termion::cursor::Hide).unwrap();
+                        stdout().flush().unwrap();
                         return Some(buffer);
                     }
                 }
