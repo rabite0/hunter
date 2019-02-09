@@ -10,14 +10,14 @@ use crate::widget::Widget;
 
 
 lazy_static! {
-    static ref PIDS: Arc<Mutex<Vec<i32>>> = { Arc::new(Mutex::new(vec![])) };
+    static ref PIDS: Arc<Mutex<Vec<u32>>> = { Arc::new(Mutex::new(vec![])) };
     static ref CURFILE: Arc<Mutex<Option<File>>> = { Arc::new(Mutex::new(None)) };
 }
 
 fn kill_procs() {
     let mut pids = PIDS.lock().unwrap();
     for pid in &*pids {
-        unsafe { libc::kill(*pid, 9); }
+        unsafe { libc::kill(*pid as i32, 9); }
     }
     pids.clear();
 }
@@ -92,13 +92,17 @@ impl Previewer {
                             .spawn().unwrap();
 
                         let pid = process.id();
-                        PIDS.lock().unwrap().push(pid as i32);
+                        PIDS.lock().unwrap().push(pid);
 
                         if !is_current(&file) { return }
 
-                        let output = process.wait_with_output().unwrap();
+                        let output = process.wait_with_output();
+                        if output.is_err() { return }
+                        let output = output.unwrap();
 
-                        let status = output.status.code().unwrap();
+                        let status = output.status.code();
+                        if status.is_none() { return }
+                        let status = status.unwrap();
 
                         if status == 0 || status == 5 && is_current(&file) {
                             let output = std::str::from_utf8(&output.stdout)
@@ -116,7 +120,7 @@ impl Previewer {
                         {
                             write!(std::io::stdout(), "{}", redraw).unwrap();
                         }
-                        PIDS.lock().unwrap().pop();
+                        PIDS.lock().unwrap().remove_item(&pid);
                     }
                 }
             }

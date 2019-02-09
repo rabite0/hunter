@@ -1,3 +1,5 @@
+#![feature(vec_remove_item)]
+
 extern crate termion;
 extern crate unicode_width;
 #[macro_use]

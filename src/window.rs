@@ -160,12 +160,18 @@ pub fn minibuffer(query: &str) -> Option<String> {
                         let part = buffer.rsplitn(2, " ").take(1)
                             .map(|s| s.to_string()).collect::<String>();
 
-
-                        let completions = find_files(&part);
+                        let completions = find_bins(&part);
                         if !completions.is_empty() {
                             buffer = buffer[..buffer.len() - part.len()].to_string();
                             buffer.push_str(&completions[0]);
                             pos += &completions[0].len() - part.len();
+                        } else {
+                            let completions = find_files(&part);
+                            if !completions.is_empty() {
+                                buffer = buffer[..buffer.len() - part.len()].to_string();
+                                buffer.push_str(&completions[0]);
+                                pos += &completions[0].len() - part.len();
+                            }
                         }
                     } else {
                         buffer += "$s";
@@ -243,7 +249,10 @@ pub fn find_files(comp_name: &str) -> Vec<String> {
         cwd.push(comp_name);
     }
 
-    std::fs::read_dir(cwd.clone()).unwrap().flat_map(|file| {
+    let reader = std::fs::read_dir(cwd.clone());
+    if reader.is_err() { return vec![]; }
+    let reader = reader.unwrap();
+    reader.flat_map(|file| {
         let file = file.unwrap();
         let name = file.file_name().into_string().unwrap();
         if name.starts_with(comp_name) {
