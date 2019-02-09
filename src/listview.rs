@@ -81,7 +81,7 @@ where
         let ysize = self.coordinates.ysize() as usize;
         let mut offset = 0;
 
-        while position >= ysize + offset {
+        while position + 2 >= ysize + offset {
             offset += 1
         }
 

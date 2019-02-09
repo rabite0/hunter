@@ -40,6 +40,7 @@ impl FileBrowser {
         let lists: Result<Vec<ListView<Files>>, Box<Error>> = cwd
             .ancestors()
             .map(|path| Ok(ListView::new(Files::new_from_path(path)?)))
+            .take(2)
             .collect();
         let mut lists = lists?;
         lists.reverse();
@@ -107,6 +108,8 @@ impl FileBrowser {
                 self.columns.prepend_widget(left_view);
             }
         }
+        self.fix_selection();
+        self.columns.refresh();
     }
 
     pub fn update_preview(&mut self) {
@@ -154,6 +157,33 @@ impl FileBrowser {
     pub fn animate_columns(&mut self) {
         self.columns.get_left_widget_mut().map(|w| w.animate_slide_up());
         self.columns.get_main_widget_mut().animate_slide_up();
+    }
+
+    pub fn turbo_cd(&mut self) {
+        let dir = self.minibuffer("cd: ");
+
+        match dir {
+            Some(dir) => {
+                Files::new_from_path(&std::path::PathBuf::from(&dir)).and_then(|files| {
+                    let cwd = files.directory.clone();
+                    self.columns.widgets.widgets.clear();
+                    self.columns.push_widget(ListView::new(files));
+
+                    std::env::set_current_dir(&cwd.path).unwrap();
+
+                    if let Some(grand_parent) = cwd.path.parent() {
+                        let left_view =
+                            ListView::new(Files::new_from_path(&grand_parent).unwrap());
+                        self.columns.prepend_widget(left_view);
+                    }
+                    self.fix_selection();
+                    self.update_preview();
+                    self.refresh();
+                    self.columns.refresh();
+                    Ok(())
+                }).ok();
+            } None => {}
+        }
     }
 }
 
@@ -231,6 +261,7 @@ impl Widget for FileBrowser {
 
     fn on_key(&mut self, key: Key) {
         match key {
+            Key::Char('/') => self.turbo_cd(),
             Key::Char('Q') => self.quit_with_dir(),
             Key::Right | Key::Char('f') => self.enter_dir(),
             Key::Left | Key::Char('b') => self.go_back(),

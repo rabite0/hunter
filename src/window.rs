@@ -164,14 +164,13 @@ pub fn minibuffer(query: &str) -> Option<String> {
                     if !buffer.ends_with(" ") {
                         let part = buffer.rsplitn(2, " ").take(1)
                             .map(|s| s.to_string()).collect::<String>();
-
-                        let completions = find_bins(&part);
+                        let completions = find_files(part.clone());
                         if !completions.is_empty() {
                             buffer = buffer[..buffer.len() - part.len()].to_string();
                             buffer.push_str(&completions[0]);
                             pos += &completions[0].len() - part.len();
                         } else {
-                            let completions = find_files(&part);
+                            let completions = find_bins(&part);
                             if !completions.is_empty() {
                                 buffer = buffer[..buffer.len() - part.len()].to_string();
                                 buffer.push_str(&completions[0]);
@@ -248,23 +247,29 @@ pub fn find_bins(comp_name: &str) -> Vec<String> {
     }).flatten().collect::<Vec<String>>()
 }
 
-pub fn find_files(comp_name: &str) -> Vec<String> {
-    let mut cwd = std::env::current_dir().unwrap();
-    if comp_name.ends_with("/") {
-        cwd.push(comp_name);
-    }
+pub fn find_files(mut comp_name: String) -> Vec<String> {
+    let mut path = std::path::PathBuf::from(&comp_name);
 
-    let reader = std::fs::read_dir(cwd.clone());
-    if reader.is_err() { return vec![]; }
+    let dir = if comp_name.starts_with("/") {
+        comp_name = path.file_name().unwrap().to_string_lossy().to_string();
+        path.pop();
+        path.to_string_lossy().to_string()
+    } else {
+        std::env::current_dir().unwrap().to_string_lossy().to_string()
+    };
+
+    let reader = std::fs::read_dir(dir.clone());
+    if reader.is_err() { return vec![]  }
     let reader = reader.unwrap();
+
     reader.flat_map(|file| {
         let file = file.unwrap();
         let name = file.file_name().into_string().unwrap();
-        if name.starts_with(comp_name) {
+        if name.starts_with(&comp_name) {
             if file.file_type().unwrap().is_dir() {
-                Some(format!("{}{}/", cwd.parent().unwrap().parent().unwrap().to_string_lossy(), name))
+                Some(format!("{}/{}/", &dir, name))
             } else {
-                Some(name)
+                Some(format!("/{}/", name))
             }
         } else {
             None
