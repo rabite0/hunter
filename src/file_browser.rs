@@ -16,7 +16,7 @@ pub struct FileBrowser {
 }
 
 impl Tabbable<FileBrowser> for FileBrowser {
-    fn new_tab(&self) -> Self {
+    fn new_tab(&self) -> FileBrowser {
         FileBrowser::new().unwrap()
     }
 
@@ -115,8 +115,12 @@ impl FileBrowser {
     pub fn update_preview(&mut self) {
         if self.columns.get_main_widget().content.len() == 0 { return }
         let file = self.columns.get_main_widget().selected_file().clone();
-        let preview = &mut self.columns.preview;
+        //let preview = &mut self.columns.preview;
+        let coords = self.columns.preview.get_coordinates();
+        let mut preview = crate::preview::AsyncPreviewer::new();
+        preview.set_coordinates(&coords);
         preview.set_file(&file);
+        self.columns.preview = preview;
     }
 
     pub fn fix_selection(&mut self) {
@@ -188,18 +192,6 @@ impl FileBrowser {
 }
 
 impl Widget for FileBrowser {
-    fn get_size(&self) -> &Size {
-        &self.columns.get_size()
-    }
-    fn get_position(&self) -> &Position {
-        &self.columns.get_position()
-    }
-    fn set_size(&mut self, size: Size) {
-        self.columns.set_size(size);
-    }
-    fn set_position(&mut self, position: Position) {
-        self.columns.set_position(position);
-    }
     fn get_coordinates(&self) -> &Coordinates {
         &self.columns.coordinates
     }

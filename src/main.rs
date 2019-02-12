@@ -1,4 +1,5 @@
 #![feature(vec_remove_item)]
+#![feature(trivial_bounds)]
 
 extern crate termion;
 extern crate unicode_width;
@@ -18,6 +19,7 @@ use termion::raw::IntoRawMode;
 use termion::screen::AlternateScreen;
 
 use std::io::{stdout, Write};
+use std::marker::Send;
 
 mod coordinates;
 mod file_browser;
@@ -32,12 +34,16 @@ mod win_main;
 mod window;
 mod hbox;
 mod tabview;
+mod async_widget;
 
 use window::Window;
+use async_widget::AsyncPlug;
+use widget::Widget;
 
 fn main() {
+    let mut bufout = std::io::BufWriter::new(std::io::stdout());
     // Need to do this here to actually turn terminal into raw mode...
-    let mut _screen = AlternateScreen::from(Box::new(stdout()));
+    let mut _screen = AlternateScreen::from(Box::new(bufout));
     let mut _stdout = MouseTerminal::from(stdout().into_raw_mode().unwrap());
 
     

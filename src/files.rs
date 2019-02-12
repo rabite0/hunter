@@ -26,7 +26,7 @@ pub struct Files {
 
 impl Index<usize> for Files {
     type Output = File;
-    fn index(&self, pos: usize) -> &Self::Output {
+    fn index(&self, pos: usize) -> &File {
         &self.files[pos]
     }
 }

@@ -11,7 +11,7 @@ pub struct HBox<T: Widget> {
 }
 
 
-impl<T> HBox<T> where T: Widget {
+impl<T> HBox<T> where T: Widget + PartialEq {
     pub fn new() -> HBox<T> {
         HBox { coordinates: Coordinates::new(),
                widgets: vec![],
@@ -78,7 +78,7 @@ impl<T> HBox<T> where T: Widget {
 
 
 
-impl<T> Widget for HBox<T> where T: Widget {
+impl<T> Widget for HBox<T> where T: Widget + PartialEq {
     fn render_header(&self) -> String {
         self.active_widget().render_header()
     }
@@ -96,18 +96,6 @@ impl<T> Widget for HBox<T> where T: Widget {
         }).collect()
     }
 
-    fn get_size(&self) -> &Size {
-        &self.coordinates.size
-    }
-    fn get_position(&self) -> &Position {
-        &self.coordinates.position
-    }
-    fn set_size(&mut self, size: Size) {
-        self.coordinates.size = size;
-    }
-    fn set_position(&mut self, position: Position) {
-        self.coordinates.position = position;
-    }
     fn get_coordinates(&self) -> &Coordinates {
         &self.coordinates
     }

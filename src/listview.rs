@@ -4,11 +4,12 @@ use unicode_width::UnicodeWidthStr;
 
 use std::path::{Path, PathBuf};
 use std::io::Write;
+//use std::sync::mpsc::{channel, Sender, Receiver};
 
 use crate::coordinates::{Coordinates, Position, Size};
 use crate::files::{File, Files};
 use crate::term;
-use crate::widget::Widget;
+use crate::widget::{Widget};
 
 // Maybe also buffer drawlist for efficiency when it doesn't change every draw
 
@@ -30,7 +31,7 @@ where
     ListView<T>: Widget,
     T: Send,
 {
-    pub fn new(content: T) -> Self {
+    pub fn new(content: T) -> ListView<T> {
         let view = ListView::<T> {
             content: content,
             selection: 0,
@@ -81,7 +82,8 @@ where
         let ysize = self.coordinates.ysize() as usize;
         let mut offset = 0;
 
-        while position + 2 >= ysize + offset {
+        while position + 2
+            >= ysize + offset {
             offset += 1
         }
 
@@ -99,7 +101,7 @@ where
         } else { (name.clone(), "".to_string()) };
 
 
-        let xsize = self.get_size().xsize();
+        let xsize = self.get_coordinates().xsize();
         let sized_string = term::sized_string(&name, xsize);
         let size_pos = xsize - (size.to_string().len() as u16
                                 + unit.to_string().len() as u16);
@@ -321,8 +323,8 @@ where
                     .arg("-c")
                     .arg(&cmd)
                     .status();
-
-                write!(std::io::stdout(), "{}{}",
+                let mut bufout = std::io::BufWriter::new(std::io::stdout());
+                write!(bufout, "{}{}",
                        termion::style::Reset,
                        termion::clear::All).unwrap();
 
@@ -347,18 +349,6 @@ where
 }
 
 impl Widget for ListView<Files> {
-    fn get_size(&self) -> &Size {
-        &self.coordinates.size
-    }
-    fn get_position(&self) -> &Position {
-        &self.coordinates.position
-    }
-    fn set_size(&mut self, size: Size) {
-        self.coordinates.size = size;
-    }
-    fn set_position(&mut self, position: Position) {
-        self.coordinates.position = position;
-    }
     fn get_coordinates(&self) -> &Coordinates {
         &self.coordinates
     }
@@ -376,7 +366,7 @@ impl Widget for ListView<Files> {
 
     fn get_drawlist(&self) -> String {
         let mut output = term::reset();
-        let (_, ysize) = self.get_size().size();
+        let ysize = self.get_coordinates().ysize();
         let (xpos, ypos) = self.coordinates.position().position();
 
         output += &self

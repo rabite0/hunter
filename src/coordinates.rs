@@ -40,6 +40,18 @@ impl Coordinates {
         &self.position
     }
 
+    pub fn u16position(&self) -> (u16, u16) {
+        self.position.position()
+    }
+
+    pub fn size(&self) -> &Size {
+        &self.size
+    }
+
+    pub fn u16size(&self) -> (u16, u16) {
+        self.size.size()
+    }
+
     pub fn top(&self) -> Position {
         self.position().clone()
     }

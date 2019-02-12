@@ -31,18 +31,6 @@ impl TextView {
 }
 
 impl Widget for TextView {
-    fn get_size(&self) -> &Size {
-        &self.coordinates.size
-    }
-    fn set_size(&mut self, size: Size) {
-        self.coordinates.size = size;
-    }
-    fn get_position(&self) -> &Position {
-        &self.coordinates.position
-    }
-    fn set_position(&mut self, pos: Position) {
-        self.coordinates.position = pos;
-    }
     fn get_coordinates(&self) -> &Coordinates {
         &self.coordinates
     }
@@ -54,7 +42,7 @@ impl Widget for TextView {
         "".to_string()
     }
     fn refresh(&mut self) {
-        let (xsize, ysize) = self.get_size().size();
+        let (xsize, ysize) = self.get_coordinates().size().size();
         let (xpos, ypos) = self.get_coordinates().position().position();
 
         self.buffer = self.get_clearlist() +

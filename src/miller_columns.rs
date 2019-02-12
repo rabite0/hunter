@@ -1,7 +1,7 @@
 use termion::event::Key;
 
 use crate::coordinates::{Coordinates, Position, Size};
-use crate::preview::Previewer;
+use crate::preview::AsyncPreviewer;
 use crate::widget::Widget;
 use crate::hbox::HBox;
 
@@ -10,21 +10,21 @@ pub struct MillerColumns<T> where T: Widget {
     pub widgets: HBox<T>,
     // pub left: Option<T>,
     // pub main: Option<T>,
-    pub preview: Previewer,
+    pub preview: AsyncPreviewer,
     pub ratio: (u16, u16, u16),
     pub coordinates: Coordinates,
 }
 
 impl<T> MillerColumns<T>
 where
-    T: Widget,
+    T: Widget + PartialEq,
 {
-    pub fn new() -> Self {
-        Self {
+    pub fn new() -> MillerColumns<T> {
+        MillerColumns {
             widgets: HBox::new(),
             coordinates: Coordinates::new(),
             ratio: (20, 30, 50),
-            preview: Previewer::new(),
+            preview: AsyncPreviewer::new(),
         }
     }
 
@@ -91,7 +91,6 @@ where
         if len < 2 {
             return None;
         }
-        self.widgets.widgets.get(len - 2)?.get_position();
         self.widgets.widgets.get_mut(len - 2)
     }
     pub fn get_main_widget(&self) -> &T {
@@ -105,19 +104,8 @@ where
 impl<T> Widget for MillerColumns<T>
 where
     T: Widget,
+    T: PartialEq
 {
-    fn get_size(&self) -> &Size {
-        &self.coordinates.size
-    }
-    fn get_position(&self) -> &Position {
-        &self.coordinates.position
-    }
-    fn set_size(&mut self, size: Size) {
-        self.coordinates.size = size;
-    }
-    fn set_position(&mut self, position: Position) {
-        self.coordinates.position = position;
-    }
     fn get_coordinates(&self) -> &Coordinates {
         &self.coordinates
     }

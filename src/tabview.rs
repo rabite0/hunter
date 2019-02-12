@@ -10,15 +10,15 @@ pub trait Tabbable<T: Widget> {
 
 
 #[derive(PartialEq)]
-pub struct TabView<T> where T: Widget {
+pub struct TabView<T> where T: Widget, T: Tabbable<T> {
     widgets: Vec<T>,
     active: usize,
     coordinates: Coordinates
 }
 
-impl<T> TabView<T> where T: Widget + Tabbable<T> {
-    pub fn new() -> Self {
-        Self {
+impl<T> TabView<T> where T: Widget, T: Tabbable<T> {
+    pub fn new() -> TabView<T> {
+        TabView {
             widgets: vec![],
             active: 0,
             coordinates: Coordinates::new()
@@ -67,7 +67,7 @@ impl<T> TabView<T> where T: Widget + Tabbable<T> {
     }
 }
 
-impl<T> Widget for TabView<T> where T: Widget + Tabbable<T> + PartialEq {
+impl<T> Widget for TabView<T> where T: Widget + Tabbable<T> {
     fn render_header(&self) -> String {
         let xsize = self.get_coordinates().xsize();
         let header = self.active_widget().render_header();
@@ -106,18 +106,6 @@ impl<T> Widget for TabView<T> where T: Widget + Tabbable<T> + PartialEq {
         self.active_widget().get_drawlist()
     }
 
-    fn get_size(&self) -> &Size {
-        &self.coordinates.size
-    }
-    fn get_position(&self) -> &Position {
-        &self.coordinates.position
-    }
-    fn set_size(&mut self, size: Size) {
-        self.coordinates.size = size;
-    }
-    fn set_position(&mut self, position: Position) {
-        self.coordinates.position = position;
-    }
     fn get_coordinates(&self) -> &Coordinates {
         &self.coordinates
     }

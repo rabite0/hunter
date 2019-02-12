@@ -2,18 +2,17 @@ use termion::event::{Event, Key, MouseEvent};
 
 use crate::coordinates::{Coordinates, Position, Size};
 
-use std::io::Write;
+use std::io::{BufWriter, Write};
 
-pub trait Widget: PartialEq {
-    //fn render(&self) -> Vec<String>;
-    fn get_size(&self) -> &Size;
-    fn get_position(&self) -> &Position;
-    fn set_size(&mut self, size: Size);
-    fn set_position(&mut self, position: Position);
+
+pub trait Widget {
     fn get_coordinates(&self) -> &Coordinates;
     fn set_coordinates(&mut self, coordinates: &Coordinates);
     fn render_header(&self) -> String;
     fn render_footer(&self) -> String { "".into() }
+    fn refresh(&mut self);
+    fn get_drawlist(&self) -> String;
+
 
     fn on_event(&mut self, event: Event) {
         match event {
@@ -62,7 +61,7 @@ pub trait Widget: PartialEq {
             " ",
             crate::term::goto_xy(1, 1),
             self.render_header(),
-            xsize = self.get_size().xsize() as usize
+            xsize = self.get_coordinates().xsize() as usize
         )
     }
 
@@ -80,8 +79,8 @@ pub trait Widget: PartialEq {
     }
 
     fn get_clearlist(&self) -> String {
-        let (xpos, ypos) = self.get_position().position();
-        let (xsize, ysize) = self.get_size().size();
+        let (xpos, ypos) = self.get_coordinates().u16position();
+        let (xsize, ysize) = self.get_coordinates().u16size();
 
         (ypos..ysize + 2)
             .map(|line| {
@@ -97,8 +96,8 @@ pub trait Widget: PartialEq {
     }
 
     fn get_redraw_empty_list(&self, lines: usize) -> String {
-        let (xpos, ypos) = self.get_position().position();
-        let (xsize, ysize) = self.get_size().size();
+        let (xpos, ypos) = self.get_coordinates().u16position();
+        let (xsize, ysize) = self.get_coordinates().u16size();
 
         let start_y = lines + ypos as usize;
         (start_y..(ysize + 2) as usize)
@@ -121,6 +120,7 @@ pub trait Widget: PartialEq {
         let ysize = coords.ysize();
         let clear = self.get_clearlist();
         let pause = std::time::Duration::from_millis(5);
+        let mut bufout = std::io::BufWriter::new(std::io::stdout());
 
         for i in (0..10).rev() {
             let coords = Coordinates { size: Size((xsize,ysize-i)),
@@ -130,13 +130,11 @@ pub trait Widget: PartialEq {
             };
             self.set_coordinates(&coords);
             let buffer = self.get_drawlist();
-            write!(std::io::stdout(), "{}{}",
+            write!(bufout, "{}{}",
                    clear, buffer).unwrap();
+
 
             std::thread::sleep(pause);
         }
     }
-
-    fn refresh(&mut self);
-    fn get_drawlist(&self) -> String;
 }
