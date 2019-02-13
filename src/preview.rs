@@ -24,8 +24,10 @@ fn kill_procs() {
 }
 
 fn is_current(file: &File) -> bool {
-    true
-    //CURFILE.lock().unwrap().as_ref().unwrap() == file
+    match CURFILE.lock().unwrap().as_ref() {
+        Some(curfile) => curfile == file,
+        None => true
+    }
 }
 
 #[derive(PartialEq)]
@@ -56,6 +58,8 @@ impl AsyncPreviewer {
         let coordinates = self.coordinates.clone();
         let file = file.clone();
         let redraw = crate::term::reset() + &self.get_redraw_empty_list(0);
+        let pids = PIDS.clone();
+        kill_procs();
 
         self.async_plug.replace_widget(Box::new(move || {
             kill_procs();
@@ -86,7 +90,10 @@ impl AsyncPreviewer {
                 }
                 _ => {
                     if file.get_mime() == Some("text".to_string()) {
-                        let mut textview = TextView::new_from_file(&file);
+                        let lines = coordinates.ysize() as usize;
+                        let mut textview
+                            = TextView::new_from_file_limit_lines(&file,
+                                                                  lines);
                         //if !is_current(&file) { return }
                         textview.set_coordinates(&coordinates);
                         textview.refresh();
@@ -106,173 +113,49 @@ impl AsyncPreviewer {
                             .stderr(std::process::Stdio::null())
                             .spawn().unwrap();
 
-                        // let pid = process.id();
-                        // PIDS.lock().unwrap().push(pid);
+                        let pid = process.id();
+                        PIDS.lock().unwrap().push(pid);
 
                         //if !is_current(&file) { return }
 
                         let output = process.wait_with_output();
-                        //if output.is_err() { return }
-                        let output = output.unwrap();
-
-                        let status = output.status.code();
-                        //if status.is_none() { return }
-                        let status = status.unwrap();
-
-                        if status == 0 || status == 5 && is_current(&file) {
-                            let output = std::str::from_utf8(&output.stdout)
-                                .unwrap()
-                                .to_string();
-                            let mut textview = TextView {
-                                lines: output.lines().map(|s| s.to_string()).collect(),
-                                buffer: String::new(),
-                                coordinates: Coordinates::new() };
-                            textview.set_coordinates(&coordinates);
-                            textview.refresh();
-                            textview.animate_slide_up();
-                            return Box::new(textview);
+                        match output {
+                            Ok(output) => {
+                                let status = output.status.code();
+                                match status {
+                                    Some(status) => {
+                                        if status == 0 || status == 5 && is_current(&file) {
+                                            let output = std::str::from_utf8(&output.stdout)
+                                                .unwrap()
+                                                .to_string();
+                                            let mut textview = TextView {
+                                                lines: output.lines().map(|s| s.to_string()).collect(),
+                                                buffer: String::new(),
+                                                coordinates: Coordinates::new() };
+                                            textview.set_coordinates(&coordinates);
+                                            textview.refresh();
+                                            textview.animate_slide_up();
+                                            return Box::new(textview);
+                                        }
+                                    }, None => {}
+                                }
+                            }, Err(_) => {}
                         }
 
-                    }
-
-                    write!(bufout, "{}", redraw).unwrap();
-                    //std::io::stdout().flush().unwrap();
-                    let textview = crate::textview::TextView {
-                        lines: vec![],
-                        buffer: "".to_string(),
-                        coordinates: Coordinates::new(),
-                    };
-                    return Box::new(textview);
-                }
-            }
-        }));
-    }
-}
-
-#[derive(PartialEq)]
-pub struct Previewer {
-    pub file: Option<File>,
-    pub buffer: String,
-    pub coordinates: Coordinates,
-}
-
-impl Previewer {
-    pub fn new() -> Previewer {
-        Previewer {
-            file: None,
-            buffer: String::new(),
-            coordinates: Coordinates::new(),
-        }
-    }
-    pub fn set_file(&mut self, file: &File) {
-        let coordinates = self.coordinates.clone();
-        let file = file.clone();
-        let redraw = crate::term::reset() + &self.get_redraw_empty_list(0);
-
-        *CURFILE.lock().unwrap() = Some(file.clone());
-
-        std::thread::spawn(move || {
-            kill_procs();
-            match &file.kind {
-                Kind::Directory => match Files::new_from_path(&file.path) {
-                    Ok(files) => {
-                        if !is_current(&file) { return }
-                        let len = files.len();
-                        if len == 0 { return };
-                        let mut file_list = ListView::new(files);
-                        file_list.set_coordinates(&coordinates);
-                        file_list.refresh();
-                        if !is_current(&file) { return }
-                        file_list.animate_slide_up();
-
-                    }
-                    Err(err) => {
-                        crate::window::show_status(&format!("Can't preview because: {}", err));
-                    }
-
-                },
-                _ => {
-                    if file.get_mime() == Some("text".to_string()) {
-                        let mut textview = TextView::new_from_file(&file);
-                        if !is_current(&file) { return }
-                        textview.set_coordinates(&coordinates);
-                        textview.refresh();
-                        if !is_current(&file) { return }
-                        textview.animate_slide_up();
-                    } else {
-                        let process =
-                            std::process::Command::new("scope.sh")
-                            .arg(&file.name)
-                            .arg("10".to_string())
-                            .arg("10".to_string())
-                            .arg("".to_string())
-                            .arg("false".to_string())
-                            .stdin(std::process::Stdio::null())
-                            .stdout(std::process::Stdio::piped())
-                            .stderr(std::process::Stdio::null())
-                            .spawn().unwrap();
-
-                        let pid = process.id();
-                        PIDS.lock().unwrap().push(pid);
-
-                        if !is_current(&file) { return }
-
-                        let output = process.wait_with_output();
-                        if output.is_err() { return }
-                        let output = output.unwrap();
-
-                        let status = output.status.code();
-                        if status.is_none() { return }
-                        let status = status.unwrap();
-
-                        if status == 0 || status == 5 && is_current(&file) {
-                            let output = std::str::from_utf8(&output.stdout)
-                                .unwrap()
-                                .to_string();
-                            let mut textview = TextView {
-                                lines: output.lines().map(|s| s.to_string()).collect(),
-                                buffer: String::new(),
-                                coordinates: Coordinates::new() };
-                            textview.set_coordinates(&coordinates);
-                            textview.refresh();
-                            textview.animate_slide_up();
-
-                        } else
-                        {
-                            write!(std::io::stdout(), "{}", redraw).unwrap();
-                        }
-                        PIDS.lock().unwrap().remove_item(&pid);
+                        write!(bufout, "{}", redraw).unwrap();
+                        //std::io::stdout().flush().unwrap();
+                        let textview = crate::textview::TextView {
+                            lines: vec![],
+                            buffer: "".to_string(),
+                            coordinates: Coordinates::new(),
+                        };
+                        return Box::new(textview);
                     }
                 }
-            }
-        });
+            }}))
     }
 }
 
-impl Widget for Previewer {
-    fn get_coordinates(&self) -> &Coordinates {
-        &self.coordinates
-    }
-    fn set_coordinates(&mut self, coordinates: &Coordinates) {
-        if self.coordinates == *coordinates {
-            return;
-        }
-        self.coordinates = coordinates.clone();
-        self.refresh();
-    }
-    fn render_header(&self) -> String {
-        "".to_string()
-    }
-    fn refresh(&mut self) {
-        let file = self.file.clone();
-        if let Some(file) = file {
-            self.set_file(&file);
-        }
-    }
-    fn get_drawlist(&self) -> String {
-        self.buffer.clone()
-    }
-}
 
 
 impl Widget for AsyncPreviewer {

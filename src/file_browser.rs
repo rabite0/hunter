@@ -115,12 +115,8 @@ impl FileBrowser {
     pub fn update_preview(&mut self) {
         if self.columns.get_main_widget().content.len() == 0 { return }
         let file = self.columns.get_main_widget().selected_file().clone();
-        //let preview = &mut self.columns.preview;
-        let coords = self.columns.preview.get_coordinates();
-        let mut preview = crate::preview::AsyncPreviewer::new();
-        preview.set_coordinates(&coords);
+        let preview = &mut self.columns.preview;
         preview.set_file(&file);
-        self.columns.preview = preview;
     }
 
     pub fn fix_selection(&mut self) {

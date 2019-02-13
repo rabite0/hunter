@@ -28,6 +28,21 @@ impl TextView {
             coordinates: Coordinates::new(),
         }
     }
+    pub fn new_from_file_limit_lines(file: &File, num: usize) -> TextView {
+        let file = std::fs::File::open(&file.path).unwrap();
+        let file = std::io::BufReader::new(file);
+        let lines = file.lines()
+                        .take(num)
+                        .map(|line|
+                             line.unwrap()
+                                 .replace("\t", "    ")).collect();
+
+        TextView {
+            lines: lines,
+            buffer: String::new(),
+            coordinates: Coordinates::new(),
+        }
+    }
 }
 
 impl Widget for TextView {

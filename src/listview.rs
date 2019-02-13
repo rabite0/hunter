@@ -19,6 +19,7 @@ where
     T: Send,
 {
     pub content: T,
+    lines: usize,
     selection: usize,
     offset: usize,
     buffer: Vec<String>,
@@ -29,11 +30,12 @@ where
 impl<T> ListView<T>
 where
     ListView<T>: Widget,
-    T: Send,
+    T: Send
 {
     pub fn new(content: T) -> ListView<T> {
         let view = ListView::<T> {
             content: content,
+            lines: 0,
             selection: 0,
             offset: 0,
             buffer: Vec::new(),
@@ -59,7 +61,7 @@ where
         self.seeking = false;
     }
     fn move_down(&mut self) {
-        let lines = self.buffer.len();
+        let lines = self.lines;
         let y_size = self.coordinates.ysize() as usize;
 
         if self.selection == lines - 1 {
@@ -340,9 +342,13 @@ where
     }
 
     fn render(&self) -> Vec<String> {
+        let ysize = self.get_coordinates().ysize() as usize;
+        let offset = self.offset;
         self.content
             .files
             .par_iter()
+            .skip(offset)
+            .take(ysize)
             .map(|file| self.render_line(&file))
             .collect()
     }
@@ -360,6 +366,7 @@ impl Widget for ListView<Files> {
         self.refresh();
     }
     fn refresh(&mut self) {
+        self.lines = self.content.len();
         self.buffer = self.render();
     }
 
@@ -372,8 +379,8 @@ impl Widget for ListView<Files> {
         output += &self
             .buffer
             .par_iter()
-            .skip(self.offset)
-            .take(ysize as usize)
+            //.skip(self.offset)
+            //.take(ysize as usize)
             .enumerate()
             .map(|(i, item)| {
                 let mut output = term::normal_color();
@@ -405,8 +412,8 @@ impl Widget for ListView<Files> {
                 self.move_up();
                 self.refresh();
             }
-            Key::Char('P') => for _ in 0..10 { self.move_up() }
-            Key::Char('N') => for _ in 0..10 { self.move_down() }
+            Key::Char('P') => { for _ in 0..10 { self.move_up() } self.refresh(); }
+            Key::Char('N') => { for _ in 0..10 { self.move_down() } self.refresh(); }
             Key::Down | Key::Char('n') => {
                 self.move_down();
                 self.refresh();
