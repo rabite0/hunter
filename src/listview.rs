@@ -196,8 +196,8 @@ where
         let pos = self
             .content
             .files
-            .par_iter()
-            .position_any(|item| item == file)
+            .iter()
+            .position(|item| item == file)
             .unwrap_or(0);
         self.set_selection(pos);
     }
@@ -346,7 +346,7 @@ where
         let offset = self.offset;
         self.content
             .files
-            .par_iter()
+            .iter()
             .skip(offset)
             .take(ysize)
             .map(|file| self.render_line(&file))
@@ -378,7 +378,7 @@ impl Widget for ListView<Files> {
 
         output += &self
             .buffer
-            .par_iter()
+            .iter()
             //.skip(self.offset)
             //.take(ysize as usize)
             .enumerate()

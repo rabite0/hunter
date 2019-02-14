@@ -132,7 +132,8 @@ pub trait Widget {
             let buffer = self.get_drawlist();
             write!(bufout, "{}{}",
                    clear, buffer).unwrap();
-
+            bufout.flush();
+            
 
             std::thread::sleep(pause);
         }

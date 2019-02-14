@@ -63,7 +63,7 @@ impl Widget for TextView {
         self.buffer = self.get_clearlist() +
             &self
             .lines
-            .par_iter()
+            .iter()
             .take(ysize as usize)
             .enumerate()
             .map(|(i, line)| {

@@ -2,13 +2,13 @@ use std::io::Write;
 use std::sync::Mutex;
 use std::sync::Arc;
 
-use crate::coordinates::{Coordinates, Position, Size};
+use crate::coordinates::{Coordinates};
 use crate::files::{File, Files, Kind};
 use crate::listview::ListView;
 use crate::textview::TextView;
 use crate::widget::Widget;
-use crate::async_widget::AsyncPlug;
-
+//use crate::async_widget::AsyncPlug;
+use crate::async_widget::AsyncPlug2;
 
 lazy_static! {
     static ref PIDS: Arc<Mutex<Vec<u32>>> = { Arc::new(Mutex::new(vec![])) };
@@ -30,36 +30,43 @@ fn is_current(file: &File) -> bool {
     }
 }
 
+enum WillBe<T> {
+    Is(T),
+    Becoming,
+    Wont(Box<std::error::Error>)
+}
+
 #[derive(PartialEq)]
 pub struct AsyncPreviewer {
     pub file: Option<File>,
     pub buffer: String,
     pub coordinates: Coordinates,
-    pub async_plug: AsyncPlug
+    pub async_plug: AsyncPlug2<Box<dyn Widget + Send + 'static>>
 }
 
 impl AsyncPreviewer {
     pub fn new() -> AsyncPreviewer {
-        let textview = crate::textview::TextView {
-            lines: vec![],
-            buffer: "".to_string(),
-            coordinates: Coordinates::new(),
-        };
-        let textview = Box::new(textview);
-
+        let closure = Box::new(|| {
+            Box::new(crate::textview::TextView {
+                    lines: vec![],
+                    buffer: "".to_string(),
+                    coordinates: Coordinates::new()
+            }) as Box<dyn Widget + Send + 'static>
+        });
+        
         AsyncPreviewer {
             file: None,
             buffer: String::new(),
             coordinates: Coordinates::new(),
-            async_plug: AsyncPlug::new(textview)
+            async_plug: AsyncPlug2::new_from_closure(closure),
         }
     }
     pub fn set_file(&mut self, file: &File) {
         let coordinates = self.coordinates.clone();
         let file = file.clone();
         let redraw = crate::term::reset() + &self.get_redraw_empty_list(0);
-        let pids = PIDS.clone();
-        kill_procs();
+        //let pids = PIDS.clone();
+        //kill_procs();
 
         self.async_plug.replace_widget(Box::new(move || {
             kill_procs();
@@ -75,7 +82,7 @@ impl AsyncPreviewer {
                         file_list.refresh();
                         //if !is_current(&file) { return }
                         file_list.animate_slide_up();
-                        return Box::new(file_list) as Box<dyn Widget + Send>;
+                        return Box::new(file_list)
 
                     }
                     Err(err) => {
@@ -85,7 +92,7 @@ impl AsyncPreviewer {
                             buffer: "".to_string(),
                             coordinates: Coordinates::new(),
                         };
-                        return Box::new(textview) as Box<dyn Widget + Send>;
+                        return Box::new(textview)
                     },
                 }
                 _ => {
@@ -99,7 +106,7 @@ impl AsyncPreviewer {
                         textview.refresh();
                         //if !is_current(&file) { return }
                         textview.animate_slide_up();
-                        return Box::new(textview);
+                        return Box::new(textview)
                     } else {
                         let process =
                             std::process::Command::new("scope.sh")
@@ -135,7 +142,7 @@ impl AsyncPreviewer {
                                             textview.set_coordinates(&coordinates);
                                             textview.refresh();
                                             textview.animate_slide_up();
-                                            return Box::new(textview);
+                                            return Box::new(textview)
                                         }
                                     }, None => {}
                                 }
@@ -149,7 +156,7 @@ impl AsyncPreviewer {
                             buffer: "".to_string(),
                             coordinates: Coordinates::new(),
                         };
-                        return Box::new(textview);
+                        return Box::new(textview)
                     }
                 }
             }}))
@@ -182,5 +189,27 @@ impl Widget for AsyncPreviewer {
     fn get_drawlist(&self) -> String {
         self.async_plug.get_drawlist();
         "".to_string()
+    }
+}
+
+impl<T> Widget for Box<T> where T: Widget + ?Sized {
+    fn get_coordinates(&self) -> &Coordinates {
+        (**self).get_coordinates()
+    }
+    fn set_coordinates(&mut self, coordinates: &Coordinates) {
+        if (**self).get_coordinates() == coordinates {
+            return;
+        }
+        (**self).set_coordinates(&coordinates);
+        (**self).refresh();
+    }
+    fn render_header(&self) -> String {
+        (**self).render_header()
+    }
+    fn refresh(&mut self) {
+        (**self).refresh()
+    }
+    fn get_drawlist(&self) -> String {
+        (**self).get_drawlist()
     }
 }

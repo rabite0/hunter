@@ -37,7 +37,7 @@ mod tabview;
 mod async_widget;
 
 use window::Window;
-use async_widget::AsyncPlug;
+///use async_widget::AsyncPlug;
 use widget::Widget;
 
 fn main() {
