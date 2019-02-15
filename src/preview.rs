@@ -30,11 +30,239 @@ fn is_current(file: &File) -> bool {
     }
 }
 
-enum WillBe<T> {
+enum State<T: Send> {
     Is(T),
     Becoming,
-    Wont(Box<std::error::Error>)
+    Taken,
+    Fail
 }
+
+struct WillBe<T: Send> {
+    pub state: State<T>,
+    rx: std::sync::mpsc::Receiver<T>,
+    cancel: bool
+}
+
+impl<T: Send + 'static> WillBe<T> where {
+    pub fn new_become(closure: Box<Fn() -> T + Send>)
+                  -> WillBe<T> {
+        let (tx,rx) = std::sync::mpsc::channel();
+        let mut willbe = WillBe { state: State::Becoming,
+                                  rx: rx,
+                                  cancel: false };
+        willbe.run(closure, tx);
+        willbe
+    }
+
+    fn run(&mut self, closure: Box<Fn() -> T + Send>, tx: std::sync::mpsc::Sender<T>) {
+        std::thread::spawn(move|| {
+           let thing = closure();
+           tx.send(thing).unwrap();
+        });
+    }
+
+    pub fn check(&mut self) -> Result<(), Box<std::error::Error>> {
+        match self.state {
+            State::Is(_) => Ok(()),
+            _ => {
+                let thing = self.rx.try_recv()?;
+                self.state = State::Is(thing);
+                Ok(())
+            }
+        }
+    }
+
+    pub fn wait(mut self) -> Result<T, std::sync::mpsc::RecvError> {
+        self.rx.recv()
+    }
+
+    pub fn take(mut self) -> Option<T> {
+        match self.state {
+            State::Is(thing) => Some(thing),
+            _ => None
+        }
+    }
+}
+
+impl<W: Widget + Send> PartialEq for WillBeWidget<W> {
+    fn eq(&self, other: &WillBeWidget<W>) -> bool {
+        if self.coordinates == other.coordinates {
+            true
+        } else {
+            false
+        }
+    }
+}
+
+struct WillBeWidget<T: Widget + Send> {
+    willbe: WillBe<T>,
+    coordinates: Coordinates
+}
+
+// impl<T: Widget + Send> WillBeWidget<T> {
+//     fn is_widget(&self) -> bool {
+//         self.willbe.check().is_ok()
+//     }
+    // fn take_widget(self) {
+    //     if self.is_widget() {
+    //         let widget = self.willbe.take();
+    //     }
+    // }
+//}
+
+impl<T: Widget + Send> Widget for WillBeWidget<T> {
+    fn get_coordinates(&self) -> &Coordinates {
+        &self.coordinates
+    }
+    fn set_coordinates(&mut self, coordinates: &Coordinates) {
+        if self.coordinates == *coordinates {
+            return;
+        }
+        self.coordinates = coordinates.clone();
+        match &mut self.willbe.state {
+            State::Is(widget) => {
+                widget.set_coordinates(&coordinates.clone());
+                self.refresh();
+            }
+            _ => {}
+        }
+    }
+    fn render_header(&self) -> String {
+        "".to_string()
+    }
+    fn refresh(&mut self) {
+        match &mut self.willbe.state {
+            State::Is(widget) => {
+                widget.refresh();
+            }
+            _ => {}
+        }
+    }
+    fn get_drawlist(&self) -> String {
+        match &self.willbe.state {
+            State::Is(widget) => {
+                widget.get_drawlist()
+            },
+            _ => { "".to_string() }
+        }
+    }
+}
+
+
+
+#[derive(PartialEq)]
+pub struct LOLPreviewer {
+    widget: WillBeWidget<Box<dyn Widget + Send>>,
+}
+
+
+impl LOLPreviewer {
+    pub fn new() -> LOLPreviewer {
+        let willbe = WillBeWidget::<Box<dyn Widget + Send>> {
+            coordinates: Coordinates::new(),
+            willbe: WillBe::new_become(Box::new(move || {
+                Box::new(crate::textview::TextView {
+                    lines: vec![],
+                    buffer: String::new(),
+                    coordinates: Coordinates::new()
+                }) as Box<dyn Widget + Send>
+            }))
+        };
+        LOLPreviewer { widget: willbe }
+    }
+
+    fn become_preview(&mut self, widget: WillBeWidget<Box<dyn Widget + Send>>) {
+        self.widget =  widget;
+    }
+
+    pub fn set_file(&mut self, file: &File) {
+        let coordinates = self.get_coordinates().clone();
+        let redraw = crate::term::reset() + &self.get_redraw_empty_list(0);
+        //let pids = PIDS.clone();
+        //kill_procs();
+        let file = file.clone();
+
+        self.become_preview(WillBeWidget::<Box<dyn Widget + Send>> {
+            coordinates: coordinates.clone(),
+            willbe: WillBe::new_become(Box::new(move || {
+                //kill_procs();
+                let file = file.clone();
+                let mut bufout = std::io::BufWriter::new(std::io::stdout());
+                match &file.kind {
+                    Kind::Directory => match Files::new_from_path(&file.path) {
+                        Ok(files) => {
+                            //if !is_current(&file) { return }
+                            let len = files.len();
+                            //if len == 0 { return };
+                            let mut file_list = ListView::new(files);
+                            file_list.set_coordinates(&coordinates);
+                            file_list.refresh();
+                            //if !is_current(&file) { return }
+                            file_list.animate_slide_up();
+                            return Box::new(file_list) as Box<dyn Widget + Send>
+
+                        }
+                        Err(err) => {},
+                    }
+                    _ => {}
+                };
+                let textview = crate::textview::TextView {
+                    lines: vec![],
+                    buffer: "".to_string(),
+                    coordinates: Coordinates::new(),
+                };
+                return Box::new(textview) as Box<dyn Widget + Send>
+            }))
+        });
+    }
+}
+
+
+
+
+impl Widget for LOLPreviewer {
+    fn get_coordinates(&self) -> &Coordinates {
+        &self.widget.coordinates
+    }
+    fn set_coordinates(&mut self, coordinates: &Coordinates) {
+        if self.widget.coordinates == *coordinates {
+            return;
+        }
+        self.widget.set_coordinates(coordinates);
+    }
+    fn render_header(&self) -> String {
+        "".to_string()
+    }
+    fn refresh(&mut self) {
+        self.widget.refresh();
+    }
+    fn get_drawlist(&self) -> String {
+        self.widget.get_drawlist()
+    }
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 #[derive(PartialEq)]
 pub struct AsyncPreviewer {

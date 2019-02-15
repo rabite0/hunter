@@ -10,7 +10,8 @@ pub struct MillerColumns<T> where T: Widget {
     pub widgets: HBox<T>,
     // pub left: Option<T>,
     // pub main: Option<T>,
-    pub preview: AsyncPreviewer,
+    //pub preview: AsyncPreviewer,
+    pub preview: crate::preview::LOLPreviewer,
     pub ratio: (u16, u16, u16),
     pub coordinates: Coordinates,
 }
@@ -24,7 +25,7 @@ where
             widgets: HBox::new(),
             coordinates: Coordinates::new(),
             ratio: (20, 30, 50),
-            preview: AsyncPreviewer::new(),
+            preview: crate::preview::LOLPreviewer::new()
         }
     }
 
