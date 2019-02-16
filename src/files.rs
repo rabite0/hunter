@@ -1,5 +1,4 @@
 use std::cmp::{Ord, Ordering};
-use std::error::Error;
 use std::ops::Index;
 use std::os::unix::fs::MetadataExt;
 use std::path::{Path, PathBuf};
@@ -8,6 +7,9 @@ use lscolors::LsColors;
 use mime_detective;
 use users;
 use chrono::TimeZone;
+use failure::Error;
+
+use crate::fail::HError;
 
 
 lazy_static! {
@@ -53,7 +55,7 @@ fn get_color(path: &Path, meta: &std::fs::Metadata) -> Option<lscolors::Color> {
 }
 
 impl Files {
-    pub fn new_from_path(path: &Path) -> Result<Files, Box<dyn Error>> {
+    pub fn new_from_path(path: &Path) -> Result<Files, Error> {
         let direntries: Result<Vec<_>, _> = std::fs::read_dir(&path)?.collect();
 
         let files: Vec<_> = direntries?
@@ -244,7 +246,7 @@ impl File {
         }
     }
 
-    pub fn new_from_path(path: &Path) -> Result<File, Box<Error>> {
+    pub fn new_from_path(path: &Path) -> Result<File, Error> {
         let pathbuf = path.to_path_buf();
         let name = path
             .file_name()
@@ -265,7 +267,7 @@ impl File {
         )
     }
 
-    pub fn new_placeholder(path: &Path) -> Result<File, Box<Error>> {
+    pub fn new_placeholder(path: &Path) -> Result<File, Error> {
         let mut file = File::new_from_path(path)?;
         file.name = "<empty>".to_string();
         file.kind = Kind::Placeholder;
@@ -314,16 +316,8 @@ impl File {
         self.kind == Kind::Directory
     }
 
-    pub fn read_dir(&self) -> Result<Files, Box<Error>> {
-        match self.kind {
-            Kind::Placeholder => {
-                let e: Box<Error>
-                    = From::from("placeholder".to_string());
-                Err(e)
-            },
-            _ => Files::new_from_path(&self.path)
-        }
-
+    pub fn read_dir(&self) -> Result<Files, Error> {
+        Files::new_from_path(&self.path)
     }
 
 

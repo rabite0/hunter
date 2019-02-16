@@ -5,6 +5,10 @@ extern crate termion;
 extern crate unicode_width;
 #[macro_use]
 extern crate lazy_static;
+#[macro_use]
+extern crate failure;
+#[macro_use]
+extern crate failure_derive;
 extern crate alphanumeric_sort;
 extern crate dirs_2;
 extern crate lscolors;
@@ -35,6 +39,7 @@ mod window;
 mod hbox;
 mod tabview;
 mod async_widget;
+mod fail;
 
 use window::Window;
 ///use async_widget::AsyncPlug;

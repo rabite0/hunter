@@ -69,9 +69,6 @@ impl FileBrowser {
                 self.columns.push_widget(view);
                 self.update_preview();
             },
-
-            Err(ref err) if err.description() == "placeholder".to_string() =>
-                self.show_status("No! Can't open this!"),
             _ => {
                 let status = std::process::Command::new("rifle")
                     .args(file.path.file_name())

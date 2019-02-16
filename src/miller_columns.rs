@@ -1,7 +1,7 @@
 use termion::event::Key;
 
 use crate::coordinates::{Coordinates, Position, Size};
-use crate::preview::AsyncPreviewer;
+use crate::preview::Previewer;
 use crate::widget::Widget;
 use crate::hbox::HBox;
 
@@ -11,7 +11,7 @@ pub struct MillerColumns<T> where T: Widget {
     // pub left: Option<T>,
     // pub main: Option<T>,
     //pub preview: AsyncPreviewer,
-    pub preview: crate::preview::LOLPreviewer,
+    pub preview: Previewer,
     pub ratio: (u16, u16, u16),
     pub coordinates: Coordinates,
 }
@@ -25,7 +25,7 @@ where
             widgets: HBox::new(),
             coordinates: Coordinates::new(),
             ratio: (20, 30, 50),
-            preview: crate::preview::LOLPreviewer::new()
+            preview: Previewer::new()
         }
     }
 

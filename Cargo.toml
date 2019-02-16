@@ -17,6 +17,8 @@ dirs-2 = "1.1.0"
 users = "0.8"
 chrono = "0.4"
 libc = "*"
+failure = "0.1.5"
+failure_derive = "0.1.1"
 
 #[profile.release]
 #debug = true

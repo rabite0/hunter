@@ -15,6 +15,13 @@ pub struct TextView {
 }
 
 impl TextView {
+    pub fn new_blank() -> TextView {
+        TextView {
+            lines: vec![],
+            buffer: String::new(),
+            coordinates: Coordinates::new()
+        }
+    }
     pub fn new_from_file(file: &File) -> TextView {
         let file = std::fs::File::open(&file.path).unwrap();
         let file = std::io::BufReader::new(file);
