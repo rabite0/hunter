@@ -13,19 +13,24 @@ use crate::widget::Widget;
 use crate::fail::HError;
 
 
-
+type HResult<T> = Result<T, HError>;
+type HClosure<T> = Box<Fn() -> Result<T, HError> + Send>;
+type WClosure = HClosure<Box<dyn Widget>>;
+type WidgetO = Box<dyn Widget + Send>;
+type WidgetFn = Box<Fn() -> Box<dyn Widget + Send>>;
 
 lazy_static! {
-    static ref PIDS: Arc<Mutex<Vec<u32>>> = { Arc::new(Mutex::new(vec![])) };
+    static ref SUBPROC: Arc<Mutex<Option<u32>>> = { Arc::new(Mutex::new(None)) };
     static ref CURFILE: Arc<Mutex<Option<File>>> = { Arc::new(Mutex::new(None)) };
 }
 
-fn kill_procs() {
-    let mut pids = PIDS.lock().unwrap();
-    for pid in &*pids {
-        unsafe { libc::kill(*pid as i32, 9); }
-    }
-    pids.clear();
+fn kill_proc() -> HResult<()> {
+    let mut pid = SUBPROC.lock()?;
+    pid.map(|pid|
+        unsafe { libc::kill(pid as i32, 15); }
+    );
+    *pid = None;
+    Ok(())
 }
 
 fn is_current(file: &File) -> bool {
@@ -33,6 +38,12 @@ fn is_current(file: &File) -> bool {
         Some(curfile) => curfile == file,
         None => true
     }
+}
+
+fn set_current(file: &File) -> HResult<()> {
+    let mut curfile = CURFILE.lock()?;
+    *curfile = Some(file.clone());
+    Ok(())
 }
 
 enum State<T: Send> {
@@ -49,7 +60,7 @@ struct WillBe<T: Send> {
 }
 
 impl<T: Send + 'static> WillBe<T> where {
-    pub fn new_become(closure: Box<Fn() -> T + Send>)
+    pub fn new_become(closure: HClosure<T>)
                   -> WillBe<T> {
         let (tx,rx) = std::sync::mpsc::channel();
         let mut willbe = WillBe { state: State::Becoming,
@@ -59,10 +70,13 @@ impl<T: Send + 'static> WillBe<T> where {
         willbe
     }
 
-    fn run(&mut self, closure: Box<Fn() -> T + Send>, tx: std::sync::mpsc::Sender<T>) {
+    fn run(&mut self, closure: HClosure<T>, tx: std::sync::mpsc::Sender<T>) {
         std::thread::spawn(move|| {
-           let thing = closure();
-           tx.send(thing).ok();
+            let thing = closure();
+            match thing {
+                Ok(thing) => { tx.send(thing).ok(); },
+                Err(err) => { dbg!(err); }
+            }
         });
     }
 
@@ -105,7 +119,7 @@ struct WillBeWidget<T: Widget + Send> {
 }
 
 impl<T: Widget + Send + 'static> WillBeWidget<T> {
-    fn new(closure: Box<Fn() -> T + Send>) -> WillBeWidget<T> {
+    fn new(closure: HClosure<T>) -> WillBeWidget<T> {
         WillBeWidget {
             willbe: WillBe::new_become(Box::new(move || closure())),
             coordinates: Coordinates::new()
@@ -162,7 +176,7 @@ impl<T: Widget + Send> Widget for WillBeWidget<T> {
     }
 }
 
-type WidgetO = Box<dyn Widget + Send>;
+
 
 #[derive(PartialEq)]
 pub struct Previewer {
@@ -173,75 +187,86 @@ pub struct Previewer {
 impl Previewer {
     pub fn new() -> Previewer {
         let willbe = WillBeWidget::new(Box::new(move || {
-                Box::new(crate::textview::TextView {
+                Ok(Box::new(crate::textview::TextView {
                     lines: vec![],
                     buffer: String::new(),
                     coordinates: Coordinates::new()
-                }) as Box<dyn Widget + Send>
+                }) as Box<dyn Widget + Send>)
         }));
         Previewer { widget: willbe }
     }
 
-    fn become_preview(&mut self, widget: WillBeWidget<Box<dyn Widget + Send>>) {
+    fn become_preview(&mut self,
+                      widget: HResult<WillBeWidget<WidgetO>>) {
         let coordinates = self.get_coordinates().clone();
-        self.widget =  widget;
+        self.widget =  widget.unwrap();
         self.set_coordinates(&coordinates);
     }
 
     pub fn set_file(&mut self, file: &File) {
         let coordinates = self.get_coordinates().clone();
-        //let pids = PIDS.clone();
-        //kill_procs();
         let file = file.clone();
+        set_current(&file).unwrap();
 
-        self.become_preview(WillBeWidget::new(Box::new(move || {
-            //kill_procs();
+        self.become_preview(Ok(WillBeWidget::new(Box::new(move || {
+            kill_proc().unwrap();
             let file = file.clone();
 
             if file.kind == Kind::Directory  {
-                let preview =  Previewer::preview_dir(&file, &coordinates);
-                let mut preview = preview.unwrap();
-                preview.set_coordinates(&coordinates);
-                return preview
+                let preview = Previewer::preview_dir(&file, &coordinates);
+                return preview;
             }
 
             if file.get_mime() == Some("text".to_string()) {
                 return Previewer::preview_text(&file, &coordinates)
-            } else {
-
             }
 
-            let mut textview = crate::textview::TextView::new_blank();
-            textview.set_coordinates(&coordinates);
-            return Box::new(textview) as Box<dyn Widget + Send>
-        })));
+            let preview = Previewer::preview_external(&file, &coordinates);
+            if preview.is_ok() { return preview; }
+            else {
+                let mut blank = Box::new(TextView::new_blank());
+                blank.set_coordinates(&coordinates);
+                blank.refresh();
+                blank.animate_slide_up();
+                return Ok(blank)
+            }
+        }))));
+    }
+
+    fn preview_failed(file: &File) -> HResult<WidgetO> {
+        Err(HError::PreviewFailed { file: file.name.clone() })
     }
 
     fn preview_dir(file: &File, coordinates: &Coordinates)
-                   -> Result<WidgetO, Error> {
+                   -> Result<WidgetO, HError> {
         let files = Files::new_from_path(&file.path)?;
-        //if !is_current(&file) { return }
         let len = files.len();
-        //if len == 0 { return };
+
+        if len == 0 || !is_current(&file) { return Previewer::preview_failed(&file) }
+
         let mut file_list = ListView::new(files);
         file_list.set_coordinates(&coordinates);
         file_list.refresh();
-        //if !is_current(&file) { return }
+        if !is_current(&file) { return Previewer::preview_failed(&file) }
         file_list.animate_slide_up();
         Ok(Box::new(file_list) as Box<dyn Widget + Send>)
     }
 
-    fn preview_text(file: &File, coordinates: &Coordinates) -> Box<dyn Widget + Send> {
+    fn preview_text(file: &File, coordinates: &Coordinates)
+                    -> HResult<WidgetO> {
         let lines = coordinates.ysize() as usize;
         let mut textview
             = TextView::new_from_file_limit_lines(&file,
                                                   lines);
-        //if !is_current(&file) { return }
+        if !is_current(&file) { return Previewer::preview_failed(&file) }
+
         textview.set_coordinates(&coordinates);
         textview.refresh();
-        //if !is_current(&file) { return }
+
+        if !is_current(&file) { return Previewer::preview_failed(&file) }
+
         textview.animate_slide_up();
-        Box::new(textview)
+        Ok(Box::new(textview))
     }
 
     fn preview_external(file: &File, coordinates: &Coordinates)
@@ -259,12 +284,21 @@ impl Previewer {
             .spawn()?;
 
         let pid = process.id();
-        let mut pids = PIDS.lock()?;
-        pids.push(pid);
+        {
+            let mut pid_ = SUBPROC.lock()?;
+            *pid_ = Some(pid);
+        }
 
-        //if !is_current(&file) { return }
+        if !is_current(&file) { return Previewer::preview_failed(&file) }
 
         let output = process.wait_with_output()?;
+
+        if !is_current(&file) { return Previewer::preview_failed(&file) }
+
+        {
+            let mut pid_ = SUBPROC.lock()?;
+            *pid_ = None;
+        }
 
         let status = output.status.code()
             .ok_or(HError::PreviewFailed{file: file.name.clone()})?;
