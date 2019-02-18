@@ -9,10 +9,56 @@ use crate::files::{File, Files};
 use crate::term;
 use crate::widget::{Widget};
 
+pub trait Listable {
+    fn len(&self) -> usize;
+    fn render(&self) -> Vec<String>;
+    fn on_refresh(&mut self) {}
+    fn on_key(&mut self, _key: Key) {}
+}
+
+impl Listable for ListView<Files> {
+    fn len(&self) -> usize {
+        self.content.len()
+    }
+
+    fn render(&self)-> Vec<String> {
+        self.render()
+    }
+
+    fn on_refresh(&mut self) {
+        let visible_file_num = self.selection + self.get_coordinates().ysize() as usize;
+        self.content.meta_upto(visible_file_num);
+    }
+
+    fn on_key(&mut self, key: Key) {
+        match key {
+            Key::Up | Key::Char('p') => {
+                self.move_up();
+                self.refresh();
+            }
+            Key::Char('P') => { for _ in 0..10 { self.move_up() } self.refresh(); }
+            Key::Char('N') => { for _ in 0..10 { self.move_down() } self.refresh(); }
+            Key::Down | Key::Char('n') => {
+                self.move_down();
+                self.refresh();
+            }
+            Key::Left => self.goto_grand_parent(),
+            Key::Right => self.goto_selected(),
+            Key::Char(' ') => self.multi_select_file(),
+            Key::Char('h') => self.toggle_hidden(),
+            Key::Char('r') => self.reverse_sort(),
+            Key::Char('s') => self.cycle_sort(),
+            Key::Char('K') => self.select_next_mtime(),
+            Key::Char('k') => self.select_prev_mtime(),
+            Key::Char('d') => self.toggle_dirs_first(),
+            Key::Char('!') => self.exec_cmd(),
+            _ => self.bad(Event::Key(key))
+        }
+    }
+}
+
 #[derive(PartialEq)]
-pub struct ListView<T>
-where
-    T: Send,
+pub struct ListView<T> where ListView<T>: Listable
 {
     pub content: T,
     lines: usize,
@@ -26,7 +72,7 @@ where
 impl<T> ListView<T>
 where
     ListView<T>: Widget,
-    T: Send
+    ListView<T>: Listable
 {
     pub fn new(content: T) -> ListView<T> {
         let view = ListView::<T> {
@@ -346,7 +392,8 @@ impl ListView<Files>
     }
 }
 
-impl Widget for ListView<Files> {
+
+impl<T> Widget for ListView<T> where ListView<T>: Listable {
     fn get_coordinates(&self) -> &Coordinates {
         &self.coordinates
     }
@@ -358,23 +405,19 @@ impl Widget for ListView<Files> {
         self.refresh();
     }
     fn refresh(&mut self) {
-        let visible_file_num = self.selection + self.get_coordinates().ysize() as usize;
-        self.content.meta_upto(visible_file_num);
-        self.lines = self.content.len();
+        self.on_refresh();
+        self.lines = self.len();
         self.buffer = self.render();
     }
 
 
     fn get_drawlist(&self) -> String {
         let mut output = term::reset();
-        let ysize = self.get_coordinates().ysize();
         let (xpos, ypos) = self.coordinates.position().position();
 
         output += &self
             .buffer
             .iter()
-            //.skip(self.offset)
-            //.take(ysize as usize)
             .enumerate()
             .map(|(i, item)| {
                 let mut output = term::normal_color();
@@ -397,34 +440,10 @@ impl Widget for ListView<Files> {
         output
     }
     fn render_header(&self) -> String {
-        format!("{} files", self.content.len())
+        format!("{} files", self.len())
     }
 
     fn on_key(&mut self, key: Key) {
-        match key {
-            Key::Up | Key::Char('p') => {
-                self.move_up();
-                self.refresh();
-            }
-            Key::Char('P') => { for _ in 0..10 { self.move_up() } self.refresh(); }
-            Key::Char('N') => { for _ in 0..10 { self.move_down() } self.refresh(); }
-            Key::Down | Key::Char('n') => {
-                self.move_down();
-                self.refresh();
-            }
-            Key::Left => self.goto_grand_parent(),
-            Key::Right => self.goto_selected(),
-            Key::Char(' ') => self.multi_select_file(),
-            Key::Char('h') => self.toggle_hidden(),
-            Key::Char('r') => self.reverse_sort(),
-            Key::Char('s') => self.cycle_sort(),
-            Key::Char('K') => self.select_next_mtime(),
-            Key::Char('k') => self.select_prev_mtime(),
-            Key::Char('d') => self.toggle_dirs_first(),
-            Key::Char('!') => self.exec_cmd(),
-            _ => {
-                self.bad(Event::Key(key));
-            }
-        }
+        Listable::on_key(self, key);
     }
 }
