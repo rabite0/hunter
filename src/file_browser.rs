@@ -3,7 +3,7 @@ use termion::event::Key;
 use std::error::Error;
 use std::io::Write;
 
-use crate::coordinates::{Coordinates, Position, Size};
+use crate::coordinates::{Coordinates};
 use crate::files::{File, Files};
 use crate::listview::ListView;
 use crate::miller_columns::MillerColumns;
@@ -212,10 +212,10 @@ impl Widget for FileBrowser {
         let ypos = self.get_coordinates().position().y();
         let file = self.selected_file();
 
-        let permissions = file.pretty_print_permissions();
+        let permissions = file.pretty_print_permissions().unwrap_or("NOPERMS".into());
         let user = file.pretty_user().unwrap_or("NOUSER".into());
         let group = file.pretty_group().unwrap_or("NOGROUP".into());
-        let mtime = file.pretty_mtime();
+        let mtime = file.pretty_mtime().unwrap_or("NOMTIME".into());
 
 
         let selection = self.main_column().get_selection();

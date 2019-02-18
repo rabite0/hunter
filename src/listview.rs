@@ -1,17 +1,13 @@
-use rayon::prelude::*;
 use termion::event::{Event, Key};
 use unicode_width::UnicodeWidthStr;
 
 use std::path::{Path, PathBuf};
 use std::io::Write;
-//use std::sync::mpsc::{channel, Sender, Receiver};
 
 use crate::coordinates::{Coordinates, Position, Size};
 use crate::files::{File, Files};
 use crate::term;
 use crate::widget::{Widget};
-
-// Maybe also buffer drawlist for efficiency when it doesn't change every draw
 
 #[derive(PartialEq)]
 pub struct ListView<T>
@@ -95,7 +91,7 @@ where
 
     fn render_line(&self, file: &File) -> String {
         let name = &file.name;
-        let (size, unit) = file.calculate_size();
+        let (size, unit) = file.calculate_size().unwrap();
 
         let selection_gap = "  ".to_string();
         let (name, selection_color) =  if file.is_selected() {
@@ -137,10 +133,6 @@ where
 }
 
 impl ListView<Files>
-where
-    ListView<Files>: Widget,
-    Files: std::ops::Index<usize, Output = File>,
-    Files: std::marker::Sized,
 {
     pub fn selected_file(&self) -> &File {
         let selection = self.selection;
@@ -366,6 +358,8 @@ impl Widget for ListView<Files> {
         self.refresh();
     }
     fn refresh(&mut self) {
+        let visible_file_num = self.selection + self.get_coordinates().ysize() as usize;
+        self.content.meta_upto(visible_file_num);
         self.lines = self.content.len();
         self.buffer = self.render();
     }

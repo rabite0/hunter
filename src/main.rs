@@ -5,7 +5,6 @@ extern crate termion;
 extern crate unicode_width;
 #[macro_use]
 extern crate lazy_static;
-#[macro_use]
 extern crate failure;
 #[macro_use]
 extern crate failure_derive;
@@ -23,7 +22,6 @@ use termion::raw::IntoRawMode;
 use termion::screen::AlternateScreen;
 
 use std::io::{stdout, Write};
-use std::marker::Send;
 
 mod coordinates;
 mod file_browser;
@@ -42,16 +40,14 @@ mod async_widget;
 mod fail;
 
 use window::Window;
-///use async_widget::AsyncPlug;
-use widget::Widget;
+
 
 fn main() {
-    let mut bufout = std::io::BufWriter::new(std::io::stdout());
+    let bufout = std::io::BufWriter::new(std::io::stdout());
     // Need to do this here to actually turn terminal into raw mode...
     let mut _screen = AlternateScreen::from(Box::new(bufout));
     let mut _stdout = MouseTerminal::from(stdout().into_raw_mode().unwrap());
 
-    
 
     let filebrowser = crate::file_browser::FileBrowser::new().unwrap();
     let mut tabview = crate::tabview::TabView::new();

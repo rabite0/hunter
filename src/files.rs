@@ -9,7 +9,9 @@ use users;
 use chrono::TimeZone;
 use failure::Error;
 
-use crate::fail::HError;
+use crate::fail::HResult;
+
+use std::sync::{Arc, Mutex};
 
 
 lazy_static! {
@@ -33,26 +35,9 @@ impl Index<usize> for Files {
     }
 }
 
-fn get_kind(file: &std::fs::DirEntry) -> Kind {
-    let file = file.file_type().unwrap();
-    if file.is_file() {
-        return Kind::File;
-    }
-    if file.is_dir() {
-        return Kind::Directory;
-    }
-    if file.is_symlink() {
-        return Kind::Link;
-    }
-    Kind::Pipe
-}
 
-fn get_color(path: &Path, meta: &std::fs::Metadata) -> Option<lscolors::Color> {
-    match COLORS.style_for_path_with_metadata(path, Some(&meta)) {
-        Some(style) => style.clone().foreground,
-        None => None,
-    }
-}
+
+
 
 impl Files {
     pub fn new_from_path(path: &Path) -> Result<Files, Error> {
@@ -61,22 +46,55 @@ impl Files {
         let files: Vec<_> = direntries?
             .iter()
             .map(|file| {
-                //let file = file?;
                 let name = file.file_name();
                 let name = name.to_string_lossy();
-                let kind = get_kind(&file);
                 let path = file.path();
-                let meta = file.metadata().unwrap();
-                let mode = meta.mode();
-                let size = meta.len();
-                let mtime = meta.mtime();
-                let user = meta.uid();
-                let group = meta.gid();
-                let color = get_color(&path, &meta);
-                File::new(&name, path, kind, size as usize, mtime, color, mode,
-                          user, group)
+                File::new(&name, path)
             })
             .collect();
+
+        let mut files = Files {
+            directory: File::new_from_path(&path)?,
+            files: files,
+            sort: SortBy::Name,
+            dirs_first: true,
+            reverse: false,
+            show_hidden: true
+        };
+
+        files.sort();
+
+        if files.files.len() == 0 {
+            files.files = vec![File::new_placeholder(&path)?];
+        }
+
+        Ok(files)
+    }
+
+    pub fn new_from_path_cancellable(path: &Path, stale: Arc<Mutex<bool>>) -> Result<Files, Error> {
+        let direntries: Result<Vec<_>, _> = std::fs::read_dir(&path)?.collect();
+
+        let files: Vec<_> = direntries?
+            .iter()
+            .map(|file| {
+                if crate::preview::is_stale(&stale).unwrap() {
+                    None
+                } else {
+                    let name = file.file_name();
+                    let name = name.to_string_lossy();
+                    let path = file.path();
+                    Some(File::new(&name, path))
+                }
+            })
+            .fuse()
+            .flatten()
+            .collect();
+
+        if crate::preview::is_stale(&stale).unwrap() {
+            return Err(crate::fail::HError::StalePreviewError {
+                file: path.to_string_lossy().to_string()
+            })?;
+        }
 
         let mut files = Files {
             directory: File::new_from_path(&path)?,
@@ -102,19 +120,21 @@ impl Files {
                 .files
                 .sort_by(|a, b| alphanumeric_sort::compare_str(&a.name, &b.name)),
             SortBy::Size => {
+                self.meta_all();
                 self.files.sort_by(|a, b| {
-                    if a.size == b.size {
+                    if a.meta().unwrap().size() == b.meta().unwrap().size() {
                         return alphanumeric_sort::compare_str(&b.name, &a.name);
                     }
-                    a.size.cmp(&b.size).reverse()
+                    a.meta().unwrap().size().cmp(&b.meta().unwrap().size()).reverse()
                 });
             }
             SortBy::MTime => {
+                self.meta_all();
                 self.files.sort_by(|a, b| {
-                    if a.mtime == b.mtime {
+                    if a.meta().unwrap().mtime() == b.meta().unwrap().mtime() {
                         return alphanumeric_sort::compare_str(&a.name, &b.name);
                     }
-                    a.mtime.cmp(&b.mtime)
+                    a.meta().unwrap().mtime().cmp(&b.meta().unwrap().mtime())
                 });
             }
         };
@@ -169,6 +189,17 @@ impl Files {
         self.files = files;
     }
 
+    pub fn meta_all(&mut self) {
+        let len = self.files.len();
+        self.meta_upto(len);
+    }
+
+    pub fn meta_upto(&mut self, to: usize) {
+        for file in self.files.iter_mut().take(to) {
+            file.get_meta().ok();
+        }
+    }
+
     pub fn len(&self) -> usize {
         self.files.len()
     }
@@ -182,8 +213,6 @@ impl Files {
 pub enum Kind {
     Directory,
     File,
-    Link,
-    Pipe,
     Placeholder
 }
 
@@ -205,17 +234,24 @@ pub enum SortBy {
     MTime,
 }
 
-#[derive(Debug, PartialEq, Clone)]
+
+impl PartialEq for File {
+    fn eq(&self, other: &File) -> bool {
+        if self.path == other.path {
+            true
+        } else {
+            false
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
 pub struct File {
     pub name: String,
     pub path: PathBuf,
-    pub size: Option<usize>,
     pub kind: Kind,
-    pub mtime: i64,
     pub color: Option<lscolors::Color>,
-    pub mode: u32,
-    pub user: u32,
-    pub group: u32,
+    pub meta: Option<std::fs::Metadata>,
     pub selected: bool
     // flags: Option<String>,
 }
@@ -224,24 +260,13 @@ impl File {
     pub fn new(
         name: &str,
         path: PathBuf,
-        kind: Kind,
-        size: usize,
-        mtime: i64,
-        color: Option<lscolors::Color>,
-        mode: u32,
-        user: u32,
-        group: u32
     ) -> File {
         File {
             name: name.to_string(),
+            kind: if path.is_dir() { Kind::Directory } else { Kind::File },
             path: path,
-            size: Some(size),
-            kind: kind,
-            mtime: mtime,
-            color: color,
-            mode: mode,
-            user: user,
-            group: group,
+            meta: None,
+            color: None,
             selected: false
         }
     }
@@ -253,18 +278,7 @@ impl File {
             .map(|name| name.to_string_lossy().to_string())
             .unwrap_or("/".to_string());
 
-        let kind = Kind::Directory; //get_kind(&path);
-        let meta = &path.metadata()?;
-        let size = meta.len();
-        let user = meta.uid();
-        let group = meta.gid();
-        let color = get_color(&path, meta);
-        let mode = meta.mode();
-        let mtime = meta.mtime();
-        Ok(
-            File::new(&name, pathbuf, kind, size as usize, mtime, color, mode, user
-                     , group)
-        )
+        Ok(File::new(&name, pathbuf))
     }
 
     pub fn new_placeholder(path: &Path) -> Result<File, Error> {
@@ -274,17 +288,44 @@ impl File {
         Ok(file)
     }
 
-    pub fn calculate_size(&self) -> (usize, String) {
+    pub fn meta(&self) -> HResult<std::fs::Metadata> {
+        match &self.meta {
+            Some(meta) => Ok(meta.clone()),
+            None => { Ok(std::fs::metadata(&self.path)?) }
+        }
+    }
+
+    pub fn get_meta(&mut self) -> HResult<()> {
+        if let Some(_) = self.meta { return Ok(()) }
+
+        let meta = std::fs::metadata(&self.path)?;
+        let color = self.get_color(&meta);
+
+        self.meta = Some(meta);
+        self.color = color;
+        Ok(())
+    }
+
+    fn get_color(&self, meta: &std::fs::Metadata) -> Option<lscolors::Color> {
+        match COLORS.style_for_path_with_metadata(&self.path, Some(&meta)) {
+            Some(style) => style.clone().foreground,
+            None => None,
+        }
+    }
+
+    pub fn calculate_size(&self) -> HResult<(u64, String)> {
         if self.is_dir() {
             let dir_iterator = std::fs::read_dir(&self.path);
             match dir_iterator {
-                Ok(dir_iterator) => return (dir_iterator.count(), "".to_string()),
-                Err(_) => return (0, "".to_string())
+                Ok(dir_iterator) => return Ok((dir_iterator.count() as u64,
+                                               "".to_string())),
+                Err(_) => return Ok((0, "".to_string()))
             }
         }
 
+
         let mut unit = 0;
-        let mut size = self.size.unwrap();
+        let mut size = self.meta()?.size();
         while size > 1024 {
             size /= 1024;
             unit += 1;
@@ -299,7 +340,7 @@ impl File {
             _ => "",
         }
         .to_string();
-        (size, unit)
+        Ok((size, unit))
     }
 
     pub fn get_mime(&self) -> Option<String> {
@@ -333,8 +374,8 @@ impl File {
         self.selected
     }
 
-    pub fn pretty_print_permissions(&self) -> String {
-        let perms: usize = format!("{:o}", self.mode).parse().unwrap();
+    pub fn pretty_print_permissions(&self) -> HResult<String> {
+        let perms: usize = format!("{:o}", self.meta()?.mode()).parse().unwrap();
         let perms: usize  = perms % 800;
         let perms = format!("{}", perms);
 
@@ -354,11 +395,12 @@ impl File {
             _ => format!("---")
         }).collect();
 
-        perms
+        Ok(perms)
     }
 
     pub fn pretty_user(&self) -> Option<String> {
-        let uid = self.user;
+        if self.meta().is_err() { return None }
+        let uid = self.meta().unwrap().uid();
         let file_user = users::get_user_by_uid(uid)?;
         let cur_user = users::get_current_username()?;
         let color =
@@ -370,7 +412,8 @@ impl File {
     }
 
     pub fn pretty_group(&self) -> Option<String> {
-        let gid = self.group;
+        if self.meta().is_err() { return None }
+        let gid = self.meta().unwrap().gid();
         let file_group = users::get_group_by_gid(gid)?;
         let cur_group = users::get_current_groupname()?;
         let color =
@@ -381,10 +424,11 @@ impl File {
         Some(format!("{}{}", color, file_group.name().to_string_lossy()))
     }
 
-    pub fn pretty_mtime(&self) -> String {
+    pub fn pretty_mtime(&self) -> Option<String> {
+        if self.meta().is_err() { return None }
         //let time = chrono::DateTime::from_timestamp(self.mtime, 0);
         let time: chrono::DateTime<chrono::Local>
-            = chrono::Local.timestamp(self.mtime, 0);
-        time.format("%F %R").to_string()
+            = chrono::Local.timestamp(self.meta().unwrap().mtime(), 0);
+        Some(time.format("%F %R").to_string())
     }
 }

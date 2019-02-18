@@ -1,6 +1,6 @@
 use termion::event::Key;
 
-use crate::coordinates::{Coordinates, Position, Size};
+use crate::coordinates::{Coordinates};
 use crate::widget::Widget;
 
 pub trait Tabbable<T: Widget> {

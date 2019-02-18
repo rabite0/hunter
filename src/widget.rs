@@ -6,6 +6,9 @@ use std::io::{BufWriter, Write};
 
 
 pub trait Widget {
+    fn get_widget(&self) -> Box<dyn Widget> {
+        Box::new(crate::textview::TextView::new_blank())
+    }
     fn get_coordinates(&self) -> &Coordinates;
     fn set_coordinates(&mut self, coordinates: &Coordinates);
     fn render_header(&self) -> String;
@@ -120,7 +123,7 @@ pub trait Widget {
         let ysize = coords.ysize();
         let clear = self.get_clearlist();
         let pause = std::time::Duration::from_millis(5);
-        let mut bufout = std::io::BufWriter::new(std::io::stdout());
+        let mut bufout = BufWriter::new(std::io::stdout());
 
         for i in (0..10).rev() {
             let coords = Coordinates { size: Size((xsize,ysize-i)),
@@ -132,8 +135,7 @@ pub trait Widget {
             let buffer = self.get_drawlist();
             write!(bufout, "{}{}",
                    clear, buffer).unwrap();
-            bufout.flush();
-            
+            bufout.flush().ok();
 
             std::thread::sleep(pause);
         }

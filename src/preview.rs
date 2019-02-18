@@ -1,7 +1,5 @@
 use failure::Error;
-use failure::Fail;
 
-use std::io::Write;
 use std::sync::Mutex;
 use std::sync::Arc;
 
@@ -14,14 +12,11 @@ use crate::fail::HError;
 
 
 type HResult<T> = Result<T, HError>;
-type HClosure<T> = Box<Fn() -> Result<T, HError> + Send>;
-type WClosure = HClosure<Box<dyn Widget>>;
+type HClosure<T> = Box<Fn(Arc<Mutex<bool>>) -> Result<T, HError> + Send>;
 type WidgetO = Box<dyn Widget + Send>;
-type WidgetFn = Box<Fn() -> Box<dyn Widget + Send>>;
 
 lazy_static! {
     static ref SUBPROC: Arc<Mutex<Option<u32>>> = { Arc::new(Mutex::new(None)) };
-    static ref CURFILE: Arc<Mutex<Option<File>>> = { Arc::new(Mutex::new(None)) };
 }
 
 fn kill_proc() -> HResult<()> {
@@ -33,17 +28,8 @@ fn kill_proc() -> HResult<()> {
     Ok(())
 }
 
-fn is_current(file: &File) -> bool {
-    match CURFILE.lock().unwrap().as_ref() {
-        Some(curfile) => curfile == file,
-        None => true
-    }
-}
-
-fn set_current(file: &File) -> HResult<()> {
-    let mut curfile = CURFILE.lock()?;
-    *curfile = Some(file.clone());
-    Ok(())
+pub fn is_stale(stale: &Arc<Mutex<bool>>) -> HResult<bool> {
+    Ok(*(stale.lock()?))
 }
 
 enum State<T: Send> {
@@ -56,7 +42,7 @@ enum State<T: Send> {
 struct WillBe<T: Send> {
     pub state: State<T>,
     rx: std::sync::mpsc::Receiver<T>,
-    cancel: bool
+    stale: Arc<Mutex<bool>>
 }
 
 impl<T: Send + 'static> WillBe<T> where {
@@ -65,19 +51,25 @@ impl<T: Send + 'static> WillBe<T> where {
         let (tx,rx) = std::sync::mpsc::channel();
         let mut willbe = WillBe { state: State::Becoming,
                                   rx: rx,
-                                  cancel: false };
+                                  stale: Arc::new(Mutex::new(false)) };
         willbe.run(closure, tx);
         willbe
     }
 
     fn run(&mut self, closure: HClosure<T>, tx: std::sync::mpsc::Sender<T>) {
+        let stale = self.stale.clone();
         std::thread::spawn(move|| {
-            let thing = closure();
+            let thing = closure(stale);
             match thing {
                 Ok(thing) => { tx.send(thing).ok(); },
                 Err(err) => { dbg!(err); }
             }
         });
+    }
+
+    pub fn set_stale(&mut self) -> HResult<()> {
+        *self.stale.lock()? = true;
+        Ok(())
     }
 
     pub fn check(&mut self) -> Result<(), Error> {
@@ -91,15 +83,8 @@ impl<T: Send + 'static> WillBe<T> where {
         }
     }
 
-    pub fn wait(mut self) -> Result<T, std::sync::mpsc::RecvError> {
+    pub fn wait(self) -> Result<T, std::sync::mpsc::RecvError> {
         self.rx.recv()
-    }
-
-    pub fn take(mut self) -> Option<T> {
-        match self.state {
-            State::Is(thing) => Some(thing),
-            _ => None
-        }
     }
 }
 
@@ -121,9 +106,12 @@ struct WillBeWidget<T: Widget + Send> {
 impl<T: Widget + Send + 'static> WillBeWidget<T> {
     fn new(closure: HClosure<T>) -> WillBeWidget<T> {
         WillBeWidget {
-            willbe: WillBe::new_become(Box::new(move || closure())),
+            willbe: WillBe::new_become(Box::new(move |stale| closure(stale))),
             coordinates: Coordinates::new()
         }
+    }
+    pub fn set_stale(&mut self) -> HResult<()> {
+        self.willbe.set_stale()
     }
 }
 
@@ -177,8 +165,16 @@ impl<T: Widget + Send> Widget for WillBeWidget<T> {
 }
 
 
+impl PartialEq for Previewer {
+    fn eq(&self, other: &Previewer) -> bool {
+        if self.widget.coordinates == other.widget.coordinates {
+            true
+        } else {
+            false
+        }
+    }
+}
 
-#[derive(PartialEq)]
 pub struct Previewer {
     widget: WillBeWidget<Box<dyn Widget + Send>>,
 }
@@ -186,12 +182,9 @@ pub struct Previewer {
 
 impl Previewer {
     pub fn new() -> Previewer {
-        let willbe = WillBeWidget::new(Box::new(move || {
-                Ok(Box::new(crate::textview::TextView {
-                    lines: vec![],
-                    buffer: String::new(),
-                    coordinates: Coordinates::new()
-                }) as Box<dyn Widget + Send>)
+        let willbe = WillBeWidget::new(Box::new(move |_| {
+            Ok(Box::new(crate::textview::TextView::new_blank())
+               as Box<dyn Widget + Send>)
         }));
         Previewer { widget: willbe }
     }
@@ -206,22 +199,26 @@ impl Previewer {
     pub fn set_file(&mut self, file: &File) {
         let coordinates = self.get_coordinates().clone();
         let file = file.clone();
-        set_current(&file).unwrap();
 
-        self.become_preview(Ok(WillBeWidget::new(Box::new(move || {
+        self.widget.set_stale().ok();
+
+        self.become_preview(Ok(WillBeWidget::new(Box::new(move |stale| {
             kill_proc().unwrap();
+
             let file = file.clone();
 
             if file.kind == Kind::Directory  {
-                let preview = Previewer::preview_dir(&file, &coordinates);
+                let preview = Previewer::preview_dir(&file, &coordinates, stale.clone());
                 return preview;
             }
 
             if file.get_mime() == Some("text".to_string()) {
-                return Previewer::preview_text(&file, &coordinates)
+                return Previewer::preview_text(&file, &coordinates, stale.clone())
             }
 
-            let preview = Previewer::preview_external(&file, &coordinates);
+            let preview = Previewer::preview_external(&file,
+                                                      &coordinates,
+                                                      stale.clone());
             if preview.is_ok() { return preview; }
             else {
                 let mut blank = Box::new(TextView::new_blank());
@@ -237,39 +234,40 @@ impl Previewer {
         Err(HError::PreviewFailed { file: file.name.clone() })
     }
 
-    fn preview_dir(file: &File, coordinates: &Coordinates)
+    fn preview_dir(file: &File, coordinates: &Coordinates, stale: Arc<Mutex<bool>>)
                    -> Result<WidgetO, HError> {
-        let files = Files::new_from_path(&file.path)?;
+        let files = Files::new_from_path_cancellable(&file.path,
+                                                         stale.clone())?;
         let len = files.len();
 
-        if len == 0 || !is_current(&file) { return Previewer::preview_failed(&file) }
+        if len == 0 || is_stale(&stale)? { return Previewer::preview_failed(&file) }
 
         let mut file_list = ListView::new(files);
         file_list.set_coordinates(&coordinates);
         file_list.refresh();
-        if !is_current(&file) { return Previewer::preview_failed(&file) }
+        if is_stale(&stale)? { return Previewer::preview_failed(&file) }
         file_list.animate_slide_up();
         Ok(Box::new(file_list) as Box<dyn Widget + Send>)
     }
 
-    fn preview_text(file: &File, coordinates: &Coordinates)
+    fn preview_text(file: &File, coordinates: &Coordinates, stale: Arc<Mutex<bool>>)
                     -> HResult<WidgetO> {
         let lines = coordinates.ysize() as usize;
         let mut textview
             = TextView::new_from_file_limit_lines(&file,
                                                   lines);
-        if !is_current(&file) { return Previewer::preview_failed(&file) }
+        if is_stale(&stale)? { return Previewer::preview_failed(&file) }
 
         textview.set_coordinates(&coordinates);
         textview.refresh();
 
-        if !is_current(&file) { return Previewer::preview_failed(&file) }
+        if is_stale(&stale)? { return Previewer::preview_failed(&file) }
 
         textview.animate_slide_up();
         Ok(Box::new(textview))
     }
 
-    fn preview_external(file: &File, coordinates: &Coordinates)
+    fn preview_external(file: &File, coordinates: &Coordinates, stale: Arc<Mutex<bool>>)
                         -> Result<Box<dyn Widget + Send>, HError> {
         let process =
             std::process::Command::new("scope.sh")
@@ -289,12 +287,11 @@ impl Previewer {
             *pid_ = Some(pid);
         }
 
-        if !is_current(&file) { return Previewer::preview_failed(&file) }
+        if is_stale(&stale)? { return Previewer::preview_failed(&file) }
 
         let output = process.wait_with_output()?;
 
-        if !is_current(&file) { return Previewer::preview_failed(&file) }
-
+        if is_stale(&stale)? { return Previewer::preview_failed(&file) }
         {
             let mut pid_ = SUBPROC.lock()?;
             *pid_ = None;
@@ -303,7 +300,7 @@ impl Previewer {
         let status = output.status.code()
             .ok_or(HError::PreviewFailed{file: file.name.clone()})?;
 
-        if status == 0 || status == 5 && is_current(&file) {
+        if status == 0 || status == 5 && !is_stale(&stale)? { //is_current(&file) {
             let output = std::str::from_utf8(&output.stdout)
                 .unwrap()
                 .to_string();

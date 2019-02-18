@@ -1,8 +1,6 @@
-use ::rayon::prelude::*;
-
 use std::io::BufRead;
 
-use crate::coordinates::{Coordinates, Position, Size};
+use crate::coordinates::{Coordinates};
 use crate::files::File;
 use crate::term::sized_string;
 use crate::widget::Widget;
