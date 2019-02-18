@@ -8,20 +8,38 @@ use crate::files::{File, Files};
 use crate::listview::ListView;
 use crate::miller_columns::MillerColumns;
 use crate::widget::Widget;
-use crate::tabview::Tabbable;
+use crate::tabview::{TabView, Tabbable};
 
 #[derive(PartialEq)]
 pub struct FileBrowser {
     pub columns: MillerColumns<ListView<Files>>,
 }
 
-impl Tabbable<FileBrowser> for FileBrowser {
-    fn new_tab(&self) -> FileBrowser {
-        FileBrowser::new().unwrap()
+impl Tabbable for TabView<FileBrowser> {
+    fn new_tab(&mut self) {
+        let tab = FileBrowser::new().unwrap();
+        self.push_widget(tab);
+        self.active += 1;
+    }
+
+    fn close_tab(&mut self) {
+        self.close_tab_();
+    }
+
+    fn next_tab(&mut self) {
+        self.next_tab_();
+    }
+
+    fn active_tab(& self) -> & dyn Widget {
+        self.active_tab_()
+    }
+
+    fn active_tab_mut(&mut self) -> &mut dyn Widget {
+        self.active_tab_mut_()
     }
 
     fn on_next_tab(&mut self) {
-        self.update_preview();
+        self.active_tab_mut().refresh();
     }
 }
 

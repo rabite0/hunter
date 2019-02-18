@@ -3,20 +3,32 @@ use termion::event::Key;
 use crate::coordinates::{Coordinates};
 use crate::widget::Widget;
 
-pub trait Tabbable<T: Widget> {
-    fn new_tab(&self) -> T;
+pub trait Tabbable {
+    fn new_tab(&mut self);
+    fn close_tab(&mut self);
+    fn next_tab(&mut self);
     fn on_next_tab(&mut self);
+    fn active_tab(&self) -> &dyn Widget;
+    fn active_tab_mut(&mut self) -> &mut dyn Widget;
+    fn on_key(&mut self, key: Key) {
+        match key {
+            Key::Ctrl('t') => { self.new_tab(); },
+            Key::Ctrl('w') => self.close_tab(),
+            Key::Char('\t') => self.next_tab(),
+            _ => self.active_tab_mut().on_key(key)
+        }
+    }
 }
 
 
 #[derive(PartialEq)]
-pub struct TabView<T> where T: Widget, T: Tabbable<T> {
+pub struct TabView<T> where T: Widget, TabView<T>: Tabbable {
     widgets: Vec<T>,
-    active: usize,
+    pub active: usize,
     coordinates: Coordinates
 }
 
-impl<T> TabView<T> where T: Widget, T: Tabbable<T> {
+impl<T> TabView<T> where T: Widget, TabView<T>: Tabbable {
     pub fn new() -> TabView<T> {
         TabView {
             widgets: vec![],
@@ -36,41 +48,35 @@ impl<T> TabView<T> where T: Widget, T: Tabbable<T> {
         widget
     }
 
-    pub fn active_widget(&self) -> &T {
+    pub fn active_tab_(&self) -> &T {
         &self.widgets[self.active]
     }
-    
-    pub fn active_widget_mut(&mut self) -> &mut T {
+
+    pub fn active_tab_mut_(&mut self) -> &mut T {
         &mut self.widgets[self.active]
     }
 
-    pub fn new_tab(&mut self) {
-        let tab = self.active_widget().new_tab();
-        self.push_widget(tab);
-        self.active += 1;
-    }
-
-    pub fn close_tab(&mut self) {
+    pub fn close_tab_(&mut self) {
         if self.active == 0 { return }
         if self.active + 1 >= self.widgets.len() { self.active -= 1 }
-            
+
         self.pop_widget();
     }
 
-    pub fn next_tab(&mut self) {
+    pub fn next_tab_(&mut self) {
         if self.active + 1 == self.widgets.len() {
             self.active = 0;
         } else {
             self.active += 1
         }
-        self.active_widget_mut().on_next_tab();
+        self.on_next_tab();
     }
 }
 
-impl<T> Widget for TabView<T> where T: Widget + Tabbable<T> {
+impl<T> Widget for TabView<T> where T: Widget, TabView<T>: Tabbable {
     fn render_header(&self) -> String {
         let xsize = self.get_coordinates().xsize();
-        let header = self.active_widget().render_header();
+        let header = self.active_tab_().render_header();
         let mut nums_length = 0;
         let tabnums = (0..self.widgets.len()).map(|num| {
             nums_length += format!("{} ", num).len();
@@ -86,7 +92,7 @@ impl<T> Widget for TabView<T> where T: Widget + Tabbable<T> {
         }).collect::<String>();
 
         let nums_pos = xsize - nums_length as u16;
-        
+
         format!("{}{}{}{}",
                 header,
                 crate::term::header_color(),
@@ -95,15 +101,15 @@ impl<T> Widget for TabView<T> where T: Widget + Tabbable<T> {
     }
 
     fn render_footer(&self) -> String {
-        self.active_widget().render_footer()
+        self.active_tab_().render_footer()
     }
 
     fn refresh(&mut self) {
-        self.active_widget_mut().refresh();
+        self.active_tab_mut().refresh();
     }
 
     fn get_drawlist(&self) -> String {
-        self.active_widget().get_drawlist()
+        self.active_tab_().get_drawlist()
     }
 
     fn get_coordinates(&self) -> &Coordinates {
@@ -116,14 +122,8 @@ impl<T> Widget for TabView<T> where T: Widget + Tabbable<T> {
         self.coordinates = coordinates.clone();
         self.refresh();
     }
-    
+
     fn on_key(&mut self, key: Key) {
-        match key {
-            Key::Ctrl('t') => self.new_tab(),
-            Key::Ctrl('w') => self.close_tab(),
-            Key::Char('\t') => self.next_tab(),
-            _ => self.active_widget_mut().on_key(key)
-        }
-        
+        Tabbable::on_key(self, key);
     }
 }
