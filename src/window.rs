@@ -1,5 +1,6 @@
 use std::io::{stdin, stdout, Stdout, Write};
 use std::sync::{Arc, Mutex};
+use std::sync::mpsc::{Sender, Receiver, channel};
 
 use termion::event::{Event, Key};
 use termion::input::TermRead;
@@ -10,6 +11,18 @@ use crate::term::ScreenExt;
 
 use crate::coordinates::{Coordinates, Position, Size};
 use crate::widget::Widget;
+use crate::fail::HResult;
+
+lazy_static! {
+    static ref TX_EVENT: Arc<Mutex<Option<Sender<Events>>>> = { Arc::new(Mutex::new(None)) };
+}
+
+
+#[derive(Debug)]
+pub enum Events {
+    InputEvent(Event),
+    WidgetReady
+}
 
 pub struct Window<T>
 where
@@ -69,15 +82,56 @@ where
     //     Self::show_status("");
     // }
 
+
     pub fn handle_input(&mut self) {
-        for event in stdin().events() {
+        let (tx_event_internal, rx_event_internal) = channel();
+        let (tx_event, rx_event) = channel();
+        *TX_EVENT.try_lock().unwrap() = Some(tx_event);
+
+        event_thread(rx_event, tx_event_internal.clone());
+        input_thread(tx_event_internal);
+
+        for event in rx_event_internal.iter() {
             //Self::clear_status();
-            let event = event.unwrap();
-            self.widget.on_event(event);
-            self.screen.cursor_hide();
-            self.draw();
+            //let event = event.unwrap();
+            dbg!(&event);
+            match event {
+                Events::InputEvent(event) => {
+                    self.widget.on_event(event);
+                    self.screen.cursor_hide();
+                    self.draw();
+                }
+                _ => {
+                    self.widget.refresh();
+                    self.draw();
+                },
+            }
         }
     }
+}
+
+fn event_thread(rx: Receiver<Events>, tx: Sender<Events>) {
+    std::thread::spawn(move || {
+        for event in rx.iter() {
+            dbg!(&event);
+            tx.send(event).unwrap();
+        }
+    });
+}
+
+fn input_thread(tx: Sender<Events>) {
+    std::thread::spawn(move || {
+        for input in stdin().events() {
+            let input = input.unwrap();
+            tx.send(Events::InputEvent(input)).unwrap();
+        }
+    });
+}
+
+pub fn send_event(event: Events) -> HResult<()> {
+    let tx = TX_EVENT.lock()?.clone()?.clone();
+    tx.send(event)?;
+    Ok(())
 }
 
 impl<T> Drop for Window<T>

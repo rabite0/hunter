@@ -1,9 +1,12 @@
 use termion::event::Key;
 
+use std::sync::{Arc, Mutex};
+
 use crate::coordinates::{Coordinates, Position, Size};
 use crate::preview::Previewer;
 use crate::widget::Widget;
 use crate::hbox::HBox;
+use crate::fail::{HError, HResult};
 
 #[derive(PartialEq)]
 pub struct MillerColumns<T> where T: Widget {
@@ -80,25 +83,27 @@ where
         (left_coords, main_coords, preview_coords)
     }
 
-    pub fn get_left_widget(&self) -> Option<&T> {
+    pub fn get_left_widget(&self) -> HResult<&T> {
         let len = self.widgets.widgets.len();
         if len < 2 {
-            return None;
+            return Err(HError::NoWidgetError);
         }
-        self.widgets.widgets.get(len - 2)
+        Ok(self.widgets.widgets.get(len - 2)?)
     }
-    pub fn get_left_widget_mut(&mut self) -> Option<&mut T> {
+    pub fn get_left_widget_mut(&mut self) -> HResult<&mut T> {
         let len = self.widgets.widgets.len();
         if len < 2 {
-            return None;
+            return Err(HError::NoWidgetError);
         }
-        self.widgets.widgets.get_mut(len - 2)
+        Ok(self.widgets.widgets.get_mut(len - 2)?)
     }
-    pub fn get_main_widget(&self) -> &T {
-        self.widgets.widgets.last().unwrap()
+    pub fn get_main_widget(&self) -> HResult<&T> {
+        let widget = self.widgets.widgets.last()?;
+        Ok(widget)
     }
-    pub fn get_main_widget_mut(&mut self) -> &mut T {
-        self.widgets.widgets.last_mut().unwrap()
+    pub fn get_main_widget_mut(&mut self) -> HResult<&mut T> {
+        let widget = self.widgets.widgets.last_mut()?;
+        Ok(widget)
     }
 }
 
@@ -123,11 +128,11 @@ where
     fn refresh(&mut self) {
         let (left_coords, main_coords, preview_coords) = self.calculate_coordinates();
 
-        if let Some(left_widget) = self.get_left_widget_mut() {
+        if let Ok(left_widget) = self.get_left_widget_mut() {
             left_widget.set_coordinates(&left_coords);
         }
 
-        if let Some(main_widget) = self.widgets.widgets.last_mut() {
+        if let Ok(main_widget) = self.get_main_widget_mut() {
             main_widget.set_coordinates(&main_coords);
         }
 
@@ -137,15 +142,20 @@ where
 
     fn get_drawlist(&self) -> String {
         let left_widget = match self.get_left_widget() {
-            Some(widget) => widget.get_drawlist(),
-            None => "".into(),
+            Ok(widget) => widget.get_drawlist(),
+            Err(_) => "".into(),
         };
-        let main_widget = self.get_main_widget().get_drawlist();
-        let preview = self.preview.get_drawlist();
-        format!("{}{}{}", main_widget, left_widget, preview)
+        let main_widget = self.get_main_widget();
+        match main_widget {
+            Ok(main_widget) => {
+                let preview = self.preview.get_drawlist();
+                format!("{}{}{}", main_widget.get_drawlist(), left_widget, preview)
+            }
+            Err(_) => "".to_string()
+        }
     }
 
     fn on_key(&mut self, key: Key) {
-        self.get_main_widget_mut().on_key(key);
+        self.get_main_widget_mut().unwrap().on_key(key);
     }
 }

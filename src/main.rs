@@ -1,5 +1,6 @@
 #![feature(vec_remove_item)]
 #![feature(trivial_bounds)]
+#![feature(try_trait)]
 
 extern crate termion;
 extern crate unicode_width;

@@ -29,19 +29,21 @@ fn kill_proc() -> HResult<()> {
 }
 
 pub fn is_stale(stale: &Arc<Mutex<bool>>) -> HResult<bool> {
-    Ok(*(stale.lock()?))
+    let stale = *(stale.try_lock().unwrap());
+    Ok(stale)
 }
 
-enum State<T: Send> {
-    Is(T),
+enum State {
+    Is,
     Becoming,
-    Taken,
     Fail
 }
 
 struct WillBe<T: Send> {
-    pub state: State<T>,
-    rx: std::sync::mpsc::Receiver<T>,
+    pub state: Arc<Mutex<State>>,
+    pub thing: Arc<Mutex<Option<T>>>,
+    on_ready: Arc<Mutex<Option<Box<Fn(Arc<Mutex<Option<T>>>) -> HResult<()> + Send>>>>,
+    rx: Option<std::sync::mpsc::Receiver<T>>,
     stale: Arc<Mutex<bool>>
 }
 
@@ -49,42 +51,58 @@ impl<T: Send + 'static> WillBe<T> where {
     pub fn new_become(closure: HClosure<T>)
                   -> WillBe<T> {
         let (tx,rx) = std::sync::mpsc::channel();
-        let mut willbe = WillBe { state: State::Becoming,
-                                  rx: rx,
+        let mut willbe = WillBe { state: Arc::new(Mutex::new(State::Becoming)),
+                                  thing: Arc::new(Mutex::new(None)),
+                                  on_ready: Arc::new(Mutex::new(None)),
+                                  rx: Some(rx),
                                   stale: Arc::new(Mutex::new(false)) };
         willbe.run(closure, tx);
         willbe
     }
 
     fn run(&mut self, closure: HClosure<T>, tx: std::sync::mpsc::Sender<T>) {
+        let state = self.state.clone();
         let stale = self.stale.clone();
+        let thing = self.thing.clone();
+        let on_ready_fn = self.on_ready.clone();
         std::thread::spawn(move|| {
-            let thing = closure(stale);
-            match thing {
-                Ok(thing) => { tx.send(thing).ok(); },
+            let got_thing = closure(stale);
+            match got_thing {
+                Ok(got_thing) => {
+                    *thing.try_lock().unwrap() = Some(got_thing);
+                    *state.try_lock().unwrap() = State::Is;
+                    match *on_ready_fn.lock().unwrap() {
+                        Some(ref on_ready) => { on_ready(thing.clone()); },
+                        None => {}
+                    }
+                },
                 Err(err) => { dbg!(err); }
             }
         });
     }
 
     pub fn set_stale(&mut self) -> HResult<()> {
-        *self.stale.lock()? = true;
+        *self.stale.try_lock()? = true;
         Ok(())
     }
 
-    pub fn check(&mut self) -> Result<(), Error> {
-        match self.state {
-            State::Is(_) => Ok(()),
-            _ => {
-                let thing = self.rx.try_recv()?;
-                self.state = State::Is(thing);
-                Ok(())
-            }
+    pub fn check(&self) -> HResult<()> {
+        match *self.state.try_lock()? {
+            State::Is => Ok(()),
+            _ => Err(HError::WillBeNotReady)
         }
     }
 
-    pub fn wait(self) -> Result<T, std::sync::mpsc::RecvError> {
-        self.rx.recv()
+    pub fn on_ready(&mut self,
+                    fun: Box<Fn(Arc<Mutex<Option<T>>>) -> HResult<()> + Send>)
+                    -> HResult<()> {
+        if self.check().is_ok() {
+            fun(self.thing.clone());
+            //*self.on_ready.try_lock()? = None;
+        } else {
+            *self.on_ready.try_lock()? = Some(fun);
+        }
+        Ok(())
     }
 }
 
@@ -98,20 +116,29 @@ impl<W: Widget + Send> PartialEq for WillBeWidget<W> {
     }
 }
 
-struct WillBeWidget<T: Widget + Send> {
+pub struct WillBeWidget<T: Widget + Send> {
     willbe: WillBe<T>,
     coordinates: Coordinates
 }
 
 impl<T: Widget + Send + 'static> WillBeWidget<T> {
-    fn new(closure: HClosure<T>) -> WillBeWidget<T> {
+    pub fn new(closure: HClosure<T>) -> WillBeWidget<T> {
+        let mut willbe = WillBe::new_become(Box::new(move |stale| closure(stale)));
+        willbe.on_ready(Box::new(|_| {
+            crate::window::send_event(crate::window::Events::WidgetReady);
+            Ok(()) }));
+
         WillBeWidget {
-            willbe: WillBe::new_become(Box::new(move |stale| closure(stale))),
+            willbe: willbe,
             coordinates: Coordinates::new()
         }
     }
     pub fn set_stale(&mut self) -> HResult<()> {
         self.willbe.set_stale()
+    }
+    pub fn widget(&self) -> HResult<Arc<Mutex<Option<T>>>> {
+        self.willbe.check()?;
+        Ok(self.willbe.thing.clone())
     }
 }
 
@@ -126,41 +153,46 @@ impl<T: Widget + Send + 'static> WillBeWidget<T> {
     // }
 //}
 
-impl<T: Widget + Send> Widget for WillBeWidget<T> {
+impl<T: Widget + Send + 'static> Widget for WillBeWidget<T> {
     fn get_coordinates(&self) -> &Coordinates {
         &self.coordinates
     }
     fn set_coordinates(&mut self, coordinates: &Coordinates) {
-        if self.coordinates == *coordinates {
-            return;
-        }
         self.coordinates = coordinates.clone();
-        match &mut self.willbe.state {
-            State::Is(widget) => {
-                widget.set_coordinates(&coordinates.clone());
-                self.refresh();
-            }
-            _ => {}
+
+        {
+            if self.willbe.check().is_err() { return }
+            let widget = self.widget().unwrap();
+            let mut widget = widget.try_lock().unwrap();
+            let widget = widget.as_mut().unwrap();
+            widget.set_coordinates(&coordinates.clone());
         }
+
+        self.refresh();
     }
     fn render_header(&self) -> String {
         "".to_string()
     }
     fn refresh(&mut self) {
-        match &mut self.willbe.state {
-            State::Is(widget) => {
-                widget.refresh();
-            }
-            _ => {}
-        }
+        if self.willbe.check().is_err() { return }
+        let widget = self.widget().unwrap();
+        let mut widget = widget.try_lock().unwrap();
+        let widget = widget.as_mut().unwrap();
+        widget.refresh();
     }
     fn get_drawlist(&self) -> String {
-        match &self.willbe.state {
-            State::Is(widget) => {
-                widget.get_drawlist()
-            },
-            _ => { "".to_string() }
-        }
+        if self.willbe.check().is_err() { return "".to_string() }
+        let widget = self.widget().unwrap();
+        let widget = widget.try_lock().unwrap();
+        let widget = widget.as_ref().unwrap();
+        widget.get_drawlist()
+    }
+    fn on_key(&mut self, key: termion::event::Key) {
+        if self.willbe.check().is_err() { return }
+        let widget = self.widget().unwrap();
+        let mut widget = widget.try_lock().unwrap();
+        let widget = widget.as_mut().unwrap();
+        widget.on_key(key);
     }
 }
 
@@ -177,6 +209,7 @@ impl PartialEq for Previewer {
 
 pub struct Previewer {
     widget: WillBeWidget<Box<dyn Widget + Send>>,
+    file: Option<File>
 }
 
 
@@ -186,7 +219,8 @@ impl Previewer {
             Ok(Box::new(crate::textview::TextView::new_blank())
                as Box<dyn Widget + Send>)
         }));
-        Previewer { widget: willbe }
+        Previewer { widget: willbe,
+                    file: None}
     }
 
     fn become_preview(&mut self,
@@ -197,6 +231,9 @@ impl Previewer {
     }
 
     pub fn set_file(&mut self, file: &File) {
+        if Some(file) == self.file.as_ref() { return }
+        self.file = Some(file.clone());
+
         let coordinates = self.get_coordinates().clone();
         let file = file.clone();
 
