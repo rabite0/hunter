@@ -149,17 +149,8 @@ impl FileBrowser {
         self.columns.pop_widget();
 
         // Make sure there's a directory on the left unless it's /
-        if self.left_widget().is_err() {
-            let file = self.selected_file()?.clone();
-            if let Some(grand_parent) = file.grand_parent() {
-                let mut left_view = WillBeWidget::new(Box::new(move |_| {
-                    let mut view
-                        = ListView::new(Files::new_from_path(&grand_parent)?);
-                    Ok(view)
-                }));
-                self.columns.prepend_widget(left_view);
-            }
-        }
+        self.fix_left()?;
+
         self.columns.refresh();
         Ok(())
     }
@@ -174,6 +165,21 @@ impl FileBrowser {
     pub fn fix_selection(&mut self) -> HResult<()> {
         let cwd = self.cwd()?;
         (*self.left_widget()?.lock()?).as_mut()?.select_file(&cwd);
+        Ok(())
+    }
+
+    pub fn fix_left(&mut self) -> HResult<()> {
+        if self.left_widget().is_err() {
+            let file = self.selected_file()?.clone();
+            if let Some(grand_parent) = file.grand_parent() {
+                let mut left_view = WillBeWidget::new(Box::new(move |_| {
+                    let mut view
+                        = ListView::new(Files::new_from_path(&grand_parent)?);
+                    Ok(view)
+                }));
+                self.columns.prepend_widget(left_view);
+            }
+        }
         Ok(())
     }
 
@@ -222,31 +228,24 @@ impl FileBrowser {
         self.columns.get_main_widget_mut().unwrap().animate_slide_up();
     }
 
-    pub fn turbo_cd(&mut self) {
+    pub fn turbo_cd(&mut self) -> HResult<()> {
         let dir = self.minibuffer("cd: ");
 
-        // match dir {
-        //     Some(dir) => {
-        //         Files::new_from_path(&std::path::PathBuf::from(&dir)).and_then(|files| {
-        //             let cwd = files.directory.clone();
-        //             self.columns.widgets.widgets.clear();
-        //             self.columns.push_widget(ListView::new(files));
-
-        //             std::env::set_current_dir(&cwd.path).unwrap();
-
-        //             if let Some(grand_parent) = cwd.path.parent() {
-        //                 let left_view =
-        //                     ListView::new(Files::new_from_path(&grand_parent).unwrap());
-        //                 self.columns.prepend_widget(left_view);
-        //             }
-        //             self.fix_selection();
-        //             self.update_preview();
-        //             self.refresh();
-        //             self.columns.refresh();
-        //             Ok(())
-        //         }).ok();
-        //     } None => {}
-        // }
+        match dir {
+            Some(dir) => {
+                self.columns.widgets.widgets.clear();
+                let cwd = File::new_from_path(&std::path::PathBuf::from(&dir))?;
+                self.cwd = cwd;
+                let middle = WillBeWidget::new(Box::new(move |_| {
+                    let files = Files::new_from_path(&std::path::PathBuf::from(&dir))?;
+                    let listview = ListView::new(files);
+                    Ok(listview)
+                }));
+                self.columns.push_widget(middle);
+            },
+            None => {}
+        }
+        Ok(())
     }
 }
 
@@ -316,7 +315,7 @@ impl Widget for FileBrowser {
 
     fn on_key(&mut self, key: Key) {
         match key {
-            Key::Char('/') => self.turbo_cd(),
+            Key::Char('/') => { self.turbo_cd(); },
             Key::Char('Q') => { self.quit_with_dir(); },
             Key::Right | Key::Char('f') => { self.enter_dir(); },
             Key::Left | Key::Char('b') => { self.go_back(); },
