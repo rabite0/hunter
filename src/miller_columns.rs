@@ -88,14 +88,16 @@ where
         if len < 2 {
             return Err(HError::NoWidgetError);
         }
-        Ok(self.widgets.widgets.get(len - 2)?)
+        let widget = self.widgets.widgets.get(len - 2)?;
+        Ok(widget)
     }
     pub fn get_left_widget_mut(&mut self) -> HResult<&mut T> {
         let len = self.widgets.widgets.len();
         if len < 2 {
             return Err(HError::NoWidgetError);
         }
-        Ok(self.widgets.widgets.get_mut(len - 2)?)
+        let widget = self.widgets.widgets.get_mut(len - 2)?;
+        Ok(widget)
     }
     pub fn get_main_widget(&self) -> HResult<&T> {
         let widget = self.widgets.widgets.last()?;

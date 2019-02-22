@@ -144,13 +144,6 @@ impl FileBrowser {
     }
 
     pub fn go_back(&mut self) -> HResult<()> {
-        // if self.left_widget().is_err() {
-        //     return None;
-        // }
-        // if self.columns.get_main_widget().is_none() {
-        //     return None;
-        // }
-        let fileview = self.main_widget()?;
         let path = self.selected_file()?.grand_parent()?;
         std::env::set_current_dir(path)?;
         self.columns.pop_widget();
@@ -185,7 +178,6 @@ impl FileBrowser {
     }
 
     pub fn cwd(&self) -> HResult<File> {
-        //(self.columns.get_main_widget()?.widget()?.content.directory.clone())
         let widget = self.columns.get_main_widget()?.widget()?;
         let cwd = (*widget.lock()?).as_ref()?.content.directory.clone();
         Ok(cwd)

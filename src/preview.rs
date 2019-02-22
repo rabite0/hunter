@@ -98,7 +98,6 @@ impl<T: Send + 'static> WillBe<T> where {
                     -> HResult<()> {
         if self.check().is_ok() {
             fun(self.thing.clone());
-            //*self.on_ready.try_lock()? = None;
         } else {
             *self.on_ready.try_lock()? = Some(fun);
         }
@@ -181,7 +180,12 @@ impl<T: Widget + Send + 'static> Widget for WillBeWidget<T> {
         widget.refresh();
     }
     fn get_drawlist(&self) -> String {
-        if self.willbe.check().is_err() { return "".to_string() }
+        if self.willbe.check().is_err() {
+            let clear = self.get_clearlist();
+            let (xpos, ypos) = self.get_coordinates().u16position();
+            let pos = crate::term::goto_xy(xpos, ypos);
+            return clear + &pos + "..."
+        }
         let widget = self.widget().unwrap();
         let widget = widget.try_lock().unwrap();
         let widget = widget.as_ref().unwrap();
