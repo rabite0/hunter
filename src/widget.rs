@@ -1,6 +1,7 @@
 use termion::event::{Event, Key, MouseEvent};
 
 use crate::coordinates::{Coordinates, Position, Size};
+use crate::fail::HResult;
 
 use std::io::{BufWriter, Write};
 
@@ -48,7 +49,7 @@ pub trait Widget {
         crate::window::show_status(status);
     }
 
-    fn minibuffer(&self, query: &str) -> Option<String> {
+    fn minibuffer(&self, query: &str) -> HResult<String> {
         crate::window::minibuffer(query)
     }
 
@@ -113,6 +114,15 @@ pub trait Widget {
                 )
             })
             .collect()
+    }
+
+    fn draw(&self) -> HResult<()> {
+        let drawlist = self.get_drawlist();
+        let mut bufout = BufWriter::new(std::io::stdout());
+
+        write!(bufout, "{}", drawlist)?;
+        bufout.flush()?;
+        Ok(())
     }
 
     fn animate_slide_up(&mut self) {

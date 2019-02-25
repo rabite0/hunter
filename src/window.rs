@@ -11,17 +11,20 @@ use crate::term::ScreenExt;
 
 use crate::coordinates::{Coordinates, Position, Size};
 use crate::widget::Widget;
+use crate::minibuffer::MiniBuffer;
 use crate::fail::HResult;
 
 lazy_static! {
     static ref TX_EVENT: Arc<Mutex<Option<Sender<Events>>>> = { Arc::new(Mutex::new(None)) };
+    static ref MINIBUFFER: Arc<Mutex<MiniBuffer>>
+        = Arc::new(Mutex::new(MiniBuffer::new()));
 }
 
 
-#[derive(Debug)]
 pub enum Events {
     InputEvent(Event),
-    WidgetReady
+    WidgetReady,
+    ExclusiveInput(bool),
 }
 
 pub struct Window<T>
@@ -87,19 +90,28 @@ where
         let (tx_event_internal, rx_event_internal) = channel();
         let (tx_event, rx_event) = channel();
         *TX_EVENT.try_lock().unwrap() = Some(tx_event);
+        let (tx_request_input, rx_request_input) = channel();
+
+        let mut exclusive_mode = false;
 
         event_thread(rx_event, tx_event_internal.clone());
-        input_thread(tx_event_internal);
+        input_thread(tx_event_internal.clone(), rx_request_input);
+        tx_request_input.send(()).unwrap();
 
         for event in rx_event_internal.iter() {
             //Self::clear_status();
             //let event = event.unwrap();
-            dbg!(&event);
             match event {
                 Events::InputEvent(event) => {
                     self.widget.on_event(event);
                     self.screen.cursor_hide();
                     self.draw();
+                    if !exclusive_mode {
+                        tx_request_input.send(()).unwrap();
+                    }
+                },
+                Events::ExclusiveInput(setting) => {
+                    exclusive_mode = setting
                 }
                 _ => {
                     self.widget.refresh();
@@ -110,20 +122,23 @@ where
     }
 }
 
-fn event_thread(rx: Receiver<Events>, tx: Sender<Events>) {
+fn event_thread(rx: Receiver<Events>,
+                tx: Sender<Events>) {
     std::thread::spawn(move || {
         for event in rx.iter() {
-            dbg!(&event);
             tx.send(event).unwrap();
         }
     });
 }
 
-fn input_thread(tx: Sender<Events>) {
+fn input_thread(tx: Sender<Events>, request_input: Receiver<()>) {
     std::thread::spawn(move || {
-        for input in stdin().events() {
-            let input = input.unwrap();
-            tx.send(Events::InputEvent(input)).unwrap();
+        for _ in request_input.iter() {
+            for input in stdin().events() {
+                let input = input.unwrap();
+                tx.send(Events::InputEvent(input)).unwrap();
+                break;
+            }
         }
     });
 }
@@ -188,97 +203,8 @@ pub fn show_status(status: &str) {
     draw_status();
 }
 
-pub fn minibuffer(query: &str) -> Option<String> {
-    show_status(&(query.to_string() + ": "));
-    write!(stdout(), "{}{}",
-            termion::cursor::Show,
-            termion::cursor::Save).unwrap();
-    stdout().flush().unwrap();
-
-    let mut buffer = "".to_string();
-    let mut pos = 0;
-
-    for key in stdin().events() {
-
-        match key {
-            Ok(Event::Key(key)) => match key {
-                Key::Esc | Key::Ctrl('c') => break,
-                Key::Char('\n') => {
-                    if buffer == "" {
-                        write!(stdout(), "{}", termion::cursor::Hide).unwrap();
-                        stdout().flush().unwrap();
-                        return None;
-                    } else {
-                        write!(stdout(), "{}", termion::cursor::Hide).unwrap();
-                        stdout().flush().unwrap();
-                        return Some(buffer);
-                    }
-                }
-                Key::Char('\t') => {
-                    if !buffer.ends_with(" ") {
-                        let part = buffer.rsplitn(2, " ").take(1)
-                            .map(|s| s.to_string()).collect::<String>();
-                        let completions = find_files(part.clone());
-                        if !completions.is_empty() {
-                            buffer = buffer[..buffer.len() - part.len()].to_string();
-                            buffer.push_str(&completions[0]);
-                            pos += &completions[0].len() - part.len();
-                        } else {
-                            let completions = find_bins(&part);
-                            if !completions.is_empty() {
-                                buffer = buffer[..buffer.len() - part.len()].to_string();
-                                buffer.push_str(&completions[0]);
-                                pos += &completions[0].len() - part.len();
-                            }
-                        }
-                    } else {
-                        buffer += "$s";
-                        pos += 2
-                    }
-                }
-                Key::Backspace => {
-                    if pos != 0 {
-                        buffer.remove(pos - 1);
-                        pos -= 1;
-                    }
-                }
-                Key::Delete | Key::Ctrl('d') => {
-                    if pos != buffer.len() {
-                        buffer.remove(pos);
-                    }
-                }
-                Key::Left | Key::Ctrl('b') => {
-                    if pos != 0 {
-                        pos -= 1;
-                    }
-                }
-                Key::Right | Key::Ctrl('f') => {
-                    if pos != buffer.len() {
-                        pos += 1;
-                    }
-                }
-                Key::Ctrl('a') => { pos = 0 },
-                Key::Ctrl('e') => { pos = buffer.len(); },
-                Key::Char(key) => {
-                    buffer.insert(pos, key);
-                    pos += 1;
-                }
-                _ => {}
-            },
-            _ => {}
-        }
-        show_status(&(query.to_string() + ": " + &buffer));
-
-        write!(stdout(), "{}", termion::cursor::Restore).unwrap();
-        stdout().flush().unwrap();
-        if pos != 0 {
-            write!(stdout(),
-                   "{}",
-                   format!("{}", termion::cursor::Right(pos as u16))).unwrap();
-        }
-        stdout().flush().unwrap();
-    }
-    None
+pub fn minibuffer(query: &str) -> HResult<String> {
+    MINIBUFFER.lock()?.query(query)
 }
 
 pub fn find_bins(comp_name: &str) -> Vec<String> {

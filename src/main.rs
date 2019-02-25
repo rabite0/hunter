@@ -39,6 +39,8 @@ mod hbox;
 mod tabview;
 mod async_widget;
 mod fail;
+mod minibuffer;
+
 
 use window::Window;
 

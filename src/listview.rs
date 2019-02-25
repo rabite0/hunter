@@ -342,8 +342,10 @@ impl ListView<Files>
         let file_names
             = selected_files.iter().map(|f| f.name.clone()).collect::<Vec<String>>();
 
-        match self.minibuffer("exec ($s for selected file(s))") {
-            Some(cmd) => {
+        let cmd = self.minibuffer("exec:");
+
+        match cmd {
+            Ok(cmd) => {
                 self.show_status(&format!("Running: \"{}\"", &cmd));
 
                 let filename = self.selected_file().name.clone();
@@ -375,7 +377,7 @@ impl ListView<Files>
                                                           cmd, err)),
                 }
             }
-            None => self.show_status(""),
+            Err(_) => self.show_status(""),
         }
     }
 

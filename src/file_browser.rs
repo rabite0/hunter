@@ -172,9 +172,11 @@ impl FileBrowser {
         if self.left_widget().is_err() {
             let file = self.selected_file()?.clone();
             if let Some(grand_parent) = file.grand_parent() {
+                let (coords, _, _) = self.columns.calculate_coordinates();
                 let mut left_view = WillBeWidget::new(Box::new(move |_| {
                     let mut view
                         = ListView::new(Files::new_from_path(&grand_parent)?);
+                    view.set_coordinates(&coords);
                     Ok(view)
                 }));
                 self.columns.prepend_widget(left_view);
@@ -232,18 +234,30 @@ impl FileBrowser {
         let dir = self.minibuffer("cd: ");
 
         match dir {
-            Some(dir) => {
+            Ok(dir) => {
                 self.columns.widgets.widgets.clear();
                 let cwd = File::new_from_path(&std::path::PathBuf::from(&dir))?;
                 self.cwd = cwd;
+                let dir = std::path::PathBuf::from(&dir);
+                let left_dir = std::path::PathBuf::from(&dir);
+                let (left_coords, main_coords, _) = self.columns.calculate_coordinates();
+
                 let middle = WillBeWidget::new(Box::new(move |_| {
-                    let files = Files::new_from_path(&std::path::PathBuf::from(&dir))?;
-                    let listview = ListView::new(files);
+                    let files = Files::new_from_path(&dir.clone())?;
+                    let mut listview = ListView::new(files);
+                    listview.set_coordinates(&main_coords);
                     Ok(listview)
                 }));
+                let left = WillBeWidget::new(Box::new(move |_| {
+                    let files = Files::new_from_path(&left_dir.parent()?)?;
+                    let mut listview = ListView::new(files);
+                    listview.set_coordinates(&left_coords);
+                    Ok(listview)
+                }));
+                self.columns.push_widget(left);
                 self.columns.push_widget(middle);
             },
-            None => {}
+            Err(_) => {}
         }
         Ok(())
     }
