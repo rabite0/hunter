@@ -6,6 +6,7 @@ use std::io::Write;
 
 use crate::coordinates::{Coordinates, Position, Size};
 use crate::files::{File, Files};
+use crate::fail::HResult;
 use crate::term;
 use crate::widget::{Widget};
 
@@ -41,7 +42,8 @@ impl Listable for ListView<Files> {
             Key::Down | Key::Char('n') => {
                 self.move_down();
                 self.refresh();
-            }
+            },
+            Key::Ctrl('s') => { self.find_file().ok(); }
             Key::Left => self.goto_grand_parent(),
             Key::Right => self.goto_selected(),
             Key::Char(' ') => self.multi_select_file(),
@@ -379,6 +381,20 @@ impl ListView<Files>
             }
             Err(_) => self.show_status(""),
         }
+    }
+
+    fn find_file(&mut self) -> HResult<()> {
+        let name = self.minibuffer("find")?;
+        let file = self.content.files.iter().find(|file| {
+            if file.name.to_lowercase().contains(&name) {
+                true
+            } else {
+                false
+            }
+        })?.clone();
+
+        self.select_file(&file);
+        Ok(())
     }
 
     fn render(&self) -> Vec<String> {

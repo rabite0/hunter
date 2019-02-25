@@ -59,13 +59,6 @@ impl FileBrowser {
         miller.set_coordinates(&coords);
 
 
-        // let lists: Result<Vec<ListView<Files>>, Box<Error>> = cwd
-        //     .ancestors()
-        //     .map(|path| Ok(ListView::new(Files::new_from_path(path)?)))
-        //     .take(2)
-        //     .collect();
-        // let mut lists = lists?;
-        // lists.reverse();
         let (left_coords, main_coords, _) = miller.calculate_coordinates();
 
         let main_path: std::path::PathBuf = cwd.ancestors().take(1).map(|path| std::path::PathBuf::from(path)).collect();
@@ -90,20 +83,12 @@ impl FileBrowser {
         miller.push_widget(left_widget);
         miller.push_widget(main_widget);
 
-        // for widget in lists {
-        //     miller.push_widget(widget);
-        // }
 
         let cwd = File::new_from_path(&cwd).unwrap();
 
         let mut file_browser = FileBrowser { columns: miller,
                                              cwd: cwd };
 
-
-
-        //file_browser.fix_selection();
-        //file_browser.animate_columns();
-        //file_browser.update_preview();
 
         Ok(file_browser)
     }
