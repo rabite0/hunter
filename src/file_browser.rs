@@ -11,7 +11,7 @@ use crate::miller_columns::MillerColumns;
 use crate::widget::Widget;
 use crate::tabview::{TabView, Tabbable};
 use crate::preview::WillBeWidget;
-use crate::fail::{HError, HResult};
+use crate::fail::HResult;
 
 #[derive(PartialEq)]
 pub struct FileBrowser {
@@ -32,6 +32,15 @@ impl Tabbable for TabView<FileBrowser> {
 
     fn next_tab(&mut self) {
         self.next_tab_();
+    }
+
+    fn get_tab_names(&self) -> Vec<Option<String>> {
+        self.widgets.iter().map(|filebrowser| {
+            let path = filebrowser.cwd.path();
+            let last_dir = path.components().last().unwrap();
+            let dir_name = last_dir.as_os_str().to_string_lossy().to_string();
+            Some(dir_name)
+        }).collect()
     }
 
     fn active_tab(& self) -> & dyn Widget {
@@ -59,7 +68,7 @@ impl FileBrowser {
         miller.set_coordinates(&coords);
 
 
-        let (left_coords, main_coords, _) = miller.calculate_coordinates();
+        let (_, main_coords, _) = miller.calculate_coordinates();
 
         let main_path: std::path::PathBuf = cwd.ancestors().take(1).map(|path| std::path::PathBuf::from(path)).collect();
         let main_widget = WillBeWidget::new(Box::new(move |_| {
@@ -69,28 +78,13 @@ impl FileBrowser {
             Ok(list)
         }));
 
-        let left_path: std::path::PathBuf = cwd.ancestors().skip(1).take(1).map(|path| std::path::PathBuf::from(path)).collect();
-        let left_widget = WillBeWidget::new(Box::new(move |_| {
-            let mut list = ListView::new(Files::new_from_path(&left_path).unwrap());
-            list.set_coordinates(&left_coords);
-            list.animate_slide_up();
-            Ok(list)
-        }));
-
-
-
-
-        miller.push_widget(left_widget);
         miller.push_widget(main_widget);
 
 
         let cwd = File::new_from_path(&cwd).unwrap();
 
-        let mut file_browser = FileBrowser { columns: miller,
-                                             cwd: cwd };
-
-
-        Ok(file_browser)
+        Ok(FileBrowser { columns: miller,
+                         cwd: cwd })
     }
 
     pub fn enter_dir(&mut self) -> HResult<()> {
@@ -100,6 +94,7 @@ impl FileBrowser {
         match file.read_dir() {
             Ok(files) => {
                 std::env::set_current_dir(&file.path).unwrap();
+                self.cwd = file.clone();
                 let view = WillBeWidget::new(Box::new(move |_| {
                     let files = files.clone();
                     let mut list = ListView::new(files);
@@ -129,14 +124,9 @@ impl FileBrowser {
     }
 
     pub fn go_back(&mut self) -> HResult<()> {
-        let path = self.selected_file()?.grand_parent()?;
-        std::env::set_current_dir(path)?;
         self.columns.pop_widget();
 
-        // Make sure there's a directory on the left unless it's /
-        self.fix_left()?;
-
-        self.columns.refresh();
+        self.refresh();
         Ok(())
     }
 
@@ -158,7 +148,7 @@ impl FileBrowser {
             let file = self.selected_file()?.clone();
             if let Some(grand_parent) = file.grand_parent() {
                 let (coords, _, _) = self.columns.calculate_coordinates();
-                let mut left_view = WillBeWidget::new(Box::new(move |_| {
+                let left_view = WillBeWidget::new(Box::new(move |_| {
                     let mut view
                         = ListView::new(Files::new_from_path(&grand_parent)?);
                     view.set_coordinates(&coords);
@@ -174,6 +164,13 @@ impl FileBrowser {
         let widget = self.columns.get_main_widget()?.widget()?;
         let cwd = (*widget.lock()?).as_ref()?.content.directory.clone();
         Ok(cwd)
+    }
+
+    pub fn set_cwd(&mut self) -> HResult<()> {
+        let cwd = self.cwd()?;
+        std::env::set_current_dir(&cwd.path)?;
+        self.cwd = cwd;
+        Ok(())
     }
 
     pub fn selected_file(&self) -> HResult<File> {
@@ -208,11 +205,6 @@ impl FileBrowser {
         file.write(output.as_bytes())?;
         panic!("Quitting!");
         Ok(())
-    }
-
-    pub fn animate_columns(&mut self) {
-        self.columns.get_left_widget_mut().map(|w| w.animate_slide_up());
-        self.columns.get_main_widget_mut().unwrap().animate_slide_up();
     }
 
     pub fn turbo_cd(&mut self) -> HResult<()> {
@@ -299,8 +291,10 @@ impl Widget for FileBrowser {
                 crate::term::goto_xy(count_xpos, count_ypos), file_count)
      }
     fn refresh(&mut self) {
-        self.update_preview();
-        self.fix_selection();
+        self.update_preview().ok();
+        self.fix_left().ok();
+        self.fix_selection().ok();
+        self.set_cwd().ok();
         self.columns.refresh();
     }
 
@@ -314,12 +308,12 @@ impl Widget for FileBrowser {
 
     fn on_key(&mut self, key: Key) {
         match key {
-            Key::Char('/') => { self.turbo_cd(); },
-            Key::Char('Q') => { self.quit_with_dir(); },
-            Key::Right | Key::Char('f') => { self.enter_dir(); },
-            Key::Left | Key::Char('b') => { self.go_back(); },
+            Key::Char('/') => { self.turbo_cd().ok(); },
+            Key::Char('Q') => { self.quit_with_dir().ok(); },
+            Key::Right | Key::Char('f') => { self.enter_dir().ok(); },
+            Key::Left | Key::Char('b') => { self.go_back().ok(); },
             _ => self.columns.get_main_widget_mut().unwrap().on_key(key),
         }
-        self.update_preview();
+        self.update_preview().ok();
     }
 }
