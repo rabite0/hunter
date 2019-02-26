@@ -2,7 +2,6 @@ use termion::event::{Event, Key};
 use unicode_width::UnicodeWidthStr;
 
 use std::path::{Path, PathBuf};
-use std::io::Write;
 
 use crate::coordinates::{Coordinates, Position, Size};
 use crate::files::{File, Files};

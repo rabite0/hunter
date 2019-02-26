@@ -2,7 +2,7 @@ use std::io::{stdin, stdout, Stdout, Write};
 use std::sync::{Arc, Mutex};
 use std::sync::mpsc::{Sender, Receiver, channel};
 
-use termion::event::{Event, Key};
+use termion::event::Event;
 use termion::input::TermRead;
 use termion::screen::AlternateScreen;
 
@@ -205,54 +205,4 @@ pub fn show_status(status: &str) {
 
 pub fn minibuffer(query: &str) -> HResult<String> {
     MINIBUFFER.lock()?.query(query)
-}
-
-pub fn find_bins(comp_name: &str) -> Vec<String> {
-    let paths = std::env::var_os("PATH").unwrap()
-        .to_string_lossy()
-        .split(":")
-        .map(|s| s.to_string())
-        .collect::<Vec<String>>();
-
-    paths.iter().map(|path| {
-        std::fs::read_dir(path).unwrap().flat_map(|file| {
-            let file = file.unwrap();
-            let name = file.file_name().into_string().unwrap();
-            if name.starts_with(comp_name) {
-                Some(name)
-            } else {
-                None
-            }
-        }).collect::<Vec<String>>()
-    }).flatten().collect::<Vec<String>>()
-}
-
-pub fn find_files(mut comp_name: String) -> Vec<String> {
-    let mut path = std::path::PathBuf::from(&comp_name);
-
-    let dir = if comp_name.starts_with("/") {
-        comp_name = path.file_name().unwrap().to_string_lossy().to_string();
-        path.pop();
-        path.to_string_lossy().to_string()
-    } else {
-        std::env::current_dir().unwrap().to_string_lossy().to_string()
-    };
-
-    let reader = std::fs::read_dir(dir.clone());
-    if reader.is_err() { return vec![]  }
-    let reader = reader.unwrap();
-
-    reader.flat_map(|file| {
-        let file = file.unwrap();
-        let name = file.file_name().into_string().unwrap();
-        if name.starts_with(&comp_name) {
-            if file.file_type().unwrap().is_dir() {
-                Some(format!("{}/{}/", &dir, name))
-            } else {
-                Some(format!("/{}/", name))
-            }
-        } else {
-            None
-        }
-    }).collect::<Vec<String>>()
 }

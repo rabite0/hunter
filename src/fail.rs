@@ -1,6 +1,5 @@
 use failure;
-use failure::Error;
-use failure::{Fail, ResultExt};
+use failure::Fail;
 
 pub type HResult<T> = Result<T, HError>;
 

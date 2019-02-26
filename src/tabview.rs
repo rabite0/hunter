@@ -79,7 +79,7 @@ impl<T> Widget for TabView<T> where T: Widget, TabView<T>: Tabbable {
     fn render_header(&self) -> String {
         let xsize = self.get_coordinates().xsize();
         let header = self.active_tab_().render_header();
-        let mut tab_names = self.get_tab_names();
+        let tab_names = self.get_tab_names();
         let mut nums_length = 0;
         let tabnums = (0..self.widgets.len()).map(|num| {
             nums_length += format!("{}:{} ",

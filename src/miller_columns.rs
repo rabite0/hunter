@@ -1,7 +1,5 @@
 use termion::event::Key;
 
-use std::sync::{Arc, Mutex};
-
 use crate::coordinates::{Coordinates, Position, Size};
 use crate::preview::Previewer;
 use crate::widget::Widget;

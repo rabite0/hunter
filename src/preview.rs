@@ -1,7 +1,4 @@
-use failure::Error;
-
-use std::sync::Mutex;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use crate::coordinates::{Coordinates};
 use crate::files::{File, Files, Kind};
@@ -36,31 +33,28 @@ pub fn is_stale(stale: &Arc<Mutex<bool>>) -> HResult<bool> {
 enum State {
     Is,
     Becoming,
-    Fail
+    Fail(HError)
 }
 
 struct WillBe<T: Send> {
     pub state: Arc<Mutex<State>>,
     pub thing: Arc<Mutex<Option<T>>>,
     on_ready: Arc<Mutex<Option<Box<Fn(Arc<Mutex<Option<T>>>) -> HResult<()> + Send>>>>,
-    rx: Option<std::sync::mpsc::Receiver<T>>,
     stale: Arc<Mutex<bool>>
 }
 
 impl<T: Send + 'static> WillBe<T> where {
     pub fn new_become(closure: HClosure<T>)
                   -> WillBe<T> {
-        let (tx,rx) = std::sync::mpsc::channel();
         let mut willbe = WillBe { state: Arc::new(Mutex::new(State::Becoming)),
                                   thing: Arc::new(Mutex::new(None)),
                                   on_ready: Arc::new(Mutex::new(None)),
-                                  rx: Some(rx),
                                   stale: Arc::new(Mutex::new(false)) };
-        willbe.run(closure, tx);
+        willbe.run(closure);
         willbe
     }
 
-    fn run(&mut self, closure: HClosure<T>, tx: std::sync::mpsc::Sender<T>) {
+    fn run(&mut self, closure: HClosure<T>) {
         let state = self.state.clone();
         let stale = self.stale.clone();
         let thing = self.thing.clone();
@@ -72,11 +66,11 @@ impl<T: Send + 'static> WillBe<T> where {
                     *thing.try_lock().unwrap() = Some(got_thing);
                     *state.try_lock().unwrap() = State::Is;
                     match *on_ready_fn.lock().unwrap() {
-                        Some(ref on_ready) => { on_ready(thing.clone()); },
+                        Some(ref on_ready) => { on_ready(thing.clone()).ok(); },
                         None => {}
                     }
                 },
-                Err(err) => { dbg!(err); }
+                Err(err) => *state.lock().unwrap() = State::Fail(err)
             }
         });
     }
@@ -97,7 +91,7 @@ impl<T: Send + 'static> WillBe<T> where {
                     fun: Box<Fn(Arc<Mutex<Option<T>>>) -> HResult<()> + Send>)
                     -> HResult<()> {
         if self.check().is_ok() {
-            fun(self.thing.clone());
+            fun(self.thing.clone())?;
         } else {
             *self.on_ready.try_lock()? = Some(fun);
         }
@@ -124,8 +118,8 @@ impl<T: Widget + Send + 'static> WillBeWidget<T> {
     pub fn new(closure: HClosure<T>) -> WillBeWidget<T> {
         let mut willbe = WillBe::new_become(Box::new(move |stale| closure(stale)));
         willbe.on_ready(Box::new(|_| {
-            crate::window::send_event(crate::window::Events::WidgetReady);
-            Ok(()) }));
+            crate::window::send_event(crate::window::Events::WidgetReady)?;
+            Ok(()) })).ok();
 
         WillBeWidget {
             willbe: willbe,

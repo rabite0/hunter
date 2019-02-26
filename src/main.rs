@@ -7,7 +7,6 @@ extern crate unicode_width;
 #[macro_use]
 extern crate lazy_static;
 extern crate failure;
-#[macro_use]
 extern crate failure_derive;
 extern crate alphanumeric_sort;
 extern crate dirs_2;
