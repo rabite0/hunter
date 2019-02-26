@@ -265,6 +265,13 @@ impl Previewer {
         }))));
     }
 
+    pub fn reload(&mut self) {
+        if let Some(file) = self.file.clone() {
+            self.file = None;
+            self.set_file(&file);
+        }
+    }
+
     fn preview_failed(file: &File) -> HResult<WidgetO> {
         Err(HError::PreviewFailed { file: file.name.clone() })
     }

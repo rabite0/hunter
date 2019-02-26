@@ -8,8 +8,9 @@ use mime_detective;
 use users;
 use chrono::TimeZone;
 use failure::Error;
+use notify::{INotifyWatcher, Watcher, DebouncedEvent, RecursiveMode};
 
-use crate::fail::HResult;
+use crate::fail::{HResult, HError};
 
 use std::sync::{Arc, Mutex};
 
@@ -189,6 +190,53 @@ impl Files {
         self.files = files;
     }
 
+    pub fn handle_event(&mut self, event: &DebouncedEvent) -> HResult<()> {
+        match event {
+            DebouncedEvent::Create(path) => {
+                self.path_in_here(&path)?;
+                let file = File::new_from_path(&path)?;
+                self.files.push(file);
+            },
+            DebouncedEvent::Write(path) | DebouncedEvent::Chmod(path) => {
+                self.path_in_here(&path)?;
+                let file = self.find_file_with_path(&path)?;
+                file.reload_meta();
+            },
+            DebouncedEvent::Remove(path) => {
+                self.path_in_here(&path)?;
+                let file = self.find_file_with_path(&path)?.clone();
+                self.files.remove_item(&file);
+            },
+            DebouncedEvent::Rename(old_path, new_path) => {
+                self.path_in_here(&new_path)?;
+                let mut file = self.find_file_with_path(&old_path)?;
+                file.name = new_path.file_name()?.to_string_lossy().to_string();
+                file.path = new_path.into();
+            },
+            DebouncedEvent::Error(err, path) => {
+                dbg!(err);
+                dbg!(path);
+            },
+            _ => {},
+        }
+        Ok(())
+    }
+
+    pub fn path_in_here(&self, path: &Path) -> HResult<bool> {
+        let dir = self.directory.path();
+        let path = if path.is_dir() { path } else { path.parent().unwrap() };
+        if dir == path {
+            Ok(true)
+        } else {
+            Err(HError::WrongDirectoryError{path: path.into(),
+                                            dir: dir})
+        }
+    }
+
+    pub fn find_file_with_path(&mut self, path: &Path) -> Option<&mut File> {
+        self.files.iter_mut().find(|file| file.path == path)
+    }
+
     pub fn meta_all(&mut self) {
         let len = self.files.len();
         self.meta_upto(len);
@@ -304,6 +352,11 @@ impl File {
         self.meta = Some(meta);
         self.color = color;
         Ok(())
+    }
+
+    pub fn reload_meta(&mut self) -> HResult<()> {
+        self.meta = None;
+        self.get_meta()
     }
 
     fn get_color(&self, meta: &std::fs::Metadata) -> Option<lscolors::Color> {

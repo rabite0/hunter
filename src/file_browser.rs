@@ -1,8 +1,12 @@
 use termion::event::Key;
+use notify::{INotifyWatcher, Watcher, DebouncedEvent, RecursiveMode};
 
 use std::error::Error;
 use std::io::Write;
 use std::sync::{Arc, Mutex};
+use std::sync::mpsc::{channel, Receiver};
+use std::time::Duration;
+use std::path::PathBuf;
 
 use crate::coordinates::{Coordinates};
 use crate::files::{File, Files};
@@ -11,12 +15,17 @@ use crate::miller_columns::MillerColumns;
 use crate::widget::Widget;
 use crate::tabview::{TabView, Tabbable};
 use crate::preview::WillBeWidget;
-use crate::fail::HResult;
+use crate::fail::{HResult, HError};
+use crate::window::{Events, send_event};
 
-#[derive(PartialEq)]
+
+
 pub struct FileBrowser {
     pub columns: MillerColumns<WillBeWidget<ListView<Files>>>,
-    pub cwd: File
+    pub cwd: File,
+    watcher: INotifyWatcher,
+    watches: Vec<PathBuf>,
+    dir_events: Arc<Mutex<Vec<DebouncedEvent>>>
 }
 
 impl Tabbable for TabView<FileBrowser> {
@@ -67,6 +76,23 @@ impl Tabbable for TabView<FileBrowser> {
     }
 }
 
+
+
+
+
+fn watch_dir(rx: Receiver<DebouncedEvent>, dir_events: Arc<Mutex<Vec<DebouncedEvent>>>) {
+    std::thread::spawn(move || {
+        for event in rx.iter() {
+            dir_events.lock().unwrap().push(event);
+            send_event(Events::WidgetReady).unwrap();
+        }
+    });
+}
+
+
+
+
+
 impl FileBrowser {
     pub fn new() -> Result<FileBrowser, Box<Error>> {
         let cwd = std::env::current_dir().unwrap();
@@ -93,9 +119,17 @@ impl FileBrowser {
 
 
         let cwd = File::new_from_path(&cwd).unwrap();
+        let dir_events = Arc::new(Mutex::new(vec![]));
+
+        let (tx_watch, rx_watch) = channel();
+        let watcher = INotifyWatcher::new(tx_watch, Duration::from_secs(2)).unwrap();
+        watch_dir(rx_watch, dir_events.clone());
 
         Ok(FileBrowser { columns: miller,
-                         cwd: cwd })
+                         cwd: cwd,
+                         watcher: watcher,
+                         watches: vec![],
+                         dir_events: dir_events })
     }
 
     pub fn enter_dir(&mut self) -> HResult<()> {
@@ -185,6 +219,70 @@ impl FileBrowser {
         let cwd = self.cwd()?;
         std::env::set_current_dir(&cwd.path)?;
         self.cwd = cwd;
+        Ok(())
+    }
+
+    pub fn left_dir(&self) -> HResult<File> {
+        let widget = self.columns.get_left_widget()?.widget()?;
+        let dir = (*widget.lock()?).as_ref()?.content.directory.clone();
+        Ok(dir)
+    }
+
+    fn update_watches(&mut self) -> HResult<()> {
+        let watched_dirs = self.watches.clone();
+        let cwd = self.cwd()?;
+        let left_dir = self.left_dir()?;
+        let preview_dir = self.selected_file().ok().map(|f| f.path);
+
+        for watched_dir in watched_dirs.iter() {
+            if watched_dir != &cwd.path && watched_dir != &left_dir.path &&
+                Some(watched_dir.clone()) != preview_dir {
+                self.watcher.unwatch(&watched_dir).unwrap();
+                self.watches.remove_item(&watched_dir);
+            }
+        }
+        if !watched_dirs.contains(&cwd.path) {
+            self.watcher.watch(&cwd.path, RecursiveMode::NonRecursive).unwrap();
+            self.watches.push(cwd.path);
+        }
+        if !watched_dirs.contains(&left_dir.path) {
+            self.watcher.watch(&left_dir.path, RecursiveMode::NonRecursive).unwrap();
+            self.watches.push(left_dir.path);
+        }
+        if let Some(preview_dir) = preview_dir {
+            if !watched_dirs.contains(&preview_dir) {
+            self.watcher.watch(&preview_dir, RecursiveMode::NonRecursive).unwrap();
+            self.watches.push(preview_dir);
+            }
+        }
+        Ok(())
+    }
+
+    fn handle_dir_events(&mut self) -> HResult<()> {
+        let mut dir_events =  self.dir_events.lock()?;
+        for event in dir_events.iter() {
+            let main_widget = self.columns.get_main_widget()?.widget()?;
+            let main_files = &mut (*main_widget.lock()?);
+            let main_files = &mut main_files.as_mut()?.content;
+            let main_result = main_files.handle_event(event);
+
+            let left_widget = self.columns.get_left_widget()?.widget()?;
+            let left_files = &mut (*left_widget.lock()?);
+            let left_files = &mut left_files.as_mut()?.content;
+            let left_result = left_files.handle_event(event);
+
+            match main_result {
+                Err(HError::WrongDirectoryError { .. }) => {
+                    match left_result {
+                        Err(HError::WrongDirectoryError { .. }) => {
+                            let preview = &mut self.columns.preview;
+                            preview.reload();
+                        }, _ => {}
+                    }
+                }, _ => {}
+            }
+        }
+        dir_events.clear();
         Ok(())
     }
 
@@ -352,11 +450,13 @@ impl Widget for FileBrowser {
                 crate::term::goto_xy(count_xpos, count_ypos), file_count)
      }
     fn refresh(&mut self) {
-        self.update_preview().ok();
+        self.handle_dir_events().ok();
+        self.columns.refresh();
         self.fix_left().ok();
         self.fix_selection().ok();
         self.set_cwd().ok();
-        self.columns.refresh();
+        self.update_watches().ok();
+        self.update_preview().ok();
     }
 
     fn get_drawlist(&self) -> String {
@@ -378,3 +478,14 @@ impl Widget for FileBrowser {
         self.update_preview().ok();
     }
 }
+
+impl PartialEq for FileBrowser {
+    fn eq(&self, other: &FileBrowser) -> bool {
+        if self.columns == other.columns && self.cwd == other.cwd {
+            true
+        } else {
+            false
+        }
+    }
+}
+

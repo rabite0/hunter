@@ -16,6 +16,7 @@ extern crate chrono;
 extern crate mime_detective;
 extern crate rayon;
 extern crate libc;
+extern crate notify;
 
 use termion::input::MouseTerminal;
 use termion::raw::IntoRawMode;

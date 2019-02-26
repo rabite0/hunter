@@ -379,6 +379,9 @@ impl<T> Widget for ListView<T> where ListView<T>: Listable {
     fn refresh(&mut self) {
         self.on_refresh();
         self.lines = self.len();
+        if self.selection >= self.lines {
+            self.selection -= 1;
+        }
         self.buffer = self.render();
     }
 

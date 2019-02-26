@@ -1,6 +1,8 @@
 use failure;
 use failure::Fail;
 
+use std::path::PathBuf;
+
 pub type HResult<T> = Result<T, HError>;
 
 #[derive(Fail, Debug)]
@@ -28,7 +30,9 @@ pub enum HError {
     #[fail(display = "Not ready yet!")]
     WillBeNotReady,
     #[fail(display = "No widget found")]
-    NoWidgetError
+    NoWidgetError,
+    #[fail(display = "Path: {:?} not in this directory: {:?}", path, dir)]
+    WrongDirectoryError{ path: PathBuf, dir: PathBuf }
 }
 
 impl From<std::io::Error> for HError {
