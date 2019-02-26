@@ -137,7 +137,7 @@ where
 
     fn render_line(&self, file: &File) -> String {
         let name = &file.name;
-        let (size, unit) = file.calculate_size().unwrap();
+        let (size, unit) = file.calculate_size().unwrap_or((0, "".to_string()));
 
         let selection_gap = "  ".to_string();
         let (name, selection_color) =  if file.is_selected() {
