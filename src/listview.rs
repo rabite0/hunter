@@ -53,7 +53,6 @@ impl Listable for ListView<Files> {
             Key::Char('K') => self.select_next_mtime(),
             Key::Char('k') => self.select_prev_mtime(),
             Key::Char('d') => self.toggle_dirs_first(),
-            Key::Char('!') => self.exec_cmd(),
             _ => self.bad(Event::Key(key))
         }
     }
@@ -337,50 +336,6 @@ impl ListView<Files>
         file.toggle_selection();
         self.move_down();
         self.refresh();
-    }
-
-    fn exec_cmd(&mut self) {
-        let selected_files = self.content.get_selected();
-        let file_names
-            = selected_files.iter().map(|f| f.name.clone()).collect::<Vec<String>>();
-
-        let cmd = self.minibuffer("exec:");
-
-        match cmd {
-            Ok(cmd) => {
-                self.show_status(&format!("Running: \"{}\"", &cmd));
-
-                let filename = self.selected_file().name.clone();
-
-                let cmd = if file_names.len() == 0 {
-                    cmd.replace("$s", &format!("{}", &filename))
-                } else {
-                    let args = file_names.iter().map(|f| {
-                        format!(" \"{}\" ", f)
-                    }).collect::<String>();
-                    let clean_cmd = cmd.replace("$s", "");
-
-                    clean_cmd + &args
-                };
-
-                let status = std::process::Command::new("sh")
-                    .arg("-c")
-                    .arg(&cmd)
-                    .status();
-                let mut bufout = std::io::BufWriter::new(std::io::stdout());
-                write!(bufout, "{}{}",
-                       termion::style::Reset,
-                       termion::clear::All).unwrap();
-
-                match status {
-                    Ok(status) => self.show_status(&format!("\"{}\" exited with {}",
-                                                            cmd, status)),
-                    Err(err) => self.show_status(&format!("Can't run this \"{}\": {}",
-                                                          cmd, err)),
-                }
-            }
-            Err(_) => self.show_status(""),
-        }
     }
 
     fn find_file(&mut self) -> HResult<()> {

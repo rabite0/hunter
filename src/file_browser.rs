@@ -54,6 +54,17 @@ impl Tabbable for TabView<FileBrowser> {
     fn on_next_tab(&mut self) {
         self.active_tab_mut().refresh();
     }
+
+    fn on_key_sub(&mut self, key: Key) {
+        match key {
+            Key::Char('!') => {
+                let tab_dirs = self.widgets.iter().map(|w| w.cwd.clone())
+                                                  .collect::<Vec<_>>();
+                self.widgets[self.active].exec_cmd(tab_dirs).ok();
+            }
+            _ => self.active_tab_mut().on_key(key)
+        }
+    }
 }
 
 impl FileBrowser {
@@ -235,6 +246,55 @@ impl FileBrowser {
                 self.columns.push_widget(middle);
             },
             Err(_) => {}
+        }
+        Ok(())
+    }
+
+    fn exec_cmd(&mut self, tab_dirs: Vec<File>) -> HResult<()> {
+        let widget = self.left_widget()?;
+        let widget = widget.lock()?;
+        let selected_files = (*widget).as_ref()?.content.get_selected();
+
+        let file_names
+            = selected_files.iter().map(|f| f.name.clone()).collect::<Vec<String>>();
+
+        let cmd = self.minibuffer("exec:")?;
+
+        self.show_status(&format!("Running: \"{}\"", &cmd));
+
+        let filename = self.selected_file()?.name.clone();
+
+        let mut cmd = if file_names.len() == 0 {
+            cmd.replace("$s", &format!("{}", &filename))
+        } else {
+            let args = file_names.iter().map(|f| {
+                format!(" \"{}\" ", f)
+            }).collect::<String>();
+            let clean_cmd = cmd.replace("$s", "");
+
+            clean_cmd + &args
+        };
+
+        for (i, tab_dir) in tab_dirs.iter().enumerate() {
+            let tab_identifier = format!("${}", i);
+            let tab_path = tab_dir.path.to_string_lossy();
+            cmd = cmd.replace(&tab_identifier, &tab_path);
+        }
+
+        let status = std::process::Command::new("sh")
+            .arg("-c")
+            .arg(&cmd)
+            .status();
+        let mut bufout = std::io::BufWriter::new(std::io::stdout());
+        write!(bufout, "{}{}",
+               termion::style::Reset,
+               termion::clear::All).unwrap();
+
+        match status {
+            Ok(status) => self.show_status(&format!("\"{}\" exited with {}",
+                                                    cmd, status)),
+            Err(err) => self.show_status(&format!("Can't run this \"{}\": {}",
+                                                  cmd, err)),
         }
         Ok(())
     }

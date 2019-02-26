@@ -11,12 +11,13 @@ pub trait Tabbable {
     fn get_tab_names(&self) -> Vec<Option<String>>;
     fn active_tab(&self) -> &dyn Widget;
     fn active_tab_mut(&mut self) -> &mut dyn Widget;
+    fn on_key_sub(&mut self, key: Key);
     fn on_key(&mut self, key: Key) {
         match key {
             Key::Ctrl('t') => { self.new_tab(); },
             Key::Ctrl('w') => self.close_tab(),
             Key::Char('\t') => self.next_tab(),
-            _ => self.active_tab_mut().on_key(key)
+            _ => self.on_key_sub(key)
         }
     }
 }
