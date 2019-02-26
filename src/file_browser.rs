@@ -251,7 +251,8 @@ impl FileBrowser {
     }
 
     fn exec_cmd(&mut self, tab_dirs: Vec<File>) -> HResult<()> {
-        let widget = self.left_widget()?;
+        let filename = self.selected_file()?.name.clone();
+        let widget = self.main_widget()?;
         let widget = widget.lock()?;
         let selected_files = (*widget).as_ref()?.content.get_selected();
 
@@ -262,17 +263,13 @@ impl FileBrowser {
 
         self.show_status(&format!("Running: \"{}\"", &cmd));
 
-        let filename = self.selected_file()?.name.clone();
-
         let mut cmd = if file_names.len() == 0 {
             cmd.replace("$s", &format!("{}", &filename))
         } else {
             let args = file_names.iter().map(|f| {
                 format!(" \"{}\" ", f)
             }).collect::<String>();
-            let clean_cmd = cmd.replace("$s", "");
-
-            clean_cmd + &args
+            cmd.replace("$s", &args)
         };
 
         for (i, tab_dir) in tab_dirs.iter().enumerate() {

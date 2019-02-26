@@ -18,7 +18,7 @@ lazy_static! {
     static ref COLORS: LsColors = LsColors::from_env().unwrap();
 }
 
-#[derive(PartialEq, Clone)]
+#[derive(PartialEq, Clone, Debug)]
 pub struct Files {
     pub directory: File,
     pub files: Vec<File>,
