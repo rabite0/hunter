@@ -271,7 +271,7 @@ impl File {
         }
     }
 
-    pub fn new_from_path(path: &Path) -> Result<File, Error> {
+    pub fn new_from_path(path: &Path) -> HResult<File> {
         let pathbuf = path.to_path_buf();
         let name = path
             .file_name()
@@ -351,6 +351,11 @@ impl File {
 
     pub fn grand_parent(&self) -> Option<PathBuf> {
         Some(self.path.parent()?.parent()?.to_path_buf())
+    }
+
+    pub fn grand_parent_as_file(&self) -> HResult<File> {
+        let pathbuf = self.grand_parent()?;
+        File::new_from_path(&pathbuf)
     }
 
     pub fn is_dir(&self) -> bool {

@@ -137,6 +137,10 @@ impl FileBrowser {
     pub fn go_back(&mut self) -> HResult<()> {
         self.columns.pop_widget();
 
+        if let Ok(new_cwd) = self.cwd.grand_parent_as_file() {
+            self.cwd = new_cwd;
+        }
+
         self.refresh();
         Ok(())
     }
@@ -156,12 +160,12 @@ impl FileBrowser {
 
     pub fn fix_left(&mut self) -> HResult<()> {
         if self.left_widget().is_err() {
-            let file = self.selected_file()?.clone();
-            if let Some(grand_parent) = file.grand_parent() {
+            let cwd = self.selected_file()?.clone();
+            if let Ok(grand_parent) = cwd.grand_parent_as_file() {
                 let (coords, _, _) = self.columns.calculate_coordinates();
                 let left_view = WillBeWidget::new(Box::new(move |_| {
                     let mut view
-                        = ListView::new(Files::new_from_path(&grand_parent)?);
+                        = ListView::new(Files::new_from_path(&grand_parent.path)?);
                     view.set_coordinates(&coords);
                     Ok(view)
                 }));
