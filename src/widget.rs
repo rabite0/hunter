@@ -1,9 +1,13 @@
+use std::sync::mpsc::channel;
+
 use termion::event::{Event, Key, MouseEvent};
+use termion::input::TermRead;
 
 use crate::coordinates::{Coordinates, Position, Size};
-use crate::fail::HResult;
+use crate::fail::{HResult, HError};
+use crate::window::{send_event, Events};
 
-use std::io::{BufWriter, Write};
+use std::io::{BufWriter, Write, stdin};
 
 
 pub trait Widget {
@@ -18,7 +22,7 @@ pub trait Widget {
     fn get_drawlist(&self) -> String;
 
 
-    fn on_event(&mut self, event: Event) {
+    fn on_event(&mut self, event: Event) -> HResult<()> {
         match event {
             Event::Key(Key::Char('q')) => panic!("It's your fault!"),
             Event::Key(key) => self.on_key(key),
@@ -27,22 +31,25 @@ pub trait Widget {
         }
     }
 
-    fn on_key(&mut self, key: Key) {
+    fn on_key(&mut self, key: Key) -> HResult<()> {
         match key {
             _ => self.bad(Event::Key(key)),
         }
+        Ok(())
     }
 
-    fn on_mouse(&mut self, event: MouseEvent) {
+    fn on_mouse(&mut self, event: MouseEvent) -> HResult<()> {
         match event {
             _ => self.bad(Event::Mouse(event)),
         }
+        Ok(())
     }
 
-    fn on_wtf(&mut self, event: Vec<u8>) {
+    fn on_wtf(&mut self, event: Vec<u8>) -> HResult<()> {
         match event {
             _ => self.bad(Event::Unsupported(event)),
         }
+        Ok(())
     }
 
     fn show_status(&self, status: &str) {
@@ -122,6 +129,49 @@ pub trait Widget {
 
         write!(bufout, "{}", drawlist)?;
         bufout.flush()?;
+        Ok(())
+    }
+
+    fn popup(&mut self) -> HResult<()> {
+        self.run_widget();
+        send_event(Events::ExclusiveEvent(None));
+        Ok(())
+    }
+
+    fn run_widget(&mut self) -> HResult<()> {
+        let (tx_event, rx_event) = channel();
+        send_event(Events::ExclusiveEvent(Some(tx_event)))?;
+        dbg!("sent exclusive request");
+
+        self.clear()?;
+        self.refresh();
+        self.draw()?;
+
+        dbg!("entering loop");
+
+        for event in rx_event.iter() {
+            dbg!(&event);
+            match event {
+                Events::InputEvent(input) => {
+                    if let Err(HError::PopupFinnished) = self.on_event(input) {
+                        return Err(HError::PopupFinnished)
+                    }
+                }
+                Events::WidgetReady => {
+                    self.refresh();
+                }
+                _ => {}
+            }
+
+            self.draw()?;
+        }
+        Ok(())
+    }
+
+    fn clear(&self) -> HResult<()> {
+        let clearlist = self.get_clearlist();
+        write!(std::io::stdout(), "{}", clearlist)?;
+        std::io::stdout().flush()?;
         Ok(())
     }
 

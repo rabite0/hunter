@@ -90,7 +90,7 @@ where
         view
     }
 
-    fn move_up(&mut self) {
+    pub fn move_up(&mut self) {
         if self.selection == 0 {
             return;
         }
@@ -102,11 +102,11 @@ where
         self.selection -= 1;
         self.seeking = false;
     }
-    fn move_down(&mut self) {
+    pub fn move_down(&mut self) {
         let lines = self.lines;
         let y_size = self.coordinates.ysize() as usize;
 
-        if self.selection == lines - 1 {
+        if self.lines == 0 || self.selection == lines - 1 {
             return;
         }
 
@@ -379,7 +379,7 @@ impl<T> Widget for ListView<T> where ListView<T>: Listable {
     fn refresh(&mut self) {
         self.on_refresh();
         self.lines = self.len();
-        if self.selection >= self.lines {
+        if self.selection >= self.lines && self.selection != 0 {
             self.selection -= 1;
         }
         self.buffer = self.render();
@@ -418,7 +418,8 @@ impl<T> Widget for ListView<T> where ListView<T>: Listable {
         format!("{} files", self.len())
     }
 
-    fn on_key(&mut self, key: Key) {
+    fn on_key(&mut self, key: Key) -> HResult<()> {
         Listable::on_key(self, key);
+        Ok(())
     }
 }

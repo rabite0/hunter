@@ -32,7 +32,9 @@ pub enum HError {
     #[fail(display = "No widget found")]
     NoWidgetError,
     #[fail(display = "Path: {:?} not in this directory: {:?}", path, dir)]
-    WrongDirectoryError{ path: PathBuf, dir: PathBuf }
+    WrongDirectoryError{ path: PathBuf, dir: PathBuf },
+    #[fail(display = "Widget finnished")]
+    PopupFinnished,
 }
 
 impl From<std::io::Error> for HError {

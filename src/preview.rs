@@ -185,12 +185,12 @@ impl<T: Widget + Send + 'static> Widget for WillBeWidget<T> {
         let widget = widget.as_ref().unwrap();
         widget.get_drawlist()
     }
-    fn on_key(&mut self, key: termion::event::Key) {
-        if self.willbe.check().is_err() { return }
+    fn on_key(&mut self, key: termion::event::Key) -> HResult<()> {
+        if self.willbe.check().is_err() { return Ok(()) }
         let widget = self.widget().unwrap();
         let mut widget = widget.try_lock().unwrap();
         let widget = widget.as_mut().unwrap();
-        widget.on_key(key);
+        widget.on_key(key)
     }
 }
 

@@ -20,11 +20,12 @@ lazy_static! {
         = Arc::new(Mutex::new(MiniBuffer::new()));
 }
 
-
+#[derive(Debug)]
 pub enum Events {
     InputEvent(Event),
     WidgetReady,
     ExclusiveInput(bool),
+    ExclusiveEvent(Option<Sender<Events>>),
 }
 
 pub struct Window<T>
@@ -87,32 +88,22 @@ where
 
 
     pub fn handle_input(&mut self) {
-        let (tx_event_internal, rx_event_internal) = channel();
         let (tx_event, rx_event) = channel();
-        *TX_EVENT.try_lock().unwrap() = Some(tx_event);
-        let (tx_request_input, rx_request_input) = channel();
+        let (tx_global_event, rx_global_event) = channel();
+        *TX_EVENT.try_lock().unwrap() = Some(tx_global_event);
+        let (tx_internal_event, rx_internal_event) = channel();
 
-        let mut exclusive_mode = false;
+        input_thread(tx_event.clone());
+        global_event_thread(rx_global_event, tx_event.clone());
+        dispatch_events(rx_event, tx_internal_event);
 
-        event_thread(rx_event, tx_event_internal.clone());
-        input_thread(tx_event_internal.clone(), rx_request_input);
-        tx_request_input.send(()).unwrap();
-
-        for event in rx_event_internal.iter() {
-            //Self::clear_status();
-            //let event = event.unwrap();
+        for event in rx_internal_event.iter() {
             match event {
                 Events::InputEvent(event) => {
                     self.widget.on_event(event);
                     self.screen.cursor_hide();
                     self.draw();
-                    if !exclusive_mode {
-                        tx_request_input.send(()).unwrap();
-                    }
                 },
-                Events::ExclusiveInput(setting) => {
-                    exclusive_mode = setting
-                }
                 _ => {
                     self.widget.refresh();
                     self.draw();
@@ -122,23 +113,39 @@ where
     }
 }
 
-fn event_thread(rx: Receiver<Events>,
-                tx: Sender<Events>) {
+fn dispatch_events(rx: Receiver<Events>, tx: Sender<Events>) {
     std::thread::spawn(move || {
+        let mut tx_exclusive_event: Option<Sender<Events>> = None;
         for event in rx.iter() {
+            match &event {
+                Events::ExclusiveEvent(tx_event) => {
+                    tx_exclusive_event = tx_event.clone();
+                }
+                _ => {}
+            }
+            if let Some(tx_event) = &tx_exclusive_event {
+                tx_event.send(event).unwrap();
+            } else {
+                tx.send(event).unwrap();
+            }
+        }
+    });
+}
+
+fn global_event_thread(rx_global: Receiver<Events>,
+                       tx: Sender<Events>) {
+    std::thread::spawn(move || {
+        for event in rx_global.iter() {
             tx.send(event).unwrap();
         }
     });
 }
 
-fn input_thread(tx: Sender<Events>, request_input: Receiver<()>) {
+fn input_thread(tx: Sender<Events>) {
     std::thread::spawn(move || {
-        for _ in request_input.iter() {
-            for input in stdin().events() {
-                let input = input.unwrap();
-                tx.send(Events::InputEvent(input)).unwrap();
-                break;
-            }
+        for input in stdin().events() {
+            let input = input.unwrap();
+            tx.send(Events::InputEvent(input)).unwrap();
         }
     });
 }

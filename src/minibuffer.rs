@@ -145,7 +145,7 @@ impl Widget for MiniBuffer {
                 self.input)
     }
 
-    fn on_key(&mut self, key: Key) {
+    fn on_key(&mut self, key: Key) -> HResult<()> {
         match key {
             Key::Esc | Key::Ctrl('c') => { self.input.clear(); self.done = true; },
             Key::Char('\n') => {
@@ -205,7 +205,8 @@ impl Widget for MiniBuffer {
                 self.input.insert(self.position, key);
                 self.position += 1;
             }
-            _ => {}
+            _ => {  }
         }
+        Ok(())
     }
 }

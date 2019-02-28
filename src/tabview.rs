@@ -2,6 +2,7 @@ use termion::event::Key;
 
 use crate::coordinates::{Coordinates};
 use crate::widget::Widget;
+use crate::fail::HResult;
 
 pub trait Tabbable {
     fn new_tab(&mut self);
@@ -129,7 +130,8 @@ impl<T> Widget for TabView<T> where T: Widget, TabView<T>: Tabbable {
         self.refresh();
     }
 
-    fn on_key(&mut self, key: Key) {
+    fn on_key(&mut self, key: Key) -> HResult<()> {
         Tabbable::on_key(self, key);
+        Ok(())
     }
 }

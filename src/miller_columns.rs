@@ -155,7 +155,8 @@ where
         }
     }
 
-    fn on_key(&mut self, key: Key) {
+    fn on_key(&mut self, key: Key) -> HResult<()> {
         self.get_main_widget_mut().unwrap().on_key(key);
+        Ok(())
     }
 }

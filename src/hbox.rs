@@ -2,6 +2,7 @@ use termion::event::{Event};
 
 use crate::widget::Widget;
 use crate::coordinates::{Coordinates, Size, Position};
+use crate::fail::HResult;
 
 #[derive(PartialEq)]
 pub struct HBox<T: Widget> {
@@ -106,7 +107,8 @@ impl<T> Widget for HBox<T> where T: Widget + PartialEq {
         self.coordinates = coordinates.clone();
         self.refresh();
     }
-    fn on_event(&mut self, event: Event) {
-        self.widgets.last_mut().unwrap().on_event(event);
+    fn on_event(&mut self, event: Event) -> HResult<()> {
+        self.widgets.last_mut()?.on_event(event).ok();
+        Ok(())
     }
 }

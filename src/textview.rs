@@ -48,6 +48,12 @@ impl TextView {
             coordinates: Coordinates::new(),
         }
     }
+
+    pub fn set_text(&mut self, text: &str) {
+        let lines = text.lines().map(|l| l.to_string()).collect();
+        self.lines = lines;
+        self.refresh();
+    }
 }
 
 impl Widget for TextView {

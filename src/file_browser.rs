@@ -17,6 +17,7 @@ use crate::tabview::{TabView, Tabbable};
 use crate::preview::WillBeWidget;
 use crate::fail::{HResult, HError};
 use crate::window::{Events, send_event};
+use crate::proclist::ProcView;
 
 
 
@@ -25,12 +26,17 @@ pub struct FileBrowser {
     pub cwd: File,
     watcher: INotifyWatcher,
     watches: Vec<PathBuf>,
-    dir_events: Arc<Mutex<Vec<DebouncedEvent>>>
+    dir_events: Arc<Mutex<Vec<DebouncedEvent>>>,
+    proc_view: Arc<Mutex<ProcView>>,
 }
 
 impl Tabbable for TabView<FileBrowser> {
     fn new_tab(&mut self) {
-        let tab = FileBrowser::new().unwrap();
+        let mut tab = FileBrowser::new().unwrap();
+
+        let proc_view = self.active_tab_().proc_view.clone();
+        tab.proc_view = proc_view;
+
         self.push_widget(tab);
         self.active += 1;
     }
@@ -71,7 +77,7 @@ impl Tabbable for TabView<FileBrowser> {
                                                   .collect::<Vec<_>>();
                 self.widgets[self.active].exec_cmd(tab_dirs).ok();
             }
-            _ => self.active_tab_mut().on_key(key)
+            _ => { self.active_tab_mut().on_key(key).ok(); }
         }
     }
 }
@@ -125,11 +131,15 @@ impl FileBrowser {
         let watcher = INotifyWatcher::new(tx_watch, Duration::from_secs(2)).unwrap();
         watch_dir(rx_watch, dir_events.clone());
 
+        let mut proc_view = ProcView::new();
+        proc_view.set_coordinates(&coords);
+
         Ok(FileBrowser { columns: miller,
                          cwd: cwd,
                          watcher: watcher,
                          watches: vec![],
-                         dir_events: dir_events })
+                         dir_events: dir_events,
+                         proc_view: Arc::new(Mutex::new(proc_view)) })
     }
 
     pub fn enter_dir(&mut self) -> HResult<()> {
@@ -250,7 +260,7 @@ impl FileBrowser {
             self.watches.push(left_dir.path);
         }
         if let Some(preview_dir) = preview_dir {
-            if !watched_dirs.contains(&preview_dir) {
+            if !watched_dirs.contains(&preview_dir) && preview_dir.is_dir() {
             self.watcher.watch(&preview_dir, RecursiveMode::NonRecursive).unwrap();
             self.watches.push(preview_dir);
             }
@@ -380,21 +390,8 @@ impl FileBrowser {
             cmd = cmd.replace(&tab_identifier, &tab_path);
         }
 
-        let status = std::process::Command::new("sh")
-            .arg("-c")
-            .arg(&cmd)
-            .status();
-        let mut bufout = std::io::BufWriter::new(std::io::stdout());
-        write!(bufout, "{}{}",
-               termion::style::Reset,
-               termion::clear::All).unwrap();
+        self.proc_view.lock()?.run_proc(&cmd)?;
 
-        match status {
-            Ok(status) => self.show_status(&format!("\"{}\" exited with {}",
-                                                    cmd, status)),
-            Err(err) => self.show_status(&format!("Can't run this \"{}\": {}",
-                                                  cmd, err)),
-        }
         Ok(())
     }
 }
@@ -404,7 +401,8 @@ impl Widget for FileBrowser {
         &self.columns.coordinates
     }
     fn set_coordinates(&mut self, coordinates: &Coordinates) {
-        self.columns.coordinates = coordinates.clone();
+        self.columns.set_coordinates(coordinates);
+        self.proc_view.lock().unwrap().set_coordinates(coordinates);
         self.refresh();
     }
     fn render_header(&self) -> String {
@@ -467,15 +465,20 @@ impl Widget for FileBrowser {
         }
     }
 
-    fn on_key(&mut self, key: Key) {
+    fn on_key(&mut self, key: Key) -> HResult<()> {
         match key {
             Key::Char('/') => { self.turbo_cd().ok(); },
             Key::Char('Q') => { self.quit_with_dir().ok(); },
             Key::Right | Key::Char('f') => { self.enter_dir().ok(); },
             Key::Left | Key::Char('b') => { self.go_back().ok(); },
-            _ => self.columns.get_main_widget_mut().unwrap().on_key(key),
+            Key::Char('w') => {
+                self.proc_view.lock()?.popup().ok();
+            }
+                                ,
+            _ => { self.columns.get_main_widget_mut()?.on_key(key).ok(); },
         }
         self.update_preview().ok();
+        Ok(())
     }
 }
 

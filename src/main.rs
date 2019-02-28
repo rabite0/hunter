@@ -40,6 +40,9 @@ mod tabview;
 mod async_widget;
 mod fail;
 mod minibuffer;
+mod proclist;
+
+
 
 
 use window::Window;
