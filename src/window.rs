@@ -24,7 +24,6 @@ lazy_static! {
 pub enum Events {
     InputEvent(Event),
     WidgetReady,
-    ExclusiveInput(bool),
     ExclusiveEvent(Option<Sender<Events>>),
 }
 

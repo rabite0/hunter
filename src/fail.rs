@@ -35,6 +35,8 @@ pub enum HError {
     WrongDirectoryError{ path: PathBuf, dir: PathBuf },
     #[fail(display = "Widget finnished")]
     PopupFinnished,
+    #[fail(display = "Input finnished")]
+    InputFinnished,
 }
 
 impl From<std::io::Error> for HError {

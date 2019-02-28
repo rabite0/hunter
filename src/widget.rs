@@ -20,6 +20,7 @@ pub trait Widget {
     fn render_footer(&self) -> String { "".into() }
     fn refresh(&mut self);
     fn get_drawlist(&self) -> String;
+    fn after_draw(&self) -> HResult<()> { Ok(()) }
 
 
     fn on_event(&mut self, event: Event) -> HResult<()> {
@@ -134,23 +135,19 @@ pub trait Widget {
 
     fn popup(&mut self) -> HResult<()> {
         self.run_widget();
-        send_event(Events::ExclusiveEvent(None));
+        send_event(Events::ExclusiveEvent(None))?;
         Ok(())
     }
 
     fn run_widget(&mut self) -> HResult<()> {
         let (tx_event, rx_event) = channel();
         send_event(Events::ExclusiveEvent(Some(tx_event)))?;
-        dbg!("sent exclusive request");
 
         self.clear()?;
         self.refresh();
         self.draw()?;
 
-        dbg!("entering loop");
-
         for event in rx_event.iter() {
-            dbg!(&event);
             match event {
                 Events::InputEvent(input) => {
                     if let Err(HError::PopupFinnished) = self.on_event(input) {
@@ -162,8 +159,8 @@ pub trait Widget {
                 }
                 _ => {}
             }
-
-            self.draw()?;
+            self.draw();
+            self.after_draw();
         }
         Ok(())
     }

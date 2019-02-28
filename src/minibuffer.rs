@@ -1,12 +1,10 @@
 use termion::event::Key;
-use termion::input::TermRead;
-
-use std::io::{stdin, stdout, Write};
+use std::io::{stdout, Write};
 
 use crate::coordinates::{Coordinates};
 use crate::widget::Widget;
-use crate::window::{send_event, Events};
-use crate::fail::HResult;
+use crate::fail::{HResult, HError};
+use crate::term;
 
 pub struct MiniBuffer {
     coordinates: Coordinates,
@@ -38,37 +36,33 @@ impl MiniBuffer {
         self.done = false;
         self.position = 0;
 
-        send_event(Events::ExclusiveInput(true))?;
+        write!(stdout(), "{}", termion::cursor::Show)?;
 
-        self.draw()?;
-        write!(stdout(), "{}{}",
-               termion::cursor::Show,
-               termion::cursor::Save)?;
-        stdout().flush()?;
+        self.popup()?;
 
 
-        for event in stdin().events() {
-            let event = event?;
-            self.on_event(event);
-            if self.done {
-                break
-            }
-            self.draw()?;
+        // for event in stdin().events() {
+        //     let event = event?;
+        //     self.on_event(event);
+        //     if self.done {
+        //         break
+        //     }
+        //     self.draw()?;
 
-            write!(stdout(), "{}", termion::cursor::Restore)?;
-            if self.position != 0 {
-                write!(stdout(),
-                       "{}",
-                       termion::cursor::Right(self.position as u16))?;
-            }
-            stdout().flush()?;
-        }
-
-        self.done = false;
-
-        send_event(Events::ExclusiveInput(false))?;
+        //     write!(stdout(), "{}", termion::cursor::Restore)?;
+        //     if self.position != 0 {
+        //         write!(stdout(),
+        //                "{}",
+        //                termion::cursor::Right(self.position as u16))?;
+        //     }
+        //     stdout().flush()?;
+        // }
 
         Ok(self.input.clone())
+    }
+
+    pub fn input_finnished(&mut self) -> HResult<()> {
+        return Err(HError::PopupFinnished)
     }
 }
 
@@ -147,12 +141,12 @@ impl Widget for MiniBuffer {
 
     fn on_key(&mut self, key: Key) -> HResult<()> {
         match key {
-            Key::Esc | Key::Ctrl('c') => { self.input.clear(); self.done = true; },
+            Key::Esc | Key::Ctrl('c') => { self.input_finnished()?; },
             Key::Char('\n') => {
                 if self.input != "" {
                     self.history.push(self.input.clone());
                 }
-                self.done = true;
+                self.input_finnished()?;
             }
             Key::Char('\t') => {
                 if !self.input.ends_with(" ") {
@@ -207,6 +201,20 @@ impl Widget for MiniBuffer {
             }
             _ => {  }
         }
+        Ok(())
+    }
+
+    fn after_draw(&self) -> HResult<()> {
+        let cursor_pos = self.query.len() +
+                         ": ".len() +
+                         self.position +
+                         1;
+
+        let ysize = term::ysize();
+
+
+        write!(stdout(), "{}", term::goto_xy(cursor_pos as u16, ysize))?;
+        stdout().flush()?;
         Ok(())
     }
 }
