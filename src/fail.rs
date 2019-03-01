@@ -37,6 +37,10 @@ pub enum HError {
     PopupFinnished,
     #[fail(display = "Input finnished")]
     InputFinnished,
+    #[fail(display = "No completions found")]
+    NoCompletionsError,
+    #[fail(display = "No more history")]
+    NoHistoryError
 }
 
 impl From<std::io::Error> for HError {
