@@ -1,5 +1,6 @@
 use failure;
 use failure::Fail;
+use failure::Backtrace;
 
 use std::path::PathBuf;
 
@@ -28,20 +29,44 @@ pub enum HError {
     #[fail(display = "Was None!")]
     NoneError,
     #[fail(display = "Not ready yet!")]
-    WillBeNotReady,
+    WillBeNotReady(Backtrace),
     #[fail(display = "No widget found")]
-    NoWidgetError,
+    NoWidgetError(Backtrace),
     #[fail(display = "Path: {:?} not in this directory: {:?}", path, dir)]
     WrongDirectoryError{ path: PathBuf, dir: PathBuf },
     #[fail(display = "Widget finnished")]
     PopupFinnished,
-    #[fail(display = "Input finnished")]
-    InputFinnished,
     #[fail(display = "No completions found")]
     NoCompletionsError,
     #[fail(display = "No more history")]
-    NoHistoryError
+    NoHistoryError,
+    #[fail(display = "No core for widget")]
+    NoWidgetCoreError(Backtrace),
+    #[fail(display = "No header for widget")]
+    NoHeaderError,
 }
+
+pub trait ErrorLog where Self: Sized {
+    fn log(self) {}
+}
+
+impl<T> ErrorLog for HResult<T> {
+    fn log(self) {
+        if let Err(err) = self {
+            eprintln!("{:?}", err);
+        }
+    }
+}
+
+
+
+
+// impl From<&HError> for HError {
+//     fn from(error: &HError) -> Self {
+//         dbg!(&error);
+//         (error.clone())
+//     }
+// }
 
 impl From<std::io::Error> for HError {
     fn from(error: std::io::Error) -> Self {

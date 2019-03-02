@@ -3,17 +3,16 @@ use unicode_width::UnicodeWidthStr;
 
 use std::path::{Path, PathBuf};
 
-use crate::coordinates::{Coordinates, Position, Size};
 use crate::files::{File, Files};
-use crate::fail::HResult;
+use crate::fail::{HResult, ErrorLog};
 use crate::term;
-use crate::widget::{Widget};
+use crate::widget::{Widget, WidgetCore};
 
 pub trait Listable {
     fn len(&self) -> usize;
     fn render(&self) -> Vec<String>;
-    fn on_refresh(&mut self) {}
-    fn on_key(&mut self, _key: Key) {}
+    fn on_refresh(&mut self) -> HResult<()> { Ok(()) }
+    fn on_key(&mut self, _key: Key) -> HResult<()> { Ok(()) }
 }
 
 impl Listable for ListView<Files> {
@@ -25,26 +24,27 @@ impl Listable for ListView<Files> {
         self.render()
     }
 
-    fn on_refresh(&mut self) {
-        let visible_file_num = self.selection + self.get_coordinates().ysize() as usize;
+    fn on_refresh(&mut self) -> HResult<()> {
+        let visible_file_num = self.selection + self.get_coordinates()?.ysize() as usize;
         self.content.meta_upto(visible_file_num);
+        Ok(())
     }
 
-    fn on_key(&mut self, key: Key) {
+    fn on_key(&mut self, key: Key) -> HResult<()> {
         match key {
             Key::Up | Key::Char('p') => {
                 self.move_up();
-                self.refresh();
+                self.refresh()?;
             }
-            Key::Char('P') => { for _ in 0..10 { self.move_up() } self.refresh(); }
-            Key::Char('N') => { for _ in 0..10 { self.move_down() } self.refresh(); }
+            Key::Char('P') => { for _ in 0..10 { self.move_up() } self.refresh()?; }
+            Key::Char('N') => { for _ in 0..10 { self.move_down() } self.refresh()?; }
             Key::Down | Key::Char('n') => {
                 self.move_down();
-                self.refresh();
+                self.refresh()?;
             },
             Key::Ctrl('s') => { self.find_file().ok(); }
-            Key::Left => self.goto_grand_parent(),
-            Key::Right => self.goto_selected(),
+            Key::Left => self.goto_grand_parent()?,
+            Key::Right => self.goto_selected()?,
             Key::Char(' ') => self.multi_select_file(),
             Key::Char('h') => self.toggle_hidden(),
             Key::Char('r') => self.reverse_sort(),
@@ -52,8 +52,9 @@ impl Listable for ListView<Files> {
             Key::Char('K') => self.select_next_mtime(),
             Key::Char('k') => self.select_prev_mtime(),
             Key::Char('d') => self.toggle_dirs_first(),
-            _ => self.bad(Event::Key(key))
+            _ => { self.bad(Event::Key(key))?; }
         }
+        Ok(())
     }
 }
 
@@ -65,7 +66,7 @@ pub struct ListView<T> where ListView<T>: Listable
     selection: usize,
     offset: usize,
     buffer: Vec<String>,
-    coordinates: Coordinates,
+    core: WidgetCore,
     seeking: bool,
 }
 
@@ -74,17 +75,14 @@ where
     ListView<T>: Widget,
     ListView<T>: Listable
 {
-    pub fn new(content: T) -> ListView<T> {
+    pub fn new(core: &WidgetCore, content: T) -> ListView<T> {
         let view = ListView::<T> {
             content: content,
             lines: 0,
             selection: 0,
             offset: 0,
             buffer: Vec::new(),
-            coordinates: Coordinates {
-                size: Size((1, 1)),
-                position: Position((1, 1)),
-            },
+            core: core.clone(),
             seeking: false
         };
         view
@@ -104,7 +102,7 @@ where
     }
     pub fn move_down(&mut self) {
         let lines = self.lines;
-        let y_size = self.coordinates.ysize() as usize;
+        let y_size = self.get_coordinates().unwrap().ysize() as usize;
 
         if self.lines == 0 || self.selection == lines - 1 {
             return;
@@ -123,7 +121,7 @@ where
     }
 
     fn set_selection(&mut self, position: usize) {
-        let ysize = self.coordinates.ysize() as usize;
+        let ysize = self.get_coordinates().unwrap().ysize() as usize;
         let mut offset = 0;
 
         while position + 2
@@ -145,7 +143,7 @@ where
         } else { (name.clone(), "".to_string()) };
 
 
-        let xsize = self.get_coordinates().xsize();
+        let xsize = self.get_coordinates().unwrap().xsize();
         let sized_string = term::sized_string(&name, xsize);
         let size_pos = xsize - (size.to_string().len() as u16
                                 + unit.to_string().len() as u16);
@@ -202,30 +200,29 @@ impl ListView<Files>
         self.selected_file().grand_parent()
     }
 
-    pub fn goto_grand_parent(&mut self) {
+    pub fn goto_grand_parent(&mut self) -> HResult<()> {
         match self.grand_parent() {
             Some(grand_parent) => self.goto_path(&grand_parent),
-            None => self.show_status("Can't go further!"),
+            None => { self.show_status("Can't go further!") },
         }
     }
 
-    fn goto_selected(&mut self) {
+    fn goto_selected(&mut self) -> HResult<()> {
         let path = self.selected_file().path();
 
-        self.goto_path(&path);
+        self.goto_path(&path)
     }
 
-    pub fn goto_path(&mut self, path: &Path) {
+    pub fn goto_path(&mut self, path: &Path) -> HResult<()> {
         match crate::files::Files::new_from_path(path) {
             Ok(files) => {
                 self.content = files;
                 self.selection = 0;
                 self.offset = 0;
-                self.refresh();
+                self.refresh()
             }
             Err(err) => {
-                self.show_status(&format!("Can't open this path: {}", err));
-                return;
+                self.show_status(&format!("Can't open this path: {}", err))
             }
         }
     }
@@ -245,8 +242,8 @@ impl ListView<Files>
         self.content.cycle_sort();
         self.content.sort();
         self.select_file(&file);
-        self.refresh();
-        self.show_status(&format!("Sorting by: {}", self.content.sort));
+        self.refresh().log();
+        self.show_status(&format!("Sorting by: {}", self.content.sort)).log();
     }
 
     fn reverse_sort(&mut self) {
@@ -254,8 +251,8 @@ impl ListView<Files>
         self.content.reverse_sort();
         self.content.sort();
         self.select_file(&file);
-        self.refresh();
-        self.show_status(&format!("Reversed sorting by: {}", self.content.sort));
+        self.refresh().log();
+        self.show_status(&format!("Reversed sorting by: {}", self.content.sort)).log();
     }
 
     fn select_next_mtime(&mut self) {
@@ -283,7 +280,7 @@ impl ListView<Files>
         self.select_file(&file);
         self.seeking = true;
 
-        self.refresh();
+        self.refresh().log();
     }
 
     fn select_prev_mtime(&mut self) {
@@ -310,7 +307,7 @@ impl ListView<Files>
         self.select_file(&file);
         self.seeking = true;
 
-        self.refresh();
+        self.refresh().log();
     }
 
     fn toggle_hidden(&mut self) {
@@ -318,7 +315,7 @@ impl ListView<Files>
         self.content.toggle_hidden();
         self.content.reload_files();
         self.select_file(&file);
-        self.refresh();
+        self.refresh().log();
     }
 
     fn toggle_dirs_first(&mut self) {
@@ -326,15 +323,16 @@ impl ListView<Files>
         self.content.dirs_first = !self.content.dirs_first;
         self.content.sort();
         self.select_file(&file);
-        self.refresh();
-        self.show_status(&format!("Direcories first: {}", self.content.dirs_first));
+        self.refresh().log();
+        self.show_status(&format!("Direcories first: {}",
+                                  self.content.dirs_first)).log();
     }
 
     fn multi_select_file(&mut self) {
         let file = self.selected_file_mut();
         file.toggle_selection();
         self.move_down();
-        self.refresh();
+        self.refresh().log();
     }
 
     fn find_file(&mut self) -> HResult<()> {
@@ -352,7 +350,7 @@ impl ListView<Files>
     }
 
     fn render(&self) -> Vec<String> {
-        let ysize = self.get_coordinates().ysize() as usize;
+        let ysize = self.get_coordinates().unwrap().ysize() as usize;
         let offset = self.offset;
         self.content
             .files
@@ -366,29 +364,26 @@ impl ListView<Files>
 
 
 impl<T> Widget for ListView<T> where ListView<T>: Listable {
-    fn get_coordinates(&self) -> &Coordinates {
-        &self.coordinates
+    fn get_core(&self) -> HResult<&WidgetCore> {
+        Ok(&self.core)
     }
-    fn set_coordinates(&mut self, coordinates: &Coordinates) {
-        if self.coordinates == *coordinates {
-            return;
-        }
-        self.coordinates = coordinates.clone();
-        self.refresh();
+    fn get_core_mut(&mut self) -> HResult<&mut WidgetCore> {
+        Ok(&mut self.core)
     }
-    fn refresh(&mut self) {
-        self.on_refresh();
+    fn refresh(&mut self) -> HResult<()> {
+        self.on_refresh().log();
         self.lines = self.len();
         if self.selection >= self.lines && self.selection != 0 {
             self.selection -= 1;
         }
         self.buffer = self.render();
+        Ok(())
     }
 
 
-    fn get_drawlist(&self) -> String {
+    fn get_drawlist(&self) -> HResult<String> {
         let mut output = term::reset();
-        let (xpos, ypos) = self.coordinates.position().position();
+        let (xpos, ypos) = self.get_coordinates().unwrap().position().position();
 
         output += &self
             .buffer
@@ -410,16 +405,15 @@ impl<T> Widget for ListView<T> where ListView<T>: Listable {
             })
             .collect::<String>();
 
-        output += &self.get_redraw_empty_list(self.buffer.len());
+        output += &self.get_redraw_empty_list(self.buffer.len())?;
 
-        output
+        Ok(output)
     }
-    fn render_header(&self) -> String {
-        format!("{} files", self.len())
+    fn render_header(&self) -> HResult<String> {
+        Ok(format!("{} files", self.len()))
     }
 
     fn on_key(&mut self, key: Key) -> HResult<()> {
-        Listable::on_key(self, key);
-        Ok(())
+        Listable::on_key(self, key)
     }
 }

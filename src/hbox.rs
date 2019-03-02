@@ -1,20 +1,20 @@
 use termion::event::{Event};
 
-use crate::widget::Widget;
+use crate::widget::{Widget, WidgetCore};
 use crate::coordinates::{Coordinates, Size, Position};
-use crate::fail::HResult;
+use crate::fail::{HResult, ErrorLog};
 
 #[derive(PartialEq)]
 pub struct HBox<T: Widget> {
-    pub coordinates: Coordinates,
+    pub core: WidgetCore,
     pub widgets: Vec<T>,
     pub active: Option<usize>,
 }
 
 
 impl<T> HBox<T> where T: Widget + PartialEq {
-    pub fn new() -> HBox<T> {
-        HBox { coordinates: Coordinates::new(),
+    pub fn new(core: &WidgetCore) -> HBox<T> {
+        HBox { core: core.clone(),
                widgets: vec![],
                active: None
          }
@@ -27,34 +27,35 @@ impl<T> HBox<T> where T: Widget + PartialEq {
                 |w|
                 self.calculate_coordinates(w)).collect();
         for (widget, coord) in self.widgets.iter_mut().zip(coords.iter()) {
-            widget.set_coordinates(coord);
+            widget.set_coordinates(coord).log();
         }
     }
 
     pub fn push_widget(&mut self, widget: T) where T: PartialEq {
         self.widgets.push(widget);
         self.resize_children();
-        self.refresh();
+        self.refresh().log();
     }
 
     pub fn pop_widget(&mut self) -> Option<T> {
         let widget = self.widgets.pop();
         self.resize_children();
-        self.refresh();
+        self.refresh().log();
         widget
     }
 
     pub fn prepend_widget(&mut self, widget: T) {
         self.widgets.insert(0, widget);
         self.resize_children();
-        self.refresh();
+        self.refresh().log();
     }
 
-    pub fn calculate_coordinates(&self, widget: &T) 
+    pub fn calculate_coordinates(&self, widget: &T)
                                  -> Coordinates where T: PartialEq  {
-        let xsize = self.coordinates.xsize();
-        let ysize = self.coordinates.ysize();
-        let top = self.coordinates.top().y();
+        let coordinates = self.get_coordinates().unwrap();
+        let xsize = coordinates.xsize();
+        let ysize = coordinates.ysize();
+        let top = coordinates.top().y();
 
         let pos = self.widgets.iter().position(|w | w == widget).unwrap();
         let num = self.widgets.len();
@@ -69,7 +70,7 @@ impl<T> HBox<T> where T: Widget + PartialEq {
                                 top))
         }
     }
-    
+
     pub fn active_widget(&self) -> &T {
         &self.widgets.last().unwrap()
     }
@@ -80,35 +81,32 @@ impl<T> HBox<T> where T: Widget + PartialEq {
 
 
 impl<T> Widget for HBox<T> where T: Widget + PartialEq {
-    fn render_header(&self) -> String {
+    fn get_core(&self) -> HResult<&WidgetCore> {
+        Ok(&self.core)
+    }
+    fn get_core_mut(&mut self) -> HResult<&mut WidgetCore> {
+        Ok(&mut self.core)
+    }
+    fn render_header(&self) -> HResult<String> {
         self.active_widget().render_header()
     }
 
-    fn refresh(&mut self) {
+    fn refresh(&mut self) -> HResult<()> {
         self.resize_children();
         for child in &mut self.widgets {
-            child.refresh();
+            child.refresh()?
         }
+        Ok(())
     }
 
-    fn get_drawlist(&self) -> String {
-        self.widgets.iter().map(|child| {
-            child.get_drawlist()
-        }).collect()
+    fn get_drawlist(&self) -> HResult<String> {
+        Ok(self.widgets.iter().map(|child| {
+            child.get_drawlist().unwrap()
+        }).collect())
     }
 
-    fn get_coordinates(&self) -> &Coordinates {
-        &self.coordinates
-    }
-    fn set_coordinates(&mut self, coordinates: &Coordinates) {
-        if self.coordinates == *coordinates {
-            return;
-        }
-        self.coordinates = coordinates.clone();
-        self.refresh();
-    }
     fn on_event(&mut self, event: Event) -> HResult<()> {
-        self.widgets.last_mut()?.on_event(event).ok();
+        self.widgets.last_mut()?.on_event(event)?;
         Ok(())
     }
 }

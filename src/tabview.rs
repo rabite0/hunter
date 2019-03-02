@@ -1,21 +1,22 @@
 use termion::event::Key;
 
-use crate::coordinates::{Coordinates};
-use crate::widget::Widget;
-use crate::fail::HResult;
+use crate::widget::{Widget, WidgetCore};
+use crate::fail::{HResult, ErrorLog};
 
 pub trait Tabbable {
-    fn new_tab(&mut self);
-    fn close_tab(&mut self);
-    fn next_tab(&mut self);
-    fn on_next_tab(&mut self);
+    fn new_tab(&mut self) -> HResult<()>;
+    fn close_tab(&mut self) -> HResult<()>;
+    fn next_tab(&mut self) -> HResult<()>;
+    fn on_next_tab(&mut self) -> HResult<()> {
+        Ok(())
+    }
     fn get_tab_names(&self) -> Vec<Option<String>>;
     fn active_tab(&self) -> &dyn Widget;
     fn active_tab_mut(&mut self) -> &mut dyn Widget;
-    fn on_key_sub(&mut self, key: Key);
-    fn on_key(&mut self, key: Key) {
+    fn on_key_sub(&mut self, key: Key) -> HResult<()>;
+    fn on_key(&mut self, key: Key) -> HResult<()> {
         match key {
-            Key::Ctrl('t') => { self.new_tab(); },
+            Key::Ctrl('t') => self.new_tab(),
             Key::Ctrl('w') => self.close_tab(),
             Key::Char('\t') => self.next_tab(),
             _ => self.on_key_sub(key)
@@ -28,27 +29,27 @@ pub trait Tabbable {
 pub struct TabView<T> where T: Widget, TabView<T>: Tabbable {
     pub widgets: Vec<T>,
     pub active: usize,
-    coordinates: Coordinates
+    core: WidgetCore
 }
 
 impl<T> TabView<T> where T: Widget, TabView<T>: Tabbable {
-    pub fn new() -> TabView<T> {
+    pub fn new(core: &WidgetCore) -> TabView<T> {
         TabView {
             widgets: vec![],
             active: 0,
-            coordinates: Coordinates::new()
+            core: core.clone()
         }
     }
 
-    pub fn push_widget(&mut self, widget: T) {
+    pub fn push_widget(&mut self, widget: T) -> HResult<()> {
         self.widgets.push(widget);
-        self.refresh();
+        self.refresh()
     }
 
-    pub fn pop_widget(&mut self) -> Option<T> {
-        let widget = self.widgets.pop();
-        self.refresh();
-        widget
+    pub fn pop_widget(&mut self) -> HResult<T> {
+        let widget = self.widgets.pop()?;
+        self.refresh()?;
+        Ok(widget)
     }
 
     pub fn active_tab_(&self) -> &T {
@@ -59,11 +60,10 @@ impl<T> TabView<T> where T: Widget, TabView<T>: Tabbable {
         &mut self.widgets[self.active]
     }
 
-    pub fn close_tab_(&mut self) {
-        if self.active == 0 { return }
-        if self.active + 1 >= self.widgets.len() { self.active -= 1 }
-
-        self.pop_widget();
+    pub fn close_tab_(&mut self) -> HResult<()> {
+        self.pop_widget()?;
+        self.active -= 1;
+        Ok(())
     }
 
     pub fn next_tab_(&mut self) {
@@ -72,14 +72,17 @@ impl<T> TabView<T> where T: Widget, TabView<T>: Tabbable {
         } else {
             self.active += 1
         }
-        self.on_next_tab();
+        self.on_next_tab().log();
     }
 }
 
 impl<T> Widget for TabView<T> where T: Widget, TabView<T>: Tabbable {
-    fn render_header(&self) -> String {
-        let xsize = self.get_coordinates().xsize();
-        let header = self.active_tab_().render_header();
+    fn get_core(&self) -> HResult<&WidgetCore> {
+        Ok(&self.core)
+    }
+    fn render_header(&self) -> HResult<String> {
+        let xsize = self.get_coordinates()?.xsize();
+        let header = self.active_tab_().render_header()?;
         let tab_names = self.get_tab_names();
         let mut nums_length = 0;
         let tabnums = (0..self.widgets.len()).map(|num| {
@@ -100,38 +103,28 @@ impl<T> Widget for TabView<T> where T: Widget, TabView<T>: Tabbable {
 
         let nums_pos = xsize - nums_length as u16;
 
-        format!("{}{}{}{}",
+        Ok(format!("{}{}{}{}",
                 header,
                 crate::term::header_color(),
                 crate::term::goto_xy(nums_pos, 1),
-                tabnums)
+                tabnums))
     }
 
-    fn render_footer(&self) -> String {
+    fn render_footer(&self) -> HResult<String>
+    {
         self.active_tab_().render_footer()
     }
 
-    fn refresh(&mut self) {
-        self.active_tab_mut().refresh();
+    fn refresh(&mut self) -> HResult<()> {
+        self.active_tab_mut().refresh()
     }
 
-    fn get_drawlist(&self) -> String {
+    fn get_drawlist(&self) -> HResult<String> {
         self.active_tab_().get_drawlist()
     }
 
-    fn get_coordinates(&self) -> &Coordinates {
-        &self.coordinates
-    }
-    fn set_coordinates(&mut self, coordinates: &Coordinates) {
-        if self.coordinates == *coordinates {
-            return;
-        }
-        self.coordinates = coordinates.clone();
-        self.refresh();
-    }
-
     fn on_key(&mut self, key: Key) -> HResult<()> {
-        Tabbable::on_key(self, key);
-        Ok(())
+        Tabbable::on_key(self, key)?;
+        self.refresh()
     }
 }

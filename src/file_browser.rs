@@ -1,22 +1,20 @@
 use termion::event::Key;
 use notify::{INotifyWatcher, Watcher, DebouncedEvent, RecursiveMode};
 
-use std::error::Error;
 use std::io::Write;
 use std::sync::{Arc, Mutex};
-use std::sync::mpsc::{channel, Receiver};
+use std::sync::mpsc::{channel, Receiver, Sender};
 use std::time::Duration;
 use std::path::PathBuf;
 
-use crate::coordinates::{Coordinates};
 use crate::files::{File, Files};
 use crate::listview::ListView;
 use crate::miller_columns::MillerColumns;
 use crate::widget::Widget;
 use crate::tabview::{TabView, Tabbable};
 use crate::preview::WillBeWidget;
-use crate::fail::{HResult, HError};
-use crate::window::{Events, send_event};
+use crate::fail::{HResult, HError, ErrorLog};
+use crate::widget::{Events, WidgetCore};
 use crate::proclist::ProcView;
 
 
@@ -24,6 +22,7 @@ use crate::proclist::ProcView;
 pub struct FileBrowser {
     pub columns: MillerColumns<WillBeWidget<ListView<Files>>>,
     pub cwd: File,
+    core: WidgetCore,
     watcher: INotifyWatcher,
     watches: Vec<PathBuf>,
     dir_events: Arc<Mutex<Vec<DebouncedEvent>>>,
@@ -31,22 +30,24 @@ pub struct FileBrowser {
 }
 
 impl Tabbable for TabView<FileBrowser> {
-    fn new_tab(&mut self) {
-        let mut tab = FileBrowser::new().unwrap();
+    fn new_tab(&mut self) -> HResult<()> {
+        let mut tab = FileBrowser::new_cored(&self.active_tab_().core)?;
 
         let proc_view = self.active_tab_().proc_view.clone();
         tab.proc_view = proc_view;
 
-        self.push_widget(tab);
+        self.push_widget(tab)?;
         self.active += 1;
+        Ok(())
     }
 
-    fn close_tab(&mut self) {
-        self.close_tab_();
+    fn close_tab(&mut self) -> HResult<()> {
+        self.close_tab_()
     }
 
-    fn next_tab(&mut self) {
+    fn next_tab(&mut self) -> HResult<()> {
         self.next_tab_();
+        Ok(())
     }
 
     fn get_tab_names(&self) -> Vec<Option<String>> {
@@ -66,18 +67,18 @@ impl Tabbable for TabView<FileBrowser> {
         self.active_tab_mut_()
     }
 
-    fn on_next_tab(&mut self) {
-        self.active_tab_mut().refresh();
+    fn on_next_tab(&mut self) -> HResult<()> {
+        self.active_tab_mut().refresh()
     }
 
-    fn on_key_sub(&mut self, key: Key) {
+    fn on_key_sub(&mut self, key: Key) -> HResult<()> {
         match key {
             Key::Char('!') => {
                 let tab_dirs = self.widgets.iter().map(|w| w.cwd.clone())
                                                   .collect::<Vec<_>>();
-                self.widgets[self.active].exec_cmd(tab_dirs).ok();
+                self.widgets[self.active].exec_cmd(tab_dirs)
             }
-            _ => { self.active_tab_mut().on_key(key).ok(); }
+            _ => { self.active_tab_mut().on_key(key) }
         }
     }
 }
@@ -86,11 +87,13 @@ impl Tabbable for TabView<FileBrowser> {
 
 
 
-fn watch_dir(rx: Receiver<DebouncedEvent>, dir_events: Arc<Mutex<Vec<DebouncedEvent>>>) {
+fn watch_dir(rx: Receiver<DebouncedEvent>,
+             dir_events: Arc<Mutex<Vec<DebouncedEvent>>>,
+             sender: Sender<Events>) {
     std::thread::spawn(move || {
         for event in rx.iter() {
             dir_events.lock().unwrap().push(event);
-            send_event(Events::WidgetReady).unwrap();
+            sender.send(Events::WidgetReady).unwrap();
         }
     });
 }
@@ -100,24 +103,23 @@ fn watch_dir(rx: Receiver<DebouncedEvent>, dir_events: Arc<Mutex<Vec<DebouncedEv
 
 
 impl FileBrowser {
-    pub fn new() -> Result<FileBrowser, Box<Error>> {
+    pub fn new_cored(core: &WidgetCore) -> HResult<FileBrowser> {
         let cwd = std::env::current_dir().unwrap();
-        let coords = Coordinates::new_at(crate::term::xsize(),
-                                         crate::term::ysize() - 2,
-                                         1,
-                                         2);
+        let coords = core.coordinates.clone();
+        let core_ = core.clone();
 
-        let mut miller = MillerColumns::new();
-        miller.set_coordinates(&coords);
+        let mut miller = MillerColumns::new(core);
+        miller.set_coordinates(&coords)?;
 
 
         let (_, main_coords, _) = miller.calculate_coordinates();
 
         let main_path: std::path::PathBuf = cwd.ancestors().take(1).map(|path| std::path::PathBuf::from(path)).collect();
-        let main_widget = WillBeWidget::new(Box::new(move |_| {
-            let mut list = ListView::new(Files::new_from_path(&main_path).unwrap());
-            list.set_coordinates(&main_coords);
-            list.animate_slide_up();
+        let main_widget = WillBeWidget::new(&core, Box::new(move |_| {
+            let mut list = ListView::new(&core_,
+                                         Files::new_from_path(&main_path).unwrap());
+            list.set_coordinates(&main_coords).log();
+            list.animate_slide_up().log();
             Ok(list)
         }));
 
@@ -129,13 +131,14 @@ impl FileBrowser {
 
         let (tx_watch, rx_watch) = channel();
         let watcher = INotifyWatcher::new(tx_watch, Duration::from_secs(2)).unwrap();
-        watch_dir(rx_watch, dir_events.clone());
+        watch_dir(rx_watch, dir_events.clone(), core.get_sender());
 
-        let mut proc_view = ProcView::new();
-        proc_view.set_coordinates(&coords);
+        let mut proc_view = ProcView::new(core);
+        proc_view.set_coordinates(&coords).log();
 
         Ok(FileBrowser { columns: miller,
                          cwd: cwd,
+                         core: core.clone(),
                          watcher: watcher,
                          watches: vec![],
                          dir_events: dir_events,
@@ -145,16 +148,17 @@ impl FileBrowser {
     pub fn enter_dir(&mut self) -> HResult<()> {
         let file = self.selected_file()?;
         let (_, coords, _) = self.columns.calculate_coordinates();
+        let core = self.core.clone();
 
         match file.read_dir() {
             Ok(files) => {
                 std::env::set_current_dir(&file.path).unwrap();
                 self.cwd = file.clone();
-                let view = WillBeWidget::new(Box::new(move |_| {
+                let view = WillBeWidget::new(&core.clone(), Box::new(move |_| {
                     let files = files.clone();
-                    let mut list = ListView::new(files);
-                    list.set_coordinates(&coords);
-                    list.animate_slide_up();
+                    let mut list = ListView::new(&core, files);
+                    list.set_coordinates(&coords).log();
+                    list.animate_slide_up().log();
                     Ok(list)
                 }));
                 self.columns.push_widget(view);
@@ -167,12 +171,12 @@ impl FileBrowser {
                 match status {
                     Ok(status) =>
                         self.show_status(&format!("\"{}\" exited with {}",
-                                                  "rifle", status)),
+                                                  "rifle", status)).log(),
                     Err(err) =>
                         self.show_status(&format!("Can't run this \"{}\": {}",
-                                                  "rifle", err))
+                                                  "rifle", err)).log()
 
-                }
+                };
             }
         }
         Ok(())
@@ -185,8 +189,7 @@ impl FileBrowser {
             self.cwd = new_cwd;
         }
 
-        self.refresh();
-        Ok(())
+        self.refresh()
     }
 
     pub fn update_preview(&mut self) -> HResult<()> {
@@ -207,10 +210,12 @@ impl FileBrowser {
             let cwd = self.selected_file()?.clone();
             if let Ok(grand_parent) = cwd.grand_parent_as_file() {
                 let (coords, _, _) = self.columns.calculate_coordinates();
-                let left_view = WillBeWidget::new(Box::new(move |_| {
+                let core = self.core.clone();
+                let left_view = WillBeWidget::new(&self.core, Box::new(move |_| {
                     let mut view
-                        = ListView::new(Files::new_from_path(&grand_parent.path)?);
-                    view.set_coordinates(&coords);
+                        = ListView::new(&core,
+                                        Files::new_from_path(&grand_parent.path)?);
+                    view.set_coordinates(&coords).log();
                     Ok(view)
                 }));
                 self.columns.prepend_widget(left_view);
@@ -341,17 +346,19 @@ impl FileBrowser {
                 let dir = std::path::PathBuf::from(&dir);
                 let left_dir = std::path::PathBuf::from(&dir);
                 let (left_coords, main_coords, _) = self.columns.calculate_coordinates();
+                let mcore = self.core.clone();
+                let lcore = self.core.clone();
 
-                let middle = WillBeWidget::new(Box::new(move |_| {
+                let middle = WillBeWidget::new(&self.core, Box::new(move |_| {
                     let files = Files::new_from_path(&dir.clone())?;
-                    let mut listview = ListView::new(files);
-                    listview.set_coordinates(&main_coords);
+                    let mut listview = ListView::new(&mcore, files);
+                    listview.set_coordinates(&main_coords).log();
                     Ok(listview)
                 }));
-                let left = WillBeWidget::new(Box::new(move |_| {
+                let left = WillBeWidget::new(&self.core, Box::new(move |_| {
                     let files = Files::new_from_path(&left_dir.parent()?)?;
-                    let mut listview = ListView::new(files);
-                    listview.set_coordinates(&left_coords);
+                    let mut listview = ListView::new(&lcore, files);
+                    listview.set_coordinates(&left_coords).log();
                     Ok(listview)
                 }));
                 self.columns.push_widget(left);
@@ -373,7 +380,7 @@ impl FileBrowser {
 
         let cmd = self.minibuffer("exec:")?;
 
-        self.show_status(&format!("Running: \"{}\"", &cmd));
+        self.show_status(&format!("Running: \"{}\"", &cmd)).log();
 
         let mut cmd = if file_names.len() == 0 {
             cmd.replace("$s", &format!("{}", &filename))
@@ -397,35 +404,28 @@ impl FileBrowser {
 }
 
 impl Widget for FileBrowser {
-    fn get_coordinates(&self) -> &Coordinates {
-        &self.columns.coordinates
+    fn get_core(&self) -> HResult<&WidgetCore> {
+        Ok(&self.core)
     }
-    fn set_coordinates(&mut self, coordinates: &Coordinates) {
-        self.columns.set_coordinates(coordinates);
-        self.proc_view.lock().unwrap().set_coordinates(coordinates);
-        self.refresh();
-    }
-    fn render_header(&self) -> String {
-        if self.main_widget().is_err() { return "".to_string() }
-        let xsize = self.get_coordinates().xsize();
-        let file = self.selected_file().unwrap();
+    fn render_header(&self) -> HResult<String> {
+        let xsize = self.get_coordinates()?.xsize();
+        let file = self.selected_file()?;
         let name = &file.name;
 
         let color = if file.is_dir() || file.color.is_none() {
             crate::term::highlight_color() } else {
             crate::term::from_lscolor(file.color.as_ref().unwrap()) };
 
-        let path = file.path.parent().unwrap().to_string_lossy().to_string();
+        let path = file.path.parent()?.to_string_lossy().to_string();
 
         let pretty_path = format!("{}/{}{}", path, &color, name );
         let sized_path = crate::term::sized_string(&pretty_path, xsize);
-        sized_path
+        Ok(sized_path)
     }
-    fn render_footer(&self) -> String {
-        if self.main_widget().is_err() { return "".to_string() }
-        let xsize = self.get_coordinates().xsize();
-        let ypos = self.get_coordinates().position().y();
-        let file = self.selected_file().unwrap();
+    fn render_footer(&self) -> HResult<String> {
+        let xsize = self.get_coordinates()?.xsize();
+        let ypos = self.get_coordinates()?.position().y();
+        let file = self.selected_file()?;
 
         let permissions = file.pretty_print_permissions().unwrap_or("NOPERMS".into());
         let user = file.pretty_user().unwrap_or("NOUSER".into());
@@ -433,8 +433,8 @@ impl Widget for FileBrowser {
         let mtime = file.pretty_mtime().unwrap_or("NOMTIME".into());
 
 
-        let selection = (*self.main_widget().as_ref().unwrap().lock().unwrap()).as_ref().unwrap().get_selection();
-        let file_count = (*self.main_widget().unwrap().lock().unwrap()).as_ref().unwrap().content.len();
+        let selection = (*self.main_widget().as_ref().unwrap().lock()?).as_ref()?.get_selection();
+        let file_count = (*self.main_widget()?.lock()?).as_ref()?.content.len();
         let file_count = format!("{}", file_count);
         let digits = file_count.len();
         let file_count = format!("{:digits$}/{:digits$}",
@@ -442,42 +442,44 @@ impl Widget for FileBrowser {
                                  file_count,
                                  digits = digits);
         let count_xpos = xsize - file_count.len() as u16;
-        let count_ypos = ypos + self.get_coordinates().ysize();
+        let count_ypos = ypos + self.get_coordinates()?.ysize();
 
-        format!("{} {}:{} {} {} {}", permissions, user, group, mtime,
-                crate::term::goto_xy(count_xpos, count_ypos), file_count)
+        Ok(format!("{} {}:{} {} {} {}", permissions, user, group, mtime,
+                   crate::term::goto_xy(count_xpos, count_ypos), file_count))
      }
-    fn refresh(&mut self) {
-        self.handle_dir_events().ok();
-        self.columns.refresh();
+    fn refresh(&mut self) -> HResult<()> {
+        //self.proc_view.lock()?.set_coordinates(self.get_coordinates()?);
+        self.handle_dir_events()?;
+        self.columns.refresh().ok();
         self.fix_left().ok();
         self.fix_selection().ok();
         self.set_cwd().ok();
         self.update_watches().ok();
         self.update_preview().ok();
+        Ok(())
     }
 
-    fn get_drawlist(&self) -> String {
+    fn get_drawlist(&self) -> HResult<String> {
         if self.columns.get_left_widget().is_err() {
-            self.columns.get_clearlist() + &self.columns.get_drawlist()
+            Ok(self.columns.get_clearlist()? + &self.columns.get_drawlist()?)
         } else {
-            self.columns.get_drawlist()
+            Ok(self.columns.get_drawlist()?)
         }
     }
 
     fn on_key(&mut self, key: Key) -> HResult<()> {
         match key {
-            Key::Char('/') => { self.turbo_cd().ok(); },
-            Key::Char('Q') => { self.quit_with_dir().ok(); },
-            Key::Right | Key::Char('f') => { self.enter_dir().ok(); },
-            Key::Left | Key::Char('b') => { self.go_back().ok(); },
+            Key::Char('/') => { self.turbo_cd()?; },
+            Key::Char('Q') => { self.quit_with_dir()?; },
+            Key::Right | Key::Char('f') => { self.enter_dir()?; },
+            Key::Left | Key::Char('b') => { self.go_back()?; },
             Key::Char('w') => {
-                self.proc_view.lock()?.popup().ok();
+                self.proc_view.lock()?.popup()?;
             }
                                 ,
-            _ => { self.columns.get_main_widget_mut()?.on_key(key).ok(); },
+            _ => { self.columns.get_main_widget_mut()?.on_key(key)?; },
         }
-        self.update_preview().ok();
+        self.update_preview()?;
         Ok(())
     }
 }

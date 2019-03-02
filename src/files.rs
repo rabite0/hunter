@@ -2,17 +2,18 @@ use std::cmp::{Ord, Ordering};
 use std::ops::Index;
 use std::os::unix::fs::MetadataExt;
 use std::path::{Path, PathBuf};
+use std::sync::{Arc, Mutex};
 
 use lscolors::LsColors;
 use mime_detective;
 use users;
 use chrono::TimeZone;
 use failure::Error;
-use notify::{INotifyWatcher, Watcher, DebouncedEvent, RecursiveMode};
+use notify::DebouncedEvent;
 
 use crate::fail::{HResult, HError};
 
-use std::sync::{Arc, Mutex};
+
 
 
 lazy_static! {
@@ -200,7 +201,7 @@ impl Files {
             DebouncedEvent::Write(path) | DebouncedEvent::Chmod(path) => {
                 self.path_in_here(&path)?;
                 let file = self.find_file_with_path(&path)?;
-                file.reload_meta();
+                file.reload_meta()?;
             },
             DebouncedEvent::Remove(path) => {
                 self.path_in_here(&path)?;

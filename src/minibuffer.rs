@@ -2,12 +2,13 @@ use termion::event::Key;
 use std::io::{stdout, Write};
 
 use crate::coordinates::{Coordinates};
-use crate::widget::Widget;
+use crate::widget::{Widget, WidgetCore};
 use crate::fail::{HResult, HError};
 use crate::term;
 
+#[derive(Debug)]
 pub struct MiniBuffer {
-    coordinates: Coordinates,
+    core: WidgetCore,
     query: String,
     input: String,
     position: usize,
@@ -18,12 +19,14 @@ pub struct MiniBuffer {
 }
 
 impl MiniBuffer {
-    pub fn new() -> MiniBuffer {
+    pub fn new(core: &WidgetCore) -> MiniBuffer {
         let xsize = crate::term::xsize();
         let ysize = crate::term::ysize();
         let coordinates = Coordinates::new_at(xsize, 1, 1, ysize);
+        let mut core = core.clone();
+        core.coordinates = coordinates;
         MiniBuffer {
-            coordinates: coordinates,
+            core: core,
             query: String::new(),
             input: String::new(),
             position: 0,
@@ -283,26 +286,23 @@ pub fn find_files(comp_name: String) -> HResult<Vec<String>> {
 }
 
 impl Widget for MiniBuffer {
-    fn get_coordinates(&self) -> &Coordinates {
-        &self.coordinates
+    fn get_core(&self) -> HResult<&WidgetCore> {
+        Ok(&self.core)
     }
-    fn set_coordinates(&mut self, coordinates: &Coordinates) {
-        self.coordinates = coordinates.clone();
-        self.refresh();
+    fn get_core_mut(&mut self) -> HResult<&mut WidgetCore> {
+        Ok(&mut self.core)
     }
-    fn render_header(&self) -> String {
-        "".to_string()
-    }
-    fn refresh(&mut self) {
+    fn refresh(&mut self) -> HResult<()> {
+        Ok(())
     }
 
-    fn get_drawlist(&self) -> String {
-        let (xpos, ypos) = self.get_coordinates().u16position();
-        format!("{}{}{}: {}",
+    fn get_drawlist(&self) -> HResult<String> {
+        let (xpos, ypos) = self.get_coordinates()?.u16position();
+        Ok(format!("{}{}{}: {}",
                 crate::term::goto_xy(xpos, ypos),
                 termion::clear::CurrentLine,
                 self.query,
-                self.input)
+                self.input))
     }
 
     fn on_key(&mut self, key: Key) -> HResult<()> {

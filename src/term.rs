@@ -1,20 +1,36 @@
-use std::io::{Stdout, Write};
+use std::io::{Stdout, Write, BufWriter};
+
 use termion;
 use termion::screen::AlternateScreen;
 
+use crate::fail::HResult;
+
 pub trait ScreenExt: Write {
-    fn cursor_hide(&mut self) {
-        write!(self, "{}", termion::cursor::Hide).unwrap();
+    fn cursor_hide(&mut self) -> HResult<()> {
+        write!(self, "{}", termion::cursor::Hide)?;
+        self.flush()?;
+        Ok(())
     }
-    fn cursor_show(&mut self) {
-        write!(self, "{}", termion::cursor::Show).unwrap();
+    fn cursor_show(&mut self) -> HResult<()> {
+        write!(self, "{}", termion::cursor::Show)?;
+        self.flush()?;
+        Ok(())
     }
-    fn reset(&mut self) {
-        write!(self, "{}", termion::style::Reset).unwrap();
+    fn reset(&mut self) -> HResult<()> {
+        write!(self, "{}", termion::style::Reset)?;
+        self.flush()?;
+        Ok(())
+    }
+    fn write_str(&mut self, str: &str) -> HResult<()> {
+        write!(self, "{}", str)?;
+        self.flush()?;
+        Ok(())
     }
 }
 
 impl ScreenExt for AlternateScreen<Box<Stdout>> {}
+impl ScreenExt for AlternateScreen<Stdout> {}
+impl ScreenExt for AlternateScreen<BufWriter<Stdout>> {}
 
 pub fn xsize() -> u16 {
     let (xsize, _) = termion::terminal_size().unwrap();

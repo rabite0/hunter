@@ -18,6 +18,8 @@ extern crate rayon;
 extern crate libc;
 extern crate notify;
 
+use failure::Fail;
+
 use termion::input::MouseTerminal;
 use termion::raw::IntoRawMode;
 use termion::screen::AlternateScreen;
@@ -34,7 +36,6 @@ mod term;
 mod textview;
 mod widget;
 mod win_main;
-mod window;
 mod hbox;
 mod tabview;
 mod async_widget;
@@ -45,23 +46,41 @@ mod proclist;
 
 
 
-use window::Window;
 
+use widget::{Widget, WidgetCore};
+use term::ScreenExt;
+use fail::HResult;
+use file_browser::FileBrowser;
+use tabview::TabView;
 
-fn main() {
+fn main() -> HResult<()> {
+    match run() {
+        Ok(_) => Ok(()),
+        Err(err) => {
+            eprintln!("{:?}\n{:?}", err, err.cause());
+            return Err(err);
+        }
+    }
+}
+
+fn run() -> HResult<()> {
     let bufout = std::io::BufWriter::new(std::io::stdout());
     // Need to do this here to actually turn terminal into raw mode...
-    let mut _screen = AlternateScreen::from(Box::new(bufout));
-    let mut _stdout = MouseTerminal::from(stdout().into_raw_mode().unwrap());
+    let mut screen = AlternateScreen::from(bufout);
+    let mut _stdout = MouseTerminal::from(stdout().into_raw_mode()?);
+    screen.cursor_hide()?;
+    screen.flush()?;
 
+    let core = WidgetCore::new()?;
 
-    let filebrowser = crate::file_browser::FileBrowser::new().unwrap();
-    let mut tabview = crate::tabview::TabView::new();
-    tabview.push_widget(filebrowser);
+    let filebrowser = FileBrowser::new_cored(&core)?;
+    let mut tabview = TabView::new(&core);
+    tabview.push_widget(filebrowser)?;
 
-    let mut win = Window::new(tabview);
-    win.draw();
-    win.handle_input();
+    tabview.handle_input()?;
 
-    write!(_stdout, "{}", termion::cursor::Show).unwrap();
+    screen.cursor_show()?;
+    screen.flush()?;
+
+    Ok(())
 }

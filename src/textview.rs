@@ -1,77 +1,79 @@
 use std::io::BufRead;
 
-use crate::coordinates::{Coordinates};
 use crate::files::File;
 use crate::term::sized_string;
-use crate::widget::Widget;
+use crate::widget::{Widget, WidgetCore};
+use crate::fail::HResult;
 
 #[derive(PartialEq)]
 pub struct TextView {
     pub lines: Vec<String>,
     pub buffer: String,
-    pub coordinates: Coordinates,
+    pub core: WidgetCore
 }
 
 impl TextView {
-    pub fn new_blank() -> TextView {
+    pub fn new_blank(core: &WidgetCore) -> TextView {
         TextView {
             lines: vec![],
             buffer: String::new(),
-            coordinates: Coordinates::new()
+            core: core.clone()
         }
     }
-    pub fn new_from_file(file: &File) -> TextView {
-        let file = std::fs::File::open(&file.path).unwrap();
+    pub fn new_from_file(core: &WidgetCore, file: &File) -> HResult<TextView> {
+        let file = std::fs::File::open(&file.path)?;
         let file = std::io::BufReader::new(file);
         let lines = file.lines().map(|line|
-                                     line.unwrap()
-                                     .replace("\t", "    ")).collect();
+                                     Ok(line?
+                                        .replace("\t", "    ")))
+            .filter_map(|l: HResult<String>| l.ok())
+            .collect();
 
-        TextView {
+        Ok(TextView {
             lines: lines,
             buffer: String::new(),
-            coordinates: Coordinates::new(),
-        }
+            core: core.clone()
+        })
     }
-    pub fn new_from_file_limit_lines(file: &File, num: usize) -> TextView {
+    pub fn new_from_file_limit_lines(core: &WidgetCore,
+                                     file: &File,
+                                     num: usize) -> HResult<TextView> {
         let file = std::fs::File::open(&file.path).unwrap();
         let file = std::io::BufReader::new(file);
         let lines = file.lines()
                         .take(num)
                         .map(|line|
-                             line.unwrap()
-                                 .replace("\t", "    ")).collect();
+                             Ok(line?
+                                .replace("\t", "    ")))
+            .filter_map(|l: HResult<String>| l.ok())
+            .collect();
 
-        TextView {
+        Ok(TextView {
             lines: lines,
             buffer: String::new(),
-            coordinates: Coordinates::new(),
-        }
+            core: core.clone()
+        })
     }
 
-    pub fn set_text(&mut self, text: &str) {
+    pub fn set_text(&mut self, text: &str) -> HResult<()> {
         let lines = text.lines().map(|l| l.to_string()).collect();
         self.lines = lines;
-        self.refresh();
+        self.refresh()
     }
 }
 
 impl Widget for TextView {
-    fn get_coordinates(&self) -> &Coordinates {
-        &self.coordinates
+    fn get_core(&self) -> HResult<&WidgetCore> {
+        Ok(&self.core)
     }
-    fn set_coordinates(&mut self, coordinates: &Coordinates) {
-        self.coordinates = coordinates.clone();
-        self.refresh();
+    fn get_core_mut(&mut self) -> HResult<&mut WidgetCore> {
+        Ok(&mut self.core)
     }
-    fn render_header(&self) -> String {
-        "".to_string()
-    }
-    fn refresh(&mut self) {
-        let (xsize, ysize) = self.get_coordinates().size().size();
-        let (xpos, ypos) = self.get_coordinates().position().position();
+    fn refresh(&mut self) -> HResult<()> {
+        let (xsize, ysize) = self.get_coordinates()?.size().size();
+        let (xpos, ypos) = self.get_coordinates()?.position().position();
 
-        self.buffer = self.get_clearlist() +
+        self.buffer = self.get_clearlist()? +
             &self
             .lines
             .iter()
@@ -85,9 +87,10 @@ impl Widget for TextView {
                     sized_string(&line, xsize))
             })
             .collect::<String>();
+        Ok(())
     }
 
-    fn get_drawlist(&self) -> String {
-        self.buffer.clone()
+    fn get_drawlist(&self) -> HResult<String> {
+        Ok(self.buffer.clone())
     }
 }

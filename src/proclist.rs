@@ -1,7 +1,6 @@
 use std::sync::{Arc, Mutex};
+use std::sync::mpsc::Sender;
 use std::process::Child;
-use std::process::Stdio;
-use std::os::unix::io::FromRawFd;
 use std::io::{BufRead, BufReader};
 
 use termion::event::Key;
@@ -10,10 +9,9 @@ use unicode_width::UnicodeWidthStr;
 use crate::coordinates::{Coordinates, Size, Position};
 use crate::listview::{Listable, ListView};
 use crate::textview::TextView;
-use crate::widget::Widget;
-use crate::window::{send_event, Events};
+use crate::widget::{Widget, Events, WidgetCore};
 use crate::preview::WillBeWidget;
-use crate::fail::{HResult, HError};
+use crate::fail::{HResult, HError, ErrorLog};
 use crate::term;
 
 #[derive(Debug)]
@@ -22,7 +20,9 @@ struct Process {
     handle: Arc<Mutex<Child>>,
     output: Arc<Mutex<String>>,
     status: Arc<Mutex<Option<i32>>>,
-    success: Arc<Mutex<Option<bool>>>
+    success: Arc<Mutex<Option<bool>>>,
+    sender: Sender<Events>
+
 }
 
 impl Process {
@@ -31,6 +31,7 @@ impl Process {
         let output = self.output.clone();
         let status = self.status.clone();
         let success = self.success.clone();
+        let sender = self.sender.clone();
 
         std::thread::spawn(move || {
             let stdout = handle.lock().unwrap().stdout.take().unwrap();
@@ -41,7 +42,7 @@ impl Process {
                     Ok(0) => break,
                     Ok(_) => {
                         output.lock().unwrap().push_str(&line);
-                        send_event(Events::WidgetReady).unwrap();
+                        sender.send(Events::WidgetReady).unwrap();
                     }
                     Err(err) => {
                         dbg!(err);
@@ -63,7 +64,7 @@ impl Listable for ListView<Vec<Process>> {
     fn len(&self) -> usize { self.content.len() }
     fn render(&self) -> Vec<String> {
         self.content.iter().map(|proc| {
-            self.render_proc(proc)
+            self.render_proc(proc).unwrap()
         }).collect()
     }
 }
@@ -75,14 +76,16 @@ impl ListView<Vec<Process>> {
             .arg(cmd)
             .stdin(std::process::Stdio::null())
             .stdout(std::process::Stdio::piped())
-            .stderr(unsafe { Stdio::from_raw_fd(2) })
+            //.stderr(unsafe { Stdio::from_raw_fd(2) })
+            .stderr(std::process::Stdio::piped())
             .spawn()?;
         let mut proc = Process {
             cmd: cmd.to_string(),
             handle: Arc::new(Mutex::new(handle)),
             output: Arc::new(Mutex::new(String::new())),
             status: Arc::new(Mutex::new(None)),
-            success: Arc::new(Mutex::new(None))
+            success: Arc::new(Mutex::new(None)),
+            sender: self.get_core()?.get_sender()
         };
         proc.read_proc()?;
         self.content.push(proc);
@@ -107,13 +110,13 @@ impl ListView<Vec<Process>> {
         self.content.get_mut(selection)
     }
 
-    pub fn render_proc(&self, proc: &Process) -> String {
+    pub fn render_proc(&self, proc: &Process) -> HResult<String> {
         let status = match *proc.status.lock().unwrap() {
             Some(status) => format!("{}", status),
             None => "<R>".to_string()
         };
 
-        let xsize = self.get_coordinates().xsize();
+        let xsize = self.get_coordinates()?.xsize();
         let sized_string = term::sized_string(&proc.cmd, xsize);
         let status_pos = xsize - status.len() as u16;
         let padding = sized_string.len() - sized_string.width_cjk();
@@ -124,7 +127,7 @@ impl ListView<Vec<Process>> {
             _ => { status }
         };
 
-        format!(
+        Ok(format!(
             "{}{}{}{}{}{}",
             termion::cursor::Save,
             format!("{}{}{:padding$}{}",
@@ -136,24 +139,25 @@ impl ListView<Vec<Process>> {
             termion::cursor::Restore,
             termion::cursor::Right(status_pos),
             term::highlight_color(),
-            color_status
-        )
+            color_status))
     }
 }
 
 pub struct ProcView {
-    coordinates: Coordinates,
+    core: WidgetCore,
     proc_list: ListView<Vec<Process>>,
-    textview: Option<WillBeWidget<TextView>>,
+    textview: WillBeWidget<TextView>,
     viewing: Option<usize>
 }
 
 impl ProcView {
-    pub fn new() -> ProcView {
+    pub fn new(core: &WidgetCore) -> ProcView {
+        let tcore = core.clone();
+        let textview = Box::new(move |_| Ok(TextView::new_blank(&tcore)));
         ProcView {
-            coordinates: Coordinates::new(),
-            proc_list: ListView::new(vec![]),
-            textview: None,
+            core: core.clone(),
+            proc_list: ListView::new(&core, vec![]),
+            textview: WillBeWidget::new(&core, textview),
             viewing: None
         }
     }
@@ -166,16 +170,17 @@ impl ProcView {
     pub fn remove_proc(&mut self) -> HResult<()> {
         let (_, coords) = self.calculate_coordinates();
         let coords2 = coords.clone();
+        let mut core = self.core.clone();
+        core.coordinates = coords;
 
         self.proc_list.remove_proc()?;
-        self.textview = Some(WillBeWidget::new(Box::new(move |_| {
-            let mut textview = TextView::new_blank();
-            textview.set_coordinates(&coords);
-            textview.refresh();
-            textview.animate_slide_up();
+        self.textview = WillBeWidget::new(&core.clone(), Box::new(move |_| {
+            let mut textview = TextView::new_blank(&core);
+            textview.refresh().log();
+            textview.animate_slide_up().log();
             Ok(textview)
-        })));
-        self.textview.as_mut().unwrap().set_coordinates(&coords2);
+        }));
+        self.textview.set_coordinates(&coords2).log();
         Ok(())
     }
 
@@ -185,29 +190,29 @@ impl ProcView {
         }
         let output = self.proc_list.selected_proc()?.output.lock()?.clone();
         let (_, coords) = self.calculate_coordinates();
-        let coords2 = coords.clone();
+        let mut core = self.core.clone();
+        core.coordinates = coords;
 
-        self.textview = Some(WillBeWidget::new(Box::new(move |_| {
-            let mut textview = TextView::new_blank();
-            textview.set_coordinates(&coords);
-            textview.set_text(&output);
-            textview.animate_slide_up();
+        self.textview = WillBeWidget::new(&core.clone(), Box::new(move |_| {
+            let mut textview = TextView::new_blank(&core);
+            textview.set_text(&output).log();
+            textview.animate_slide_up().log();
             Ok(textview)
-        })));
-        self.textview.as_mut().unwrap().set_coordinates(&coords2);
+        }));
         self.viewing = Some(self.proc_list.get_selection());
         Ok(())
     }
 
     pub fn calculate_coordinates(&self) -> (Coordinates, Coordinates) {
-        let xsize = self.coordinates.xsize();
-        let ysize = self.coordinates.ysize();
-        let top = self.coordinates.top().y();
+        let coordinates = self.get_coordinates().unwrap();
+        let xsize = coordinates.xsize();
+        let ysize = coordinates.ysize();
+        let top = coordinates.top().y();
         let ratio = (33, 66);
 
         let left_xsize = xsize * ratio.0 / 100;
         let left_size = Size((left_xsize, ysize));
-        let left_pos = self.coordinates.top();
+        let left_pos = coordinates.top();
 
         let main_xsize = xsize * ratio.1 / 100;
         let main_size = Size((main_xsize, ysize));
@@ -224,7 +229,6 @@ impl ProcView {
             size: main_size,
             position: main_pos,
         };
-
         (left_coords, main_coords)
     }
 
@@ -232,36 +236,25 @@ impl ProcView {
 }
 
 impl Widget for ProcView {
-    fn get_coordinates(&self) -> &Coordinates {
-        &self.coordinates
+    fn get_core(&self) -> HResult<&WidgetCore> {
+        Ok(&self.core)
     }
-    fn set_coordinates(&mut self, coordinates: &Coordinates) {
-        self.coordinates = coordinates.clone();
-
+    fn get_core_mut(&mut self) -> HResult<&mut WidgetCore> {
+        Ok(&mut self.core)
+    }
+    fn refresh(&mut self) -> HResult<()> {
         let (lcoord, rcoord) = self.calculate_coordinates();
-        self.proc_list.set_coordinates(&lcoord);
-        if let Some(textview) = &mut self.textview {
-            textview.set_coordinates(&rcoord);
-        }
+        self.proc_list.set_coordinates(&lcoord).log();
+        self.textview.set_coordinates(&rcoord).log();
 
-        self.refresh();
+        self.show_output().log();
+        self.proc_list.refresh().log();
+        self.textview.refresh().log();
+
+        Ok(())
     }
-    fn render_header(&self) -> String {
-        "".to_string()
-    }
-    fn refresh(&mut self) {
-        self.show_output();
-        self.proc_list.refresh();
-        if let Some(textview) = &mut self.textview {
-            textview.refresh();
-        }
-    }
-    fn get_drawlist(&self) -> String {
-        if let Some(textview) =  &self.textview {
-            self.proc_list.get_drawlist() + &textview.get_drawlist()
-        } else {
-            self.proc_list.get_drawlist()
-        }
+    fn get_drawlist(&self) -> HResult<String> {
+        Ok(self.proc_list.get_drawlist()? + &self.textview.get_drawlist()?)
     }
     fn on_key(&mut self, key: Key) -> HResult<()> {
         match key {
@@ -270,18 +263,14 @@ impl Widget for ProcView {
             Key::Char('k') => { self.proc_list.kill_proc()? }
             Key::Up | Key::Char('p') => {
                 self.proc_list.move_up();
-                self.proc_list.refresh();
-                self.show_output().ok();
             }
             Key::Down | Key::Char('n') => {
                 self.proc_list.move_down();
-                self.proc_list.refresh();
-                self.show_output().ok();
             }
             _ => {}
         }
-        self.refresh();
-        self.draw()?;
+        self.refresh().log();
+        self.draw().log();
         Ok(())
     }
 }

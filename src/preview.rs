@@ -1,14 +1,15 @@
 use std::sync::{Arc, Mutex};
 
-use crate::coordinates::{Coordinates};
+use failure::Backtrace;
+
 use crate::files::{File, Files, Kind};
 use crate::listview::ListView;
 use crate::textview::TextView;
-use crate::widget::Widget;
-use crate::fail::HError;
+use crate::widget::{Widget, WidgetCore};
+use crate::fail::{HResult, HError, ErrorLog};
 
 
-type HResult<T> = Result<T, HError>;
+
 type HClosure<T> = Box<Fn(Arc<Mutex<bool>>) -> Result<T, HError> + Send>;
 type WidgetO = Box<dyn Widget + Send>;
 
@@ -63,8 +64,8 @@ impl<T: Send + 'static> WillBe<T> where {
             let got_thing = closure(stale);
             match got_thing {
                 Ok(got_thing) => {
-                    *thing.try_lock().unwrap() = Some(got_thing);
-                    *state.try_lock().unwrap() = State::Is;
+                    *thing.lock().unwrap() = Some(got_thing);
+                    *state.lock().unwrap() = State::Is;
                     match *on_ready_fn.lock().unwrap() {
                         Some(ref on_ready) => { on_ready(thing.clone()).ok(); },
                         None => {}
@@ -76,14 +77,14 @@ impl<T: Send + 'static> WillBe<T> where {
     }
 
     pub fn set_stale(&mut self) -> HResult<()> {
-        *self.stale.try_lock()? = true;
+        *self.stale.lock()? = true;
         Ok(())
     }
 
     pub fn check(&self) -> HResult<()> {
-        match *self.state.try_lock()? {
+        match *self.state.lock()? {
             State::Is => Ok(()),
-            _ => Err(HError::WillBeNotReady)
+            _ => Err(HError::WillBeNotReady(Backtrace::new()))
         }
     }
 
@@ -93,15 +94,16 @@ impl<T: Send + 'static> WillBe<T> where {
         if self.check().is_ok() {
             fun(self.thing.clone())?;
         } else {
-            *self.on_ready.try_lock()? = Some(fun);
+            *self.on_ready.lock()? = Some(fun);
         }
         Ok(())
     }
 }
 
-impl<W: Widget + Send> PartialEq for WillBeWidget<W> {
+impl<W: Widget + Send + 'static> PartialEq for WillBeWidget<W> {
     fn eq(&self, other: &WillBeWidget<W>) -> bool {
-        if self.coordinates == other.coordinates {
+        if self.get_coordinates().unwrap() ==
+            other.get_coordinates().unwrap() {
             true
         } else {
             false
@@ -111,19 +113,20 @@ impl<W: Widget + Send> PartialEq for WillBeWidget<W> {
 
 pub struct WillBeWidget<T: Widget + Send> {
     willbe: WillBe<T>,
-    coordinates: Coordinates
+    core: WidgetCore
 }
 
 impl<T: Widget + Send + 'static> WillBeWidget<T> {
-    pub fn new(closure: HClosure<T>) -> WillBeWidget<T> {
+    pub fn new(core: &WidgetCore, closure: HClosure<T>) -> WillBeWidget<T> {
+        let sender = core.get_sender();
         let mut willbe = WillBe::new_become(Box::new(move |stale| closure(stale)));
-        willbe.on_ready(Box::new(|_| {
-            crate::window::send_event(crate::window::Events::WidgetReady)?;
+        willbe.on_ready(Box::new(move |_| {
+            sender.send(crate::widget::Events::WidgetReady)?;
             Ok(()) })).ok();
 
         WillBeWidget {
             willbe: willbe,
-            coordinates: Coordinates::new()
+            core: core.clone()
         }
     }
     pub fn set_stale(&mut self) -> HResult<()> {
@@ -147,49 +150,36 @@ impl<T: Widget + Send + 'static> WillBeWidget<T> {
 //}
 
 impl<T: Widget + Send + 'static> Widget for WillBeWidget<T> {
-    fn get_coordinates(&self) -> &Coordinates {
-        &self.coordinates
+    fn get_core(&self) -> HResult<&WidgetCore> {
+        Ok(&self.core)
     }
-    fn set_coordinates(&mut self, coordinates: &Coordinates) {
-        self.coordinates = coordinates.clone();
-
-        {
-            if self.willbe.check().is_err() { return }
-            let widget = self.widget().unwrap();
-            let mut widget = widget.try_lock().unwrap();
-            let widget = widget.as_mut().unwrap();
-            widget.set_coordinates(&coordinates.clone());
-        }
-
-        self.refresh();
+    fn get_core_mut(&mut self) -> HResult<&mut WidgetCore> {
+        Ok(&mut self.core)
     }
-    fn render_header(&self) -> String {
-        "".to_string()
+    fn refresh(&mut self) -> HResult<()> {
+        let widget = self.widget()?;
+        let mut widget = widget.lock()?;
+        let widget = widget.as_mut()?;
+        widget.set_coordinates(self.get_coordinates()?).log();
+        widget.refresh()
     }
-    fn refresh(&mut self) {
-        if self.willbe.check().is_err() { return }
-        let widget = self.widget().unwrap();
-        let mut widget = widget.try_lock().unwrap();
-        let widget = widget.as_mut().unwrap();
-        widget.refresh();
-    }
-    fn get_drawlist(&self) -> String {
+    fn get_drawlist(&self) -> HResult<String> {
         if self.willbe.check().is_err() {
-            let clear = self.get_clearlist();
-            let (xpos, ypos) = self.get_coordinates().u16position();
+            let clear = self.get_clearlist()?;
+            let (xpos, ypos) = self.get_coordinates()?.u16position();
             let pos = crate::term::goto_xy(xpos, ypos);
-            return clear + &pos + "..."
+            return Ok(clear + &pos + "...")
         }
-        let widget = self.widget().unwrap();
-        let widget = widget.try_lock().unwrap();
-        let widget = widget.as_ref().unwrap();
+        let widget = self.widget()?;
+        let widget = widget.lock()?;
+        let widget = widget.as_ref()?;
         widget.get_drawlist()
     }
     fn on_key(&mut self, key: termion::event::Key) -> HResult<()> {
         if self.willbe.check().is_err() { return Ok(()) }
-        let widget = self.widget().unwrap();
-        let mut widget = widget.try_lock().unwrap();
-        let widget = widget.as_mut().unwrap();
+        let widget = self.widget()?;
+        let mut widget = widget.lock()?;
+        let widget = widget.as_mut()?;
         widget.on_key(key)
     }
 }
@@ -197,7 +187,8 @@ impl<T: Widget + Send + 'static> Widget for WillBeWidget<T> {
 
 impl PartialEq for Previewer {
     fn eq(&self, other: &Previewer) -> bool {
-        if self.widget.coordinates == other.widget.coordinates {
+        if self.widget.get_coordinates().unwrap() ==
+            other.widget.get_coordinates().unwrap() {
             true
         } else {
             false
@@ -207,59 +198,61 @@ impl PartialEq for Previewer {
 
 pub struct Previewer {
     widget: WillBeWidget<Box<dyn Widget + Send>>,
+    core: WidgetCore,
     file: Option<File>
 }
 
 
 impl Previewer {
-    pub fn new() -> Previewer {
-        let willbe = WillBeWidget::new(Box::new(move |_| {
-            Ok(Box::new(crate::textview::TextView::new_blank())
+    pub fn new(core: &WidgetCore) -> Previewer {
+        let core_ = core.clone();
+        let willbe = WillBeWidget::new(&core, Box::new(move |_| {
+            Ok(Box::new(crate::textview::TextView::new_blank(&core_))
                as Box<dyn Widget + Send>)
         }));
         Previewer { widget: willbe,
+                    core: core.clone(),
                     file: None}
     }
 
     fn become_preview(&mut self,
                       widget: HResult<WillBeWidget<WidgetO>>) {
-        let coordinates = self.get_coordinates().clone();
+        let coordinates = self.get_coordinates().unwrap().clone();
         self.widget =  widget.unwrap();
-        self.set_coordinates(&coordinates);
+        self.widget.set_coordinates(&coordinates).ok();
     }
 
     pub fn set_file(&mut self, file: &File) {
         if Some(file) == self.file.as_ref() { return }
         self.file = Some(file.clone());
 
-        let coordinates = self.get_coordinates().clone();
+        let coordinates = self.get_coordinates().unwrap().clone();
         let file = file.clone();
+        let core = self.core.clone();
 
         self.widget.set_stale().ok();
 
-        self.become_preview(Ok(WillBeWidget::new(Box::new(move |stale| {
+        self.become_preview(Ok(WillBeWidget::new(&self.core, Box::new(move |stale| {
             kill_proc().unwrap();
 
             let file = file.clone();
 
             if file.kind == Kind::Directory  {
-                let preview = Previewer::preview_dir(&file, &coordinates, stale.clone());
+                let preview = Previewer::preview_dir(&file, &core, stale.clone());
                 return preview;
             }
 
             if file.get_mime() == Some("text".to_string()) {
-                return Previewer::preview_text(&file, &coordinates, stale.clone())
+                return Previewer::preview_text(&file, &core, stale.clone())
             }
 
-            let preview = Previewer::preview_external(&file,
-                                                      &coordinates,
-                                                      stale.clone());
+            let preview = Previewer::preview_external(&file, &core, stale.clone());
             if preview.is_ok() { return preview; }
             else {
-                let mut blank = Box::new(TextView::new_blank());
-                blank.set_coordinates(&coordinates);
-                blank.refresh();
-                blank.animate_slide_up();
+                let mut blank = Box::new(TextView::new_blank(&core));
+                blank.set_coordinates(&coordinates).log();
+                blank.refresh().log();
+                blank.animate_slide_up().log();
                 return Ok(blank)
             }
         }))));
@@ -276,40 +269,41 @@ impl Previewer {
         Err(HError::PreviewFailed { file: file.name.clone() })
     }
 
-    fn preview_dir(file: &File, coordinates: &Coordinates, stale: Arc<Mutex<bool>>)
+    fn preview_dir(file: &File, core: &WidgetCore, stale: Arc<Mutex<bool>>)
                    -> Result<WidgetO, HError> {
         let files = Files::new_from_path_cancellable(&file.path,
                                                          stale.clone())?;
         let len = files.len();
-
+        
         if len == 0 || is_stale(&stale)? { return Previewer::preview_failed(&file) }
 
-        let mut file_list = ListView::new(files);
-        file_list.set_coordinates(&coordinates);
-        file_list.refresh();
+        let mut file_list = ListView::new(&core, files);
+        file_list.set_coordinates(&core.coordinates)?;
+        file_list.refresh()?;
         if is_stale(&stale)? { return Previewer::preview_failed(&file) }
-        file_list.animate_slide_up();
+        file_list.animate_slide_up()?;
         Ok(Box::new(file_list) as Box<dyn Widget + Send>)
     }
 
-    fn preview_text(file: &File, coordinates: &Coordinates, stale: Arc<Mutex<bool>>)
+    fn preview_text(file: &File, core: &WidgetCore, stale: Arc<Mutex<bool>>)
                     -> HResult<WidgetO> {
-        let lines = coordinates.ysize() as usize;
+        let lines = core.coordinates.ysize() as usize;
         let mut textview
-            = TextView::new_from_file_limit_lines(&file,
-                                                  lines);
+            = TextView::new_from_file_limit_lines(&core,
+                                                  &file,
+                                                  lines)?;
         if is_stale(&stale)? { return Previewer::preview_failed(&file) }
 
-        textview.set_coordinates(&coordinates);
-        textview.refresh();
+        textview.set_coordinates(&core.coordinates)?;
+        textview.refresh()?;
 
         if is_stale(&stale)? { return Previewer::preview_failed(&file) }
 
-        textview.animate_slide_up();
+        textview.animate_slide_up()?;
         Ok(Box::new(textview))
     }
 
-    fn preview_external(file: &File, coordinates: &Coordinates, stale: Arc<Mutex<bool>>)
+    fn preview_external(file: &File, core: &WidgetCore, stale: Arc<Mutex<bool>>)
                         -> Result<Box<dyn Widget + Send>, HError> {
         let process =
             std::process::Command::new("scope.sh")
@@ -349,10 +343,10 @@ impl Previewer {
             let mut textview = TextView {
                 lines: output.lines().map(|s| s.to_string()).collect(),
                 buffer: String::new(),
-                coordinates: Coordinates::new() };
-            textview.set_coordinates(&coordinates);
-            textview.refresh();
-            textview.animate_slide_up();
+                core: core.clone()};
+            textview.set_coordinates(&core.coordinates).log();
+            textview.refresh().log();
+            textview.animate_slide_up().log();
             return Ok(Box::new(textview))
         }
         Err(HError::PreviewFailed{file: file.name.clone()})
@@ -363,22 +357,16 @@ impl Previewer {
 
 
 impl Widget for Previewer {
-    fn get_coordinates(&self) -> &Coordinates {
-        &self.widget.coordinates
+    fn get_core(&self) -> HResult<&WidgetCore> {
+        Ok(&self.core)
     }
-    fn set_coordinates(&mut self, coordinates: &Coordinates) {
-        if self.widget.coordinates == *coordinates {
-            return;
-        }
-        self.widget.set_coordinates(coordinates);
+    fn get_core_mut(&mut self) -> HResult<&mut WidgetCore> {
+        Ok(&mut self.core)
     }
-    fn render_header(&self) -> String {
-        "".to_string()
+    fn refresh(&mut self) -> HResult<()> {
+        self.widget.refresh()
     }
-    fn refresh(&mut self) {
-        self.widget.refresh();
-    }
-    fn get_drawlist(&self) -> String {
+    fn get_drawlist(&self) -> HResult<String> {
         self.widget.get_drawlist()
     }
 }
@@ -538,23 +526,16 @@ impl Widget for Previewer {
 
 
 impl<T> Widget for Box<T> where T: Widget + ?Sized {
-    fn get_coordinates(&self) -> &Coordinates {
-        (**self).get_coordinates()
+    fn get_core(&self) -> HResult<&WidgetCore> {
+        Ok((**self).get_core()?)
     }
-    fn set_coordinates(&mut self, coordinates: &Coordinates) {
-        if (**self).get_coordinates() == coordinates {
-            return;
-        }
-        (**self).set_coordinates(&coordinates);
-        (**self).refresh();
-    }
-    fn render_header(&self) -> String {
+    fn render_header(&self) -> HResult<String> {
         (**self).render_header()
     }
-    fn refresh(&mut self) {
+    fn refresh(&mut self) -> HResult<()> {
         (**self).refresh()
     }
-    fn get_drawlist(&self) -> String {
+    fn get_drawlist(&self) -> HResult<String> {
         (**self).get_drawlist()
     }
 }
