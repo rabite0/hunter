@@ -44,6 +44,14 @@ pub enum HError {
     NoWidgetCoreError(Backtrace),
     #[fail(display = "No header for widget")]
     NoHeaderError,
+    #[fail(display = "You wanted this!")]
+    Quit
+}
+
+impl HError {
+    pub fn quit() -> HResult<()> {
+        Err(HError::Quit)
+    }
 }
 
 pub trait ErrorLog where Self: Sized {

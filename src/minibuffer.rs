@@ -1,10 +1,11 @@
+use std::io::Write;
+
 use termion::event::Key;
-use std::io::{stdout, Write};
 
 use crate::coordinates::{Coordinates};
 use crate::widget::{Widget, WidgetCore};
-use crate::fail::{HResult, HError};
-use crate::term;
+use crate::fail::{HResult, HError, ErrorLog};
+use crate::term::ScreenExt;
 
 #[derive(Debug)]
 pub struct MiniBuffer {
@@ -45,7 +46,7 @@ impl MiniBuffer {
         self.completions.clear();
         self.last_completion = None;
 
-        write!(stdout(), "{}", termion::cursor::Show)?;
+        self.get_core()?.screen.lock()?.cursor_hide();
 
         self.popup()?;
 
@@ -360,14 +361,14 @@ impl Widget for MiniBuffer {
     fn after_draw(&self) -> HResult<()> {
         let cursor_pos = self.query.len() +
                          ": ".len() +
-                         self.position +
-                         1;
+                         self.position;
 
-        let ysize = term::ysize();
+        let mut screen = self.get_core()?.screen.lock()?;
+        let ysize = screen.ysize()?;
 
+        screen.goto_xy(cursor_pos, ysize).log();
+        screen.cursor_show().log();
 
-        write!(stdout(), "{}", term::goto_xy(cursor_pos as u16, ysize))?;
-        stdout().flush()?;
         Ok(())
     }
 }

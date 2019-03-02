@@ -106,22 +106,40 @@ impl FileBrowser {
     pub fn new_cored(core: &WidgetCore) -> HResult<FileBrowser> {
         let cwd = std::env::current_dir().unwrap();
         let coords = core.coordinates.clone();
-        let core_ = core.clone();
+        let core_m = core.clone();
+        let core_l = core.clone();
 
         let mut miller = MillerColumns::new(core);
         miller.set_coordinates(&coords)?;
 
 
-        let (_, main_coords, _) = miller.calculate_coordinates();
+        let (left_coords, main_coords, _) = miller.calculate_coordinates();
 
-        let main_path: std::path::PathBuf = cwd.ancestors().take(1).map(|path| std::path::PathBuf::from(path)).collect();
+        let main_path = cwd.ancestors()
+                           .take(1)
+                           .map(|path| {
+                               std::path::PathBuf::from(path)
+                           }).last()?;
+        let left_path = main_path.parent().map(|p| p.to_path_buf());
+
         let main_widget = WillBeWidget::new(&core, Box::new(move |_| {
-            let mut list = ListView::new(&core_,
-                                         Files::new_from_path(&main_path).unwrap());
+            let mut list = ListView::new(&core_m,
+                                         Files::new_from_path(&main_path)?);
             list.set_coordinates(&main_coords).log();
             list.animate_slide_up().log();
             Ok(list)
         }));
+
+        if let Some(left_path) = left_path {
+            let left_widget = WillBeWidget::new(&core, Box::new(move |_| {
+                let mut list = ListView::new(&core_l,
+                                             Files::new_from_path(&left_path)?);
+                list.set_coordinates(&left_coords).log();
+                list.animate_slide_up().log();
+                Ok(list)
+            }));
+            miller.push_widget(left_widget);
+        }
 
         miller.push_widget(main_widget);
 
@@ -331,8 +349,7 @@ impl FileBrowser {
 
         let mut file = std::fs::File::create(filepath)?;
         file.write(output.as_bytes())?;
-        panic!("Quitting!");
-        Ok(())
+        HError::quit()
     }
 
     pub fn turbo_cd(&mut self) -> HResult<()> {
@@ -493,4 +510,3 @@ impl PartialEq for FileBrowser {
         }
     }
 }
-

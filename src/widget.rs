@@ -112,7 +112,7 @@ pub trait Widget {
 
     fn on_event(&mut self, event: Event) -> HResult<()> {
         match event {
-            Event::Key(Key::Char('q')) => panic!("It's your fault!"),
+            Event::Key(Key::Char('q')) => HError::quit(),
             Event::Key(key) => self.on_key(key),
             Event::Mouse(button) => self.on_mouse(button),
             Event::Unsupported(wtf) => self.on_wtf(wtf),
@@ -287,7 +287,10 @@ pub trait Widget {
         for event in rx_internal_event.iter() {
             match event {
                 Events::InputEvent(event) => {
-                    self.on_event(event).ok();
+                    match self.on_event(event) {
+                        Err(HError::Quit) => { HError::quit()?; },
+                        _ => {}
+                    }
                     self.draw().ok();
                 },
                 _ => {

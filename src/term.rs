@@ -21,10 +21,24 @@ pub trait ScreenExt: Write {
         self.flush()?;
         Ok(())
     }
+    fn clear(&mut self) -> HResult<()> {
+        write!(self, "{}", termion::clear::All)?;
+        Ok(())
+    }
     fn write_str(&mut self, str: &str) -> HResult<()> {
         write!(self, "{}", str)?;
         self.flush()?;
         Ok(())
+    }
+    fn goto_xy(&mut self, x: usize, y: usize) -> HResult<()> {
+        let x = x as u16;
+        let y = y as u16;
+        write!(self, "{}", goto_xy(x + 1, y + 1))?;
+        Ok(())
+    }
+    fn ysize(&self) -> HResult<usize> {
+        let (_, ysize) = termion::terminal_size()?;
+        Ok((ysize - 1) as usize)
     }
 }
 

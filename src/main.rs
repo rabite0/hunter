@@ -69,6 +69,7 @@ fn run() -> HResult<()> {
     let mut screen = AlternateScreen::from(bufout);
     let mut _stdout = MouseTerminal::from(stdout().into_raw_mode()?);
     screen.cursor_hide()?;
+    screen.clear()?;
     screen.flush()?;
 
     let core = WidgetCore::new()?;
