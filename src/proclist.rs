@@ -1,6 +1,7 @@
 use std::sync::{Arc, Mutex};
 use std::sync::mpsc::Sender;
 use std::process::Child;
+use std::os::unix::process::CommandExt;
 use std::io::{BufRead, BufReader};
 
 use termion::event::Key;
@@ -76,8 +77,7 @@ impl ListView<Vec<Process>> {
             .arg(cmd)
             .stdin(std::process::Stdio::null())
             .stdout(std::process::Stdio::piped())
-            //.stderr(unsafe { Stdio::from_raw_fd(2) })
-            .stderr(std::process::Stdio::piped())
+            .before_exec(|| unsafe { libc::dup2(1, 2); Ok(()) })
             .spawn()?;
         let mut proc = Process {
             cmd: cmd.to_string(),
