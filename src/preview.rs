@@ -82,6 +82,11 @@ impl<T: Send + 'static> WillBe<T> where {
         Ok(())
     }
 
+    pub fn take(&mut self) -> HResult<T> {
+        self.check()?;
+        Ok(self.thing.lock()?.take()?)
+    }
+
     pub fn check(&self) -> HResult<()> {
         match *self.state.lock()? {
             State::Is => Ok(()),
@@ -161,6 +166,9 @@ impl<T: Widget + Send + 'static> WillBeWidget<T> {
             _ => false
         }
     }
+    pub fn take(&mut self) -> HResult<T> {
+        self.willbe.take()
+    }
 }
 
 // impl<T: Widget + Send> WillBeWidget<T> {
@@ -230,7 +238,8 @@ pub struct Previewer {
     widget: WillBeWidget<Box<dyn Widget + Send>>,
     core: WidgetCore,
     file: Option<File>,
-    selection: Option<File>
+    selection: Option<File>,
+    cached_files: Option<Files>
 }
 
 
@@ -244,7 +253,8 @@ impl Previewer {
         Previewer { widget: willbe,
                     core: core.clone(),
                     file: None,
-                    selection: None }
+                    selection: None,
+                    cached_files: None }
     }
 
     fn become_preview(&mut self,
@@ -254,10 +264,14 @@ impl Previewer {
         self.widget.set_coordinates(&coordinates).ok();
     }
 
-    pub fn set_file(&mut self, file: &File, selection: Option<File>) {
+    pub fn set_file(&mut self,
+                    file: &File,
+                    selection: Option<File>,
+                    cached_files: Option<Files>) {
         if Some(file) == self.file.as_ref() { return }
         self.file = Some(file.clone());
         self.selection = selection.clone();
+        self.cached_files = cached_files.clone();
 
         let coordinates = self.get_coordinates().unwrap().clone();
         let file = file.clone();
@@ -270,10 +284,12 @@ impl Previewer {
 
             let file = file.clone();
             let selection = selection.clone();
+            let cached_files = cached_files.clone();
 
             if file.kind == Kind::Directory  {
                 let preview = Previewer::preview_dir(&file,
                                                      selection,
+                                                     cached_files,
                                                      &core,
                                                      stale.clone());
                 return preview;
@@ -298,7 +314,8 @@ impl Previewer {
     pub fn reload(&mut self) {
         if let Some(file) = self.file.clone() {
             self.file = None;
-            self.set_file(&file, self.selection.clone());
+            let cache = self.cached_files.take();
+            self.set_file(&file, self.selection.clone(), cache);
         }
     }
 
@@ -308,11 +325,14 @@ impl Previewer {
 
     fn preview_dir(file: &File,
                    selection: Option<File>,
+                   cached_files: Option<Files>,
                    core: &WidgetCore,
                    stale: Arc<Mutex<bool>>)
                    -> Result<WidgetO, HError> {
-        let files = Files::new_from_path_cancellable(&file.path,
-                                                         stale.clone())?;
+        let files = cached_files.or_else(|| {
+            Files::new_from_path_cancellable(&file.path,
+                                             stale.clone()).ok()
+        })?;
         let len = files.len();
 
         if len == 0 || is_stale(&stale)? { return Previewer::preview_failed(&file) }

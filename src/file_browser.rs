@@ -55,6 +55,7 @@ pub struct FileBrowser {
     pub columns: MillerColumns<FileBrowserWidgets>,
     pub cwd: File,
     selections: HashMap<File, File>,
+    cached_files: HashMap<File, Files>,
     core: WidgetCore,
     watcher: INotifyWatcher,
     watches: Vec<PathBuf>,
@@ -196,6 +197,7 @@ impl FileBrowser {
         Ok(FileBrowser { columns: miller,
                          cwd: cwd,
                          selections: HashMap::new(),
+                         cached_files: HashMap::new(),
                          core: core.clone(),
                          watcher: watcher,
                          watches: vec![],
@@ -230,10 +232,17 @@ impl FileBrowser {
         let dir = dir.clone();
         let selected_file = self.get_selection(&dir).ok().cloned();
 
+        self.get_files().and_then(|files| self.cache_files(files)).log();
+        let cached_files = self.get_cached_files(&dir).ok();
         let main_widget = self.main_widget_mut()?;
+
         main_widget.change_to(Box::new(move |stale, core| {
             let path = dir.path();
-            let files = Files::new_from_path_cancellable(&path, stale)?;
+            let cached_files = cached_files.clone();
+
+            let files = cached_files.or_else(|| {
+                Files::new_from_path_cancellable(&path, stale).ok()
+            })?;
 
             let mut list = ListView::new(&core, files);
 
@@ -253,12 +262,19 @@ impl FileBrowser {
     }
 
     pub fn left_widget_goto(&mut self, dir: &File) -> HResult<()> {
+        self.get_left_files().and_then(|files| self.cache_files(files)).log();
+        let cached_files = self.get_cached_files(&dir).ok();
         let dir = dir.clone();
 
         let left_widget = self.left_widget_mut()?;
         left_widget.change_to(Box::new(move |stale, core| {
             let path = dir.path();
-            let files = Files::new_from_path_cancellable(&path, stale)?;
+            let cached_files = cached_files.clone();
+
+            let files = cached_files.or_else(|| {
+                Files::new_from_path_cancellable(&path, stale).ok()
+            })?;
+
             let list = ListView::new(&core, files);
             Ok(list)
         }))?;
@@ -277,8 +293,9 @@ impl FileBrowser {
         if !self.main_widget()?.ready() { return Ok(()) }
         let file = self.selected_file()?.clone();
         let selection = self.get_selection(&file).ok().cloned();
+        let cached_files = self.get_cached_files(&file).ok();
         let preview = self.preview_widget_mut()?;
-        preview.set_file(&file, selection);
+        preview.set_file(&file, selection, cached_files);
         Ok(())
     }
 
@@ -295,6 +312,24 @@ impl FileBrowser {
 
     pub fn get_selection(&self, dir: &File) -> HResult<&File> {
         Ok(self.selections.get(dir)?)
+    }
+
+    pub fn get_files(&mut self) -> HResult<Files> {
+        Ok(self.main_widget()?.widget()?.lock()?.as_ref()?.content.clone())
+    }
+
+    pub fn get_left_files(&mut self) -> HResult<Files> {
+        Ok(self.left_widget()?.widget()?.lock()?.as_ref()?.content.clone())
+    }
+
+    pub fn cache_files(&mut self, files: Files) -> HResult<()> {
+        let dir = files.directory.clone();
+        self.cached_files.insert(dir, files);
+        Ok(())
+    }
+
+    pub fn get_cached_files(&mut self, dir: &File) -> HResult<Files> {
+        Ok(self.cached_files.get(dir)?.clone())
     }
 
     pub fn save_selection(&mut self) -> HResult<()> {

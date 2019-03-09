@@ -21,7 +21,7 @@ lazy_static! {
     static ref COLORS: LsColors = LsColors::from_env().unwrap();
 }
 
-#[derive(PartialEq, Clone, Debug)]
+#[derive(PartialEq, Eq, Hash, Clone, Debug)]
 pub struct Files {
     pub directory: File,
     pub files: Vec<File>,
@@ -277,7 +277,7 @@ impl std::fmt::Display for SortBy {
     }
 }
 
-#[derive(Debug, Copy, Clone, PartialEq)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub enum SortBy {
     Name,
     Size,
