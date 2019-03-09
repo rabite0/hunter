@@ -7,10 +7,10 @@ use std::io::{BufRead, BufReader};
 use termion::event::Key;
 use unicode_width::UnicodeWidthStr;
 
-use crate::coordinates::{Coordinates, Size, Position};
 use crate::listview::{Listable, ListView};
 use crate::textview::TextView;
 use crate::widget::{Widget, Events, WidgetCore};
+use crate::hbox::HBox;
 use crate::preview::WillBeWidget;
 use crate::fail::{HResult, HError, ErrorLog};
 use crate::term;
@@ -24,6 +24,12 @@ struct Process {
     success: Arc<Mutex<Option<bool>>>,
     sender: Sender<Events>
 
+}
+
+impl PartialEq for Process {
+    fn eq(&self, other: &Process) -> bool {
+        self.cmd == other.cmd
+    }
 }
 
 impl Process {
@@ -46,7 +52,8 @@ impl Process {
                         sender.send(Events::WidgetReady).unwrap();
                     }
                     Err(err) => {
-                        dbg!(err);
+                        let err: HResult<()> = Err(HError::from(err));
+                        err.log();
                         break;
                     }
                 }
@@ -143,96 +150,117 @@ impl ListView<Vec<Process>> {
     }
 }
 
+#[derive(PartialEq)]
+enum ProcViewWidgets {
+    List(ListView<Vec<Process>>),
+    TextView(WillBeWidget<TextView>),
+}
+
+impl Widget for ProcViewWidgets {
+    fn get_core(&self) -> HResult<&WidgetCore> {
+        match self {
+            ProcViewWidgets::List(widget) => widget.get_core(),
+            ProcViewWidgets::TextView(widget) => widget.get_core()
+        }
+    }
+    fn get_core_mut(&mut self) -> HResult<&mut WidgetCore> {
+        match self {
+            ProcViewWidgets::List(widget) => widget.get_core_mut(),
+            ProcViewWidgets::TextView(widget) => widget.get_core_mut()
+        }
+    }
+    fn refresh(&mut self) -> HResult<()> {
+        match self {
+            ProcViewWidgets::List(widget) => widget.refresh(),
+            ProcViewWidgets::TextView(widget) => widget.refresh()
+        }
+    }
+    fn get_drawlist(&self) -> HResult<String> {
+        match self {
+            ProcViewWidgets::List(widget) => widget.get_drawlist(),
+            ProcViewWidgets::TextView(widget) => widget.get_drawlist()
+        }
+    }
+}
+
 pub struct ProcView {
     core: WidgetCore,
-    proc_list: ListView<Vec<Process>>,
-    textview: WillBeWidget<TextView>,
+    hbox: HBox<ProcViewWidgets>,
     viewing: Option<usize>
+}
+
+impl HBox<ProcViewWidgets> {
+    fn get_listview(&mut self) -> &mut ListView<Vec<Process>> {
+        match &mut self.widgets[0] {
+            ProcViewWidgets::List(listview) => listview,
+            _ => unreachable!()
+        }
+    }
+    fn get_textview(&mut self) -> &mut WillBeWidget<TextView> {
+        match &mut self.widgets[1] {
+            ProcViewWidgets::TextView(textview) => textview,
+            _ => unreachable!()
+        }
+    }
 }
 
 impl ProcView {
     pub fn new(core: &WidgetCore) -> ProcView {
         let tcore = core.clone();
+        let listview = ListView::new(&core, vec![]);
         let textview = Box::new(move |_| Ok(TextView::new_blank(&tcore)));
+        let textview = WillBeWidget::new(&core, textview);
+        let mut hbox = HBox::new(&core);
+        hbox.push_widget(ProcViewWidgets::List(listview));
+        hbox.push_widget(ProcViewWidgets::TextView(textview));
+        hbox.set_ratios(vec![33, 66]);
+        hbox.refresh().log();
         ProcView {
             core: core.clone(),
-            proc_list: ListView::new(&core, vec![]),
-            textview: WillBeWidget::new(&core, textview),
+            hbox: hbox,
             viewing: None
         }
     }
 
+    fn get_listview(&mut self) -> &mut ListView<Vec<Process>> {
+        self.hbox.get_listview()
+    }
+
+    fn get_textview(&mut self) -> &mut WillBeWidget<TextView> {
+        self.hbox.get_textview()
+    }
+
     pub fn run_proc(&mut self, cmd: &str) -> HResult<()> {
-        self.proc_list.run_proc(cmd)?;
+        self.get_listview().run_proc(cmd)?;
         Ok(())
     }
 
     pub fn remove_proc(&mut self) -> HResult<()> {
-        let (_, coords) = self.calculate_coordinates();
-        let coords2 = coords.clone();
-        let mut core = self.core.clone();
-        core.coordinates = coords;
-
-        self.proc_list.remove_proc()?;
-        self.textview = WillBeWidget::new(&core.clone(), Box::new(move |_| {
+        self.get_listview().remove_proc()?;
+        self.get_textview().change_to(Box::new(move |_, core| {
             let mut textview = TextView::new_blank(&core);
             textview.refresh().log();
             textview.animate_slide_up().log();
             Ok(textview)
-        }));
-        self.textview.set_coordinates(&coords2).log();
+        })).log();
         Ok(())
     }
 
     fn show_output(&mut self) -> HResult<()> {
-        if Some(self.proc_list.get_selection()) == self.viewing {
+        if Some(self.get_listview().get_selection()) == self.viewing {
             return Ok(());
         }
-        let output = self.proc_list.selected_proc()?.output.lock()?.clone();
-        let (_, coords) = self.calculate_coordinates();
-        let mut core = self.core.clone();
-        core.coordinates = coords;
+        let output = self.get_listview().selected_proc()?.output.lock()?.clone();
 
-        self.textview = WillBeWidget::new(&core.clone(), Box::new(move |_| {
+        self.get_textview().change_to(Box::new(move |_, core| {
             let mut textview = TextView::new_blank(&core);
             textview.set_text(&output).log();
             textview.animate_slide_up().log();
             Ok(textview)
-        }));
-        self.viewing = Some(self.proc_list.get_selection());
+        })).log();
+        self.viewing = Some(self.get_listview().get_selection());
         Ok(())
     }
-
-    pub fn calculate_coordinates(&self) -> (Coordinates, Coordinates) {
-        let coordinates = self.get_coordinates().unwrap();
-        let xsize = coordinates.xsize();
-        let ysize = coordinates.ysize();
-        let top = coordinates.top().y();
-        let ratio = (33, 66);
-
-        let left_xsize = xsize * ratio.0 / 100;
-        let left_size = Size((left_xsize, ysize));
-        let left_pos = coordinates.top();
-
-        let main_xsize = xsize * ratio.1 / 100;
-        let main_size = Size((main_xsize, ysize));
-        let main_pos = Position((left_xsize + 2, top));
-
-
-
-        let left_coords = Coordinates {
-            size: left_size,
-            position: left_pos,
-        };
-
-        let main_coords = Coordinates {
-            size: main_size,
-            position: main_pos,
-        };
-        (left_coords, main_coords)
-    }
-
-
 }
 
 impl Widget for ProcView {
@@ -243,29 +271,27 @@ impl Widget for ProcView {
         Ok(&mut self.core)
     }
     fn refresh(&mut self) -> HResult<()> {
-        let (lcoord, rcoord) = self.calculate_coordinates();
-        self.proc_list.set_coordinates(&lcoord).log();
-        self.textview.set_coordinates(&rcoord).log();
+        self.hbox.refresh().log();
 
         self.show_output().log();
-        self.proc_list.refresh().log();
-        self.textview.refresh().log();
+        self.get_listview().refresh().log();
+        self.get_textview().refresh().log();
 
         Ok(())
     }
     fn get_drawlist(&self) -> HResult<String> {
-        Ok(self.proc_list.get_drawlist()? + &self.textview.get_drawlist()?)
+        self.hbox.get_drawlist()
     }
     fn on_key(&mut self, key: Key) -> HResult<()> {
         match key {
             Key::Char('w') => { return Err(HError::PopupFinnished) }
             Key::Char('d') => { self.remove_proc()? }
-            Key::Char('k') => { self.proc_list.kill_proc()? }
+            Key::Char('k') => { self.get_listview().kill_proc()? }
             Key::Up | Key::Char('p') => {
-                self.proc_list.move_up();
+                self.get_listview().move_up();
             }
             Key::Down | Key::Char('n') => {
-                self.proc_list.move_down();
+                self.get_listview().move_down();
             }
             _ => {}
         }

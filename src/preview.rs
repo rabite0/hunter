@@ -11,6 +11,7 @@ use crate::fail::{HResult, HError, ErrorLog};
 
 
 type HClosure<T> = Box<Fn(Arc<Mutex<bool>>) -> Result<T, HError> + Send>;
+type HCClosure<T> = Box<Fn(Arc<Mutex<bool>>, WidgetCore) -> Result<T, HError> + Send>;
 type WidgetO = Box<dyn Widget + Send>;
 
 lazy_static! {
@@ -111,7 +112,7 @@ impl<W: Widget + Send + 'static> PartialEq for WillBeWidget<W> {
     }
 }
 
-pub struct WillBeWidget<T: Widget + Send> {
+pub struct WillBeWidget<T: Widget + Send + 'static> {
     willbe: WillBe<T>,
     core: WidgetCore
 }
@@ -129,12 +130,36 @@ impl<T: Widget + Send + 'static> WillBeWidget<T> {
             core: core.clone()
         }
     }
+    pub fn change_to(&mut self, closure: HCClosure<T>) -> HResult<()> {
+        self.set_stale().log();
+
+        let sender = self.get_core()?.get_sender();
+        let core = self.get_core()?.clone();
+
+        let mut willbe = WillBe::new_become(Box::new(move |stale| {
+            let core = core.clone();
+            closure(stale, core)
+        }));
+        willbe.on_ready(Box::new(move |_| {
+            sender.send(crate::widget::Events::WidgetReady)?;
+            Ok(())
+        }))?;
+
+        self.willbe = willbe;
+        Ok(())
+    }
     pub fn set_stale(&mut self) -> HResult<()> {
         self.willbe.set_stale()
     }
     pub fn widget(&self) -> HResult<Arc<Mutex<Option<T>>>> {
         self.willbe.check()?;
         Ok(self.willbe.thing.clone())
+    }
+    pub fn ready(&self) -> bool {
+        match self.willbe.check() {
+            Ok(_) => true,
+            _ => false
+        }
     }
 }
 
@@ -157,11 +182,13 @@ impl<T: Widget + Send + 'static> Widget for WillBeWidget<T> {
         Ok(&mut self.core)
     }
     fn refresh(&mut self) -> HResult<()> {
-        let widget = self.widget()?;
-        let mut widget = widget.lock()?;
-        let widget = widget.as_mut()?;
-        widget.set_coordinates(self.get_coordinates()?).log();
-        widget.refresh()
+        if let Ok(widget) = self.widget() {
+            let mut widget = widget.lock()?;
+            let widget = widget.as_mut()?;
+            widget.set_coordinates(self.get_coordinates()?).log();
+            widget.refresh().log();
+        }
+        Ok(())
     }
     fn get_drawlist(&self) -> HResult<String> {
         if self.willbe.check().is_err() {
@@ -169,6 +196,9 @@ impl<T: Widget + Send + 'static> Widget for WillBeWidget<T> {
             let (xpos, ypos) = self.get_coordinates()?.u16position();
             let pos = crate::term::goto_xy(xpos, ypos);
             return Ok(clear + &pos + "...")
+        }
+        if is_stale(&self.willbe.stale)? {
+            return self.get_clearlist()
         }
         let widget = self.widget()?;
         let widget = widget.lock()?;
@@ -199,7 +229,8 @@ impl PartialEq for Previewer {
 pub struct Previewer {
     widget: WillBeWidget<Box<dyn Widget + Send>>,
     core: WidgetCore,
-    file: Option<File>
+    file: Option<File>,
+    selection: Option<File>
 }
 
 
@@ -212,7 +243,8 @@ impl Previewer {
         }));
         Previewer { widget: willbe,
                     core: core.clone(),
-                    file: None}
+                    file: None,
+                    selection: None }
     }
 
     fn become_preview(&mut self,
@@ -222,9 +254,10 @@ impl Previewer {
         self.widget.set_coordinates(&coordinates).ok();
     }
 
-    pub fn set_file(&mut self, file: &File) {
+    pub fn set_file(&mut self, file: &File, selection: Option<File>) {
         if Some(file) == self.file.as_ref() { return }
         self.file = Some(file.clone());
+        self.selection = selection.clone();
 
         let coordinates = self.get_coordinates().unwrap().clone();
         let file = file.clone();
@@ -236,9 +269,13 @@ impl Previewer {
             kill_proc().unwrap();
 
             let file = file.clone();
+            let selection = selection.clone();
 
             if file.kind == Kind::Directory  {
-                let preview = Previewer::preview_dir(&file, &core, stale.clone());
+                let preview = Previewer::preview_dir(&file,
+                                                     selection,
+                                                     &core,
+                                                     stale.clone());
                 return preview;
             }
 
@@ -261,7 +298,7 @@ impl Previewer {
     pub fn reload(&mut self) {
         if let Some(file) = self.file.clone() {
             self.file = None;
-            self.set_file(&file);
+            self.set_file(&file, self.selection.clone());
         }
     }
 
@@ -269,15 +306,21 @@ impl Previewer {
         Err(HError::PreviewFailed { file: file.name.clone() })
     }
 
-    fn preview_dir(file: &File, core: &WidgetCore, stale: Arc<Mutex<bool>>)
+    fn preview_dir(file: &File,
+                   selection: Option<File>,
+                   core: &WidgetCore,
+                   stale: Arc<Mutex<bool>>)
                    -> Result<WidgetO, HError> {
         let files = Files::new_from_path_cancellable(&file.path,
                                                          stale.clone())?;
         let len = files.len();
-        
+
         if len == 0 || is_stale(&stale)? { return Previewer::preview_failed(&file) }
 
         let mut file_list = ListView::new(&core, files);
+        if let Some(selection) = selection {
+            file_list.select_file(&selection);
+        }
         file_list.set_coordinates(&core.coordinates)?;
         file_list.refresh()?;
         if is_stale(&stale)? { return Previewer::preview_failed(&file) }
@@ -528,6 +571,9 @@ impl Widget for Previewer {
 impl<T> Widget for Box<T> where T: Widget + ?Sized {
     fn get_core(&self) -> HResult<&WidgetCore> {
         Ok((**self).get_core()?)
+    }
+    fn get_core_mut(&mut self) -> HResult<&mut WidgetCore> {
+        Ok((**self).get_core_mut()?)
     }
     fn render_header(&self) -> HResult<String> {
         (**self).render_header()

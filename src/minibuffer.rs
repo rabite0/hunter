@@ -1,5 +1,3 @@
-use std::io::Write;
-
 use termion::event::Key;
 
 use crate::coordinates::{Coordinates};

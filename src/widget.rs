@@ -4,7 +4,6 @@ use std::sync::mpsc::{Sender, Receiver, channel};
 use termion::event::{Event, Key, MouseEvent};
 use termion::input::TermRead;
 use termion::screen::AlternateScreen;
-use failure::Backtrace;
 
 
 use crate::coordinates::{Coordinates, Position, Size};
@@ -81,15 +80,12 @@ impl WidgetCore {
 }
 
 pub trait Widget {
-    fn get_widget(&self) -> Box<dyn Widget> {
-        Box::new(crate::textview::TextView::new_blank(self.get_core().unwrap()))
-    }
-    fn get_core(&self) -> HResult<&WidgetCore> {
-        Err(HError::NoWidgetCoreError(Backtrace::new()))
-    }
-    fn get_core_mut(&mut self) -> HResult<&mut WidgetCore> {
-        Err(HError::NoWidgetCoreError(Backtrace::new()))
-    }
+    fn get_core(&self) -> HResult<&WidgetCore>; // {
+    //     Err(HError::NoWidgetCoreError(Backtrace::new()))
+    // }
+    fn get_core_mut(&mut self) -> HResult<&mut WidgetCore> ;// {
+    //     Err(HError::NoWidgetCoreError(Backtrace::new()))
+    // }
     fn get_coordinates(&self) -> HResult<&Coordinates> {
         Ok(&self.get_core()?.coordinates)
     }
@@ -205,6 +201,7 @@ pub trait Widget {
 
     fn popup(&mut self) -> HResult<()> {
         self.run_widget().log();
+        self.clear().log();
         self.get_core()?.get_sender().send(Events::ExclusiveEvent(None))?;
         Ok(())
     }
@@ -355,9 +352,9 @@ fn dispatch_events(rx: Receiver<Events>, tx: Sender<Events>) {
                 _ => {}
             }
             if let Some(tx_event) = &tx_exclusive_event {
-                tx_event.send(event).unwrap();
+                tx_event.send(event).ok();
             } else {
-                tx.send(event).unwrap();
+                tx.send(event).ok();
             }
         }
     });

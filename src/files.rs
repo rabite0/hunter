@@ -3,6 +3,7 @@ use std::ops::Index;
 use std::os::unix::fs::MetadataExt;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
+use std::hash::{Hash, Hasher};
 
 use lscolors::LsColors;
 use mime_detective;
@@ -294,6 +295,16 @@ impl PartialEq for File {
     }
 }
 
+impl Hash for File {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.name.hash(state);
+        self.path.hash(state);
+        self.selected.hash(state);
+    }
+}
+
+impl Eq for File {}
+
 #[derive(Debug, Clone)]
 pub struct File {
     pub name: String,
@@ -401,6 +412,16 @@ impl File {
         let detective = mime_detective::MimeDetective::new().ok()?;
         let mime = detective.detect_filepath(&self.path).ok()?;
         Some(mime.type_().as_str().to_string())
+    }
+
+
+    pub fn parent(&self) -> Option<PathBuf> {
+        Some(self.path.parent()?.to_path_buf())
+    }
+
+    pub fn parent_as_file(&self) -> HResult<File> {
+        let pathbuf = self.parent()?;
+        File::new_from_path(&pathbuf)
     }
 
     pub fn grand_parent(&self) -> Option<PathBuf> {

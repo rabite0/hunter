@@ -45,12 +45,26 @@ pub enum HError {
     #[fail(display = "No header for widget")]
     NoHeaderError,
     #[fail(display = "You wanted this!")]
-    Quit
+    Quit,
+    #[fail(display = "HBox ratio mismatch: {} widgets, ratio is {:?}", wnum, ratio)]
+    HBoxWrongRatioError{ wnum: usize, ratio: Vec<usize> },
+    #[fail(display = "Got wrong widget: {}! Wanted: {}", got, wanted)]
+    WrongWidgetError{got: String, wanted: String},
 }
 
 impl HError {
     pub fn quit() -> HResult<()> {
         Err(HError::Quit)
+    }
+    pub fn wrong_ratio<T>(wnum: usize, ratio: Vec<usize>) -> HResult<T> {
+        Err(HError::HBoxWrongRatioError{ wnum: wnum, ratio: ratio })
+    }
+    pub fn no_widget<T>() -> HResult<T> {
+        Err(HError::NoWidgetError(Backtrace::new()))
+    }
+    pub fn wrong_widget<T>(got: &str, wanted: &str) -> HResult<T> {
+        Err(HError::WrongWidgetError{ got: got.to_string(),
+                                      wanted: wanted.to_string()})
     }
 }
 

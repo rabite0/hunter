@@ -80,6 +80,9 @@ impl<T> Widget for TabView<T> where T: Widget, TabView<T>: Tabbable {
     fn get_core(&self) -> HResult<&WidgetCore> {
         Ok(&self.core)
     }
+    fn get_core_mut(&mut self) -> HResult<&mut WidgetCore> {
+        Ok(&mut self.core)
+    }
     fn render_header(&self) -> HResult<String> {
         let xsize = self.get_coordinates()?.xsize();
         let header = self.active_tab_().render_header()?;
