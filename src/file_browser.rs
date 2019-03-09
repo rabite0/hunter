@@ -110,7 +110,14 @@ impl Tabbable for TabView<FileBrowser> {
             Key::Char('!') => {
                 let tab_dirs = self.widgets.iter().map(|w| w.cwd.clone())
                                                   .collect::<Vec<_>>();
-                self.widgets[self.active].exec_cmd(tab_dirs)
+                let selected_files = self.widgets.iter().fold(HashMap::new(),
+                                                              |mut f, w| {
+                    let dir = w.cwd().unwrap().clone();
+                    let selected_files = w.selected_files().unwrap();
+                    f.insert(dir, selected_files);
+                    f
+                });
+                self.widgets[self.active].exec_cmd(tab_dirs, selected_files)
             }
             _ => { self.active_tab_mut().on_key(key) }
         }
@@ -424,6 +431,14 @@ impl FileBrowser {
         Ok(file)
     }
 
+    pub fn selected_files(&self) -> HResult<Vec<File>> {
+        let widget = self.main_widget()?.widget()?;
+        let files = widget.lock()?.as_ref()?.content.get_selected().into_iter().map(|f| {
+            f.clone()
+        }).collect();
+        Ok(files)
+    }
+
     pub fn main_widget(&self) -> HResult<&WillBeWidget<ListView<Files>>> {
         let widget = match self.columns.get_main_widget()? {
             FileBrowserWidgets::FileList(filelist) => Ok(filelist),
@@ -521,11 +536,12 @@ impl FileBrowser {
         Ok(())
     }
 
-    fn exec_cmd(&mut self, tab_dirs: Vec<File>) -> HResult<()> {
+    fn exec_cmd(&mut self,
+                tab_dirs: Vec<File>,
+                tab_files: HashMap<File, Vec<File>>) -> HResult<()> {
+        let cwd = self.cwd()?;
         let filename = self.selected_file()?.name.clone();
-        let widget = self.main_widget()?.widget()?;
-        let widget = widget.lock()?;
-        let selected_files = widget.as_ref()?.content.get_selected();
+        let selected_files = self.selected_files()?;
 
         let file_names
             = selected_files.iter().map(|f| f.name.clone()).collect::<Vec<String>>();
@@ -544,6 +560,15 @@ impl FileBrowser {
         };
 
         for (i, tab_dir) in tab_dirs.iter().enumerate() {
+            if let Some(tab_files) = tab_files.get(tab_dir) {
+                let tab_file_identifier = format!("${}s", i);
+                let args = tab_files.iter().map(|f| {
+                    let file_path = f.strip_prefix(&cwd);
+                    format!(" \"{}\" ", file_path.to_string_lossy())
+                }).collect::<String>();
+                cmd = cmd.replace(&tab_file_identifier, &args);
+            }
+
             let tab_identifier = format!("${}", i);
             let tab_path = tab_dir.path.to_string_lossy();
             cmd = cmd.replace(&tab_identifier, &tab_path);

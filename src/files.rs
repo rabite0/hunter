@@ -441,6 +441,13 @@ impl File {
         Files::new_from_path(&self.path)
     }
 
+    pub fn strip_prefix(&self, base: &File) -> PathBuf {
+        let base_path = base.path.clone();
+        match self.path.strip_prefix(base_path) {
+            Ok(path) => PathBuf::from(path),
+            Err(_) => self.path.clone()
+        }
+    }
 
     pub fn path(&self) -> PathBuf {
         self.path.clone()

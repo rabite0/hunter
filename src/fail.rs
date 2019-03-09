@@ -50,6 +50,8 @@ pub enum HError {
     HBoxWrongRatioError{ wnum: usize, ratio: Vec<usize> },
     #[fail(display = "Got wrong widget: {}! Wanted: {}", got, wanted)]
     WrongWidgetError{got: String, wanted: String},
+    #[fail(display = "Strip Prefix Error: {}", error)]
+    StripPrefixError{#[cause] error: std::path::StripPrefixError},
 }
 
 impl HError {
@@ -143,5 +145,12 @@ impl From<std::option::NoneError> for HError {
     fn from(error: std::option::NoneError) -> Self {
         dbg!(&error);
         HError::NoneError
+    }
+}
+
+impl From<std::path::StripPrefixError> for HError {
+    fn from(error: std::path::StripPrefixError) -> Self {
+        dbg!(&error);
+        HError::StripPrefixError{error: error}
     }
 }
