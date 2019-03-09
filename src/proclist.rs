@@ -40,28 +40,29 @@ impl Process {
         let success = self.success.clone();
         let sender = self.sender.clone();
 
-        std::thread::spawn(move || {
-            let stdout = handle.lock().unwrap().stdout.take().unwrap();
+        std::thread::spawn(move || -> HResult<()> {
+            let stdout = handle.lock()?.stdout.take()?;
             let mut stdout = BufReader::new(stdout);
-            loop {
-                let mut line = String::new();
-                match stdout.read_line(&mut line) {
-                    Ok(0) => break,
-                    Ok(_) => {
-                        output.lock().unwrap().push_str(&line);
-                        sender.send(Events::WidgetReady).unwrap();
-                    }
-                    Err(err) => {
-                        let err: HResult<()> = Err(HError::from(err));
-                        err.log();
-                        break;
-                    }
+            let mut processor = move || -> HResult<()> {
+                loop {
+                    let buffer = stdout.fill_buf()?;
+                    let len = buffer.len();
+                    let buffer = String::from_utf8_lossy(buffer);
+
+                    if len == 0 { return Ok(()) }
+
+                    output.lock()?.push_str(&buffer);
+                    sender.send(Events::WidgetReady)?;
+
+                    stdout.consume(len);
                 }
+            };
+            processor().log();
+            if let Ok(proc_status) = handle.lock()?.wait() {
+                *success.lock()? = Some(proc_status.success());
+                *status.lock()? = proc_status.code();
             }
-            if let Ok(proc_status) = handle.lock().unwrap().wait() {
-                *success.lock().unwrap() = Some(proc_status.success());
-                *status.lock().unwrap() = proc_status.code();
-            }
+            Ok(())
         });
 
         Ok(())
