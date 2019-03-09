@@ -406,7 +406,9 @@ impl Previewer {
             let mut textview = TextView {
                 lines: output.lines().map(|s| s.to_string()).collect(),
                 buffer: String::new(),
-                core: core.clone()};
+                core: core.clone(),
+                follow: false,
+                offset: 0};
             textview.set_coordinates(&core.coordinates).log();
             textview.refresh().log();
             textview.animate_slide_up().log();

@@ -261,6 +261,41 @@ impl ProcView {
         self.viewing = Some(self.get_listview().get_selection());
         Ok(())
     }
+
+    pub fn toggle_follow(&mut self) -> HResult<()> {
+        self.get_textview().widget()?.lock()?.as_mut()?.toggle_follow();
+        Ok(())
+    }
+
+    pub fn scroll_up(&mut self) -> HResult<()> {
+        self.get_textview().widget()?.lock()?.as_mut()?.scroll_up();
+        Ok(())
+    }
+
+    pub fn scroll_down(&mut self) -> HResult<()> {
+        self.get_textview().widget()?.lock()?.as_mut()?.scroll_down();
+        Ok(())
+    }
+
+    pub fn page_up(&mut self) -> HResult<()> {
+        self.get_textview().widget()?.lock()?.as_mut()?.page_up();
+        Ok(())
+    }
+
+    pub fn page_down(&mut self) -> HResult<()> {
+        self.get_textview().widget()?.lock()?.as_mut()?.page_down();
+        Ok(())
+    }
+
+    pub fn scroll_top(&mut self) -> HResult<()> {
+        self.get_textview().widget()?.lock()?.as_mut()?.scroll_top();
+        Ok(())
+    }
+
+    pub fn scroll_bottom(&mut self) -> HResult<()> {
+        self.get_textview().widget()?.lock()?.as_mut()?.scroll_bottom();
+        Ok(())
+    }
 }
 
 impl Widget for ProcView {
@@ -293,6 +328,13 @@ impl Widget for ProcView {
             Key::Down | Key::Char('n') => {
                 self.get_listview().move_down();
             }
+            Key::Char('f') => { self.toggle_follow().log(); }
+            Key::Ctrl('n') => { self.scroll_down().log(); },
+            Key::Ctrl('p') => { self.scroll_up().log(); },
+            Key::Ctrl('v') => { self.page_down().log(); },
+            Key::Alt('v') => { self.page_up().log(); },
+            Key::Char('>') => { self.scroll_bottom().log(); },
+            Key::Char('<') => { self.scroll_top().log(); }
             _ => {}
         }
         self.refresh().log();
