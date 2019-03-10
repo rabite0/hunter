@@ -19,6 +19,7 @@ pub enum Events {
     InputEvent(Event),
     WidgetReady,
     ExclusiveEvent(Option<Sender<Events>>),
+    Status(String)
 }
 
 impl PartialEq for WidgetCore {
@@ -107,6 +108,7 @@ pub trait Widget {
 
 
     fn on_event(&mut self, event: Event) -> HResult<()> {
+        self.clear_status().log();
         match event {
             Event::Key(Key::Char('q')) => HError::quit(),
             Event::Key(key) => self.on_key(key),
@@ -290,6 +292,9 @@ pub trait Widget {
                     }
                     self.draw().ok();
                 },
+                Events::Status(status) => {
+                    self.show_status(&status).log();
+                }
                 _ => {
                     self.refresh().ok();
                     self.draw().ok();
@@ -301,9 +306,10 @@ pub trait Widget {
 
     fn draw_status(&self) -> HResult<()> {
         let xsize = term::xsize() as u16;
-        let status = &self.get_core()?.status_bar_content;
-
-        let status = status.lock()?;
+        let status = match self.get_core()?.status_bar_content.lock()?.as_ref() {
+            Some(status) => status.to_string(),
+            None => "".to_string(),
+        };
 
         self.write_to_screen(
             &format!(
@@ -312,7 +318,7 @@ pub trait Widget {
                 term::status_bg(),
                 " ",
                 term::move_bottom(),
-                status.as_ref()?,
+                status,
                 xsize = xsize as usize
             )).log();
 
@@ -325,6 +331,13 @@ pub trait Widget {
             *status_content = Some(status.to_string());
         }
         self.draw_status()?;
+        Ok(())
+    }
+
+    fn clear_status(&self) -> HResult<()> {
+        if self.get_core()?.status_bar_content.lock()?.take().is_some() {
+            self.draw_status().log();
+        }
         Ok(())
     }
 

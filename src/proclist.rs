@@ -1,7 +1,7 @@
 use std::sync::{Arc, Mutex};
 use std::sync::mpsc::Sender;
 use std::process::Child;
-use std::os::unix::process::CommandExt;
+use std::os::unix::process::{CommandExt, ExitStatusExt};
 use std::io::{BufRead, BufReader};
 
 use termion::event::Key;
@@ -39,11 +39,13 @@ impl Process {
         let status = self.status.clone();
         let success = self.success.clone();
         let sender = self.sender.clone();
+        let cmd = self.cmd.clone();
+        let pid = self.handle.lock()?.id();
 
         std::thread::spawn(move || -> HResult<()> {
             let stdout = handle.lock()?.stdout.take()?;
             let mut stdout = BufReader::new(stdout);
-            let mut processor = move || -> HResult<()> {
+            let mut processor = move |cmd, sender: &Sender<Events>| -> HResult<()> {
                 loop {
                     let buffer = stdout.fill_buf()?;
                     let len = buffer.len();
@@ -52,15 +54,47 @@ impl Process {
                     if len == 0 { return Ok(()) }
 
                     output.lock()?.push_str(&buffer);
-                    sender.send(Events::WidgetReady)?;
+
+                    let status = format!("{}: read {} chars!", cmd, len);
+                    sender.send(Events::Status(status))?;
 
                     stdout.consume(len);
                 }
             };
-            processor().log();
+            processor(&cmd, &sender).log();
+
             if let Ok(proc_status) = handle.lock()?.wait() {
-                *success.lock()? = Some(proc_status.success());
-                *status.lock()? = proc_status.code();
+                let proc_success = proc_status.success();
+                let proc_status = match proc_status.code() {
+                    Some(status) => status,
+                    None => proc_status.signal().unwrap_or(-1)
+                };
+
+                *success.lock()? = Some(proc_success);
+                *status.lock()? = Some(proc_status);
+
+                let color_success =
+                    if proc_success {
+                        format!("{}successfully", term::color_green())
+                    } else {
+                        format!("{}unsuccessfully", term::color_red())
+                    };
+
+                let color_status =
+                    if proc_success {
+                        format!("{}{}", term::color_green(), proc_status)
+                    } else {
+                        format!("{}{}", term::color_red(), proc_status)
+                    };
+
+                let status = format!("Process: {}:{} exited {}{}{} with status: {}",
+                                     cmd,
+                                     pid,
+                                     color_success,
+                                     term::reset(),
+                                     term::status_bg(),
+                                     color_status);
+                sender.send(Events::Status(status))?;
             }
             Ok(())
         });

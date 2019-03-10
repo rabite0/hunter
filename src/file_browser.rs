@@ -578,6 +578,33 @@ impl FileBrowser {
 
         Ok(())
     }
+
+    pub fn get_footer(&self) -> HResult<String> {
+        let xsize = self.get_coordinates()?.xsize();
+        let ypos = self.get_coordinates()?.position().y();
+        let file = self.selected_file()?;
+
+        let permissions = file.pretty_print_permissions().unwrap_or("NOPERMS".into());
+        let user = file.pretty_user().unwrap_or("NOUSER".into());
+        let group = file.pretty_group().unwrap_or("NOGROUP".into());
+        let mtime = file.pretty_mtime().unwrap_or("NOMTIME".into());
+
+        let main_widget = self.main_widget()?.widget()?;
+        let selection = main_widget.lock()?.as_ref().unwrap().get_selection();
+        let file_count = main_widget.lock()?.as_ref().unwrap().content.len();
+        let file_count = format!("{}", file_count);
+        let digits = file_count.len();
+        let file_count = format!("{:digits$}/{:digits$}",
+                                 selection,
+                                 file_count,
+                                 digits = digits);
+        let count_xpos = xsize - file_count.len() as u16;
+        let count_ypos = ypos + self.get_coordinates()?.ysize();
+
+        let status = format!("{} {}:{} {} {} {}", permissions, user, group, mtime,
+                             crate::term::goto_xy(count_xpos, count_ypos), file_count);
+        Ok(status)
+    }
 }
 
 impl Widget for FileBrowser {
@@ -603,30 +630,11 @@ impl Widget for FileBrowser {
         Ok(sized_path)
     }
     fn render_footer(&self) -> HResult<String> {
-        let xsize = self.get_coordinates()?.xsize();
-        let ypos = self.get_coordinates()?.position().y();
-        let file = self.selected_file()?;
-
-        let permissions = file.pretty_print_permissions().unwrap_or("NOPERMS".into());
-        let user = file.pretty_user().unwrap_or("NOUSER".into());
-        let group = file.pretty_group().unwrap_or("NOGROUP".into());
-        let mtime = file.pretty_mtime().unwrap_or("NOMTIME".into());
-
-        let main_widget = self.main_widget()?.widget()?;
-        let selection = main_widget.lock()?.as_ref().unwrap().get_selection();
-        let file_count = main_widget.lock()?.as_ref().unwrap().content.len();
-        let file_count = format!("{}", file_count);
-        let digits = file_count.len();
-        let file_count = format!("{:digits$}/{:digits$}",
-                                 selection,
-                                 file_count,
-                                 digits = digits);
-        let count_xpos = xsize - file_count.len() as u16;
-        let count_ypos = ypos + self.get_coordinates()?.ysize();
-
-        Ok(format!("{} {}:{} {} {} {}", permissions, user, group, mtime,
-                   crate::term::goto_xy(count_xpos, count_ypos), file_count))
-     }
+        match self.get_core()?.status_bar_content.lock()?.as_mut().take() {
+            Some(status) => Ok(status.clone()),
+            _ => { self.get_footer() },
+        }
+    }
     fn refresh(&mut self) -> HResult<()> {
         //self.proc_view.lock()?.set_coordinates(self.get_coordinates()?);
         self.handle_dir_events().ok();
