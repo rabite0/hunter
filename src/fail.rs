@@ -70,6 +70,9 @@ impl HError {
         Err(HError::WrongWidgetError{ got: got.to_string(),
                                       wanted: wanted.to_string()})
     }
+    pub fn popup_finnished<T>() -> HResult<T> {
+        Err(HError::PopupFinnished)
+    }
 }
 
 pub trait ErrorLog where Self: Sized {

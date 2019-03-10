@@ -17,6 +17,7 @@ use crate::preview::{Previewer, WillBeWidget};
 use crate::fail::{HResult, HError, ErrorLog};
 use crate::widget::{Events, WidgetCore};
 use crate::proclist::ProcView;
+use crate::bookmarks::BMPopup;
 
 #[derive(PartialEq)]
 pub enum FileBrowserWidgets {
@@ -54,6 +55,7 @@ impl Widget for FileBrowserWidgets {
 pub struct FileBrowser {
     pub columns: MillerColumns<FileBrowserWidgets>,
     pub cwd: File,
+    pub prev_cwd: Option<File>,
     selections: HashMap<File, File>,
     cached_files: HashMap<File, Files>,
     core: WidgetCore,
@@ -61,6 +63,7 @@ pub struct FileBrowser {
     watches: Vec<PathBuf>,
     dir_events: Arc<Mutex<Vec<DebouncedEvent>>>,
     proc_view: Arc<Mutex<ProcView>>,
+    bookmarks: Arc<Mutex<BMPopup>>
 }
 
 impl Tabbable for TabView<FileBrowser> {
@@ -68,7 +71,9 @@ impl Tabbable for TabView<FileBrowser> {
         let mut tab = FileBrowser::new_cored(&self.active_tab_().core)?;
 
         let proc_view = self.active_tab_().proc_view.clone();
+        let bookmarks = self.active_tab_().bookmarks.clone();
         tab.proc_view = proc_view;
+        tab.bookmarks = bookmarks;
 
         self.push_widget(tab)?;
         self.active += 1;
@@ -197,19 +202,22 @@ impl FileBrowser {
         let watcher = INotifyWatcher::new(tx_watch, Duration::from_secs(2)).unwrap();
         watch_dir(rx_watch, dir_events.clone(), core.get_sender());
 
-        let proc_view = ProcView::new(core);
+        let proc_view = ProcView::new(&core);
+        let bookmarks = BMPopup::new(&core);
 
 
 
         Ok(FileBrowser { columns: miller,
                          cwd: cwd,
+                         prev_cwd: None,
                          selections: HashMap::new(),
                          cached_files: HashMap::new(),
                          core: core.clone(),
                          watcher: watcher,
                          watches: vec![],
                          dir_events: dir_events,
-                         proc_view: Arc::new(Mutex::new(proc_view)) })
+                         proc_view: Arc::new(Mutex::new(proc_view)),
+                         bookmarks: Arc::new(Mutex::new(bookmarks)) })
     }
 
     pub fn enter_dir(&mut self) -> HResult<()> {
@@ -235,19 +243,21 @@ impl FileBrowser {
     }
 
     pub fn main_widget_goto(&mut self, dir: &File) -> HResult<()> {
-        self.cwd = dir.clone();
-        let dir = dir.clone();
-        let selected_file = self.get_selection(&dir).ok().cloned();
-
-        self.get_files().and_then(|files| self.cache_files(files)).log();
-        let cached_files = self.get_cached_files(&dir).ok();
-        let main_widget = self.main_widget_mut()?;
-
         if dir.read_dir().is_err() {
             self.show_status("Can't enter! Permission denied!").log();
             return Ok(());
         }
 
+        let dir = dir.clone();
+        let selected_file = self.get_selection(&dir).ok().cloned();
+
+        self.get_files().and_then(|files| self.cache_files(files)).log();
+        let cached_files = self.get_cached_files(&dir).ok();
+
+        self.prev_cwd = Some(self.cwd.clone());
+        self.cwd = dir.clone();
+
+        let main_widget = self.main_widget_mut()?;
         main_widget.change_to(Box::new(move |stale, core| {
             let path = dir.path();
             let cached_files = cached_files.clone();
@@ -299,6 +309,30 @@ impl FileBrowser {
         }
 
         self.refresh()
+    }
+
+    pub fn goto_prev_cwd(&mut self) -> HResult<()> {
+        let prev_cwd = self.prev_cwd.take()?;
+        self.main_widget_goto(&prev_cwd)?;
+        Ok(())
+    }
+
+    pub fn goto_bookmark(&mut self) -> HResult<()> {
+        let cwd = match self.prev_cwd.as_ref() {
+            Some(cwd) => cwd,
+            None => &self.cwd
+        }.path.to_string_lossy().to_string();
+
+        let path = self.bookmarks.lock()?.pick(cwd)?;
+        let path = File::new_from_path(&PathBuf::from(path))?;
+        self.main_widget_goto(&path)?;
+        Ok(())
+    }
+
+    pub fn add_bookmark(&mut self) -> HResult<()> {
+        let cwd = self.cwd.path.to_string_lossy().to_string();
+        self.bookmarks.lock()?.add(&cwd)?;
+        Ok(())
     }
 
     pub fn update_preview(&mut self) -> HResult<()> {
@@ -667,6 +701,9 @@ impl Widget for FileBrowser {
             Key::Char('Q') => { self.quit_with_dir()?; },
             Key::Right | Key::Char('f') => { self.enter_dir()?; },
             Key::Left | Key::Char('b') => { self.go_back()?; },
+            Key::Char('-') => { self.goto_prev_cwd()?; },
+            Key::Char('`') => { self.goto_bookmark()?; },
+            Key::Char('m') => { self.add_bookmark()?; },
             Key::Char('w') => {
                 self.proc_view.lock()?.popup()?;
             }

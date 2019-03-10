@@ -170,10 +170,11 @@ pub trait Widget {
     fn get_clearlist(&self) -> HResult<String> {
         let (xpos, ypos) = self.get_coordinates()?.u16position();
         let (xsize, ysize) = self.get_coordinates()?.u16size();
+        let endpos = ypos + ysize;
 
-        Ok((ypos..ysize + 2)
-            .map(|line| {
-                format!(
+        Ok((ypos..endpos)
+           .map(|line| {
+               format!(
                     "{}{}{:xsize$}",
                     crate::term::reset(),
                     crate::term::goto_xy(xpos, line),

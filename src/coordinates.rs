@@ -28,12 +28,44 @@ impl Coordinates {
     //      &self.size
     // }
 
+    pub fn set_size(&mut self, x: u16, y: u16) {
+        self.size.0 = (x, y);
+    }
+
+    pub fn set_xsize(&mut self, x: u16) {
+        (self.size.0).0 = x;
+    }
+
+    pub fn set_ysize(&mut self, y: u16) {
+        (self.size.0).1 = y;
+    }
+
+    pub fn set_position(&mut self, x: u16, y: u16) {
+        self.position.0 = (x, y);
+    }
+
+    pub fn set_xpos(&mut self, x: u16) {
+        (self.position.0).0 = x;
+    }
+
+    pub fn set_ypos(&mut self, y: u16) {
+        (self.position.0).1 = y;
+    }
+
     pub fn xsize(&self) -> u16 {
         self.size.xsize()
     }
 
     pub fn ysize(&self) -> u16 {
         self.size.ysize()
+    }
+
+    pub fn xpos(&self) -> u16 {
+        self.position.position().0
+    }
+
+    pub fn ypos(&self) -> u16 {
+        self.position.position().1
     }
 
     pub fn position(&self) -> &Position {

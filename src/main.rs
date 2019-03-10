@@ -42,6 +42,8 @@ mod async_widget;
 mod fail;
 mod minibuffer;
 mod proclist;
+mod bookmarks;
+mod paths;
 
 
 
