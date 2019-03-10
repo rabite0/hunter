@@ -243,6 +243,11 @@ impl FileBrowser {
         let cached_files = self.get_cached_files(&dir).ok();
         let main_widget = self.main_widget_mut()?;
 
+        if dir.read_dir().is_err() {
+            self.show_status("Can't enter! Permission denied!").log();
+            return Ok(());
+        }
+
         main_widget.change_to(Box::new(move |stale, core| {
             let path = dir.path();
             let cached_files = cached_files.clone();
@@ -383,17 +388,17 @@ impl FileBrowser {
             }
         }
         if !watched_dirs.contains(&cwd.path) {
-            self.watcher.watch(&cwd.path, RecursiveMode::NonRecursive).unwrap();
+            self.watcher.watch(&cwd.path, RecursiveMode::NonRecursive)?;
             self.watches.push(cwd.path);
         }
         if !watched_dirs.contains(&left_dir.path) {
-            self.watcher.watch(&left_dir.path, RecursiveMode::NonRecursive).unwrap();
+            self.watcher.watch(&left_dir.path, RecursiveMode::NonRecursive)?;
             self.watches.push(left_dir.path);
         }
         if let Some(preview_dir) = preview_dir {
             if !watched_dirs.contains(&preview_dir) && preview_dir.is_dir() {
-            self.watcher.watch(&preview_dir, RecursiveMode::NonRecursive).unwrap();
-            self.watches.push(preview_dir);
+                self.watcher.watch(&preview_dir, RecursiveMode::NonRecursive)?;
+                self.watches.push(preview_dir);
             }
         }
         Ok(())

@@ -52,6 +52,8 @@ pub enum HError {
     WrongWidgetError{got: String, wanted: String},
     #[fail(display = "Strip Prefix Error: {}", error)]
     StripPrefixError{#[cause] error: std::path::StripPrefixError},
+    #[fail(display = "INofify failed: {}", error)]
+    INotifyError{#[cause] error: notify::Error},
 }
 
 impl HError {
@@ -152,5 +154,12 @@ impl From<std::path::StripPrefixError> for HError {
     fn from(error: std::path::StripPrefixError) -> Self {
         dbg!(&error);
         HError::StripPrefixError{error: error}
+    }
+}
+
+impl From<notify::Error> for HError {
+    fn from(error: notify::Error) -> Self {
+        dbg!(&error);
+        HError::INotifyError{error: error}
     }
 }
