@@ -172,10 +172,9 @@ impl ListView<Vec<Process>> {
         Ok(format!(
             "{}{}{}{}{}{}",
             termion::cursor::Save,
-            format!("{}{}{:padding$}{}",
+            format!("{}{:padding$}{}",
                     term::normal_color(),
                     &sized_string,
-                    " ",
                     term::normal_color(),
                     padding = padding as usize),
             termion::cursor::Restore,
@@ -271,6 +270,7 @@ impl ProcView {
     }
 
     pub fn remove_proc(&mut self) -> HResult<()> {
+        if self.get_listview().content.len() == 0 { return Ok(()) }
         self.get_listview().remove_proc()?;
         self.get_textview().change_to(Box::new(move |_, core| {
             let mut textview = TextView::new_blank(&core);

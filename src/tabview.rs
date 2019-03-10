@@ -43,13 +43,26 @@ impl<T> TabView<T> where T: Widget, TabView<T>: Tabbable {
 
     pub fn push_widget(&mut self, widget: T) -> HResult<()> {
         self.widgets.push(widget);
-        self.refresh()
+        Ok(())
     }
 
     pub fn pop_widget(&mut self) -> HResult<T> {
         let widget = self.widgets.pop()?;
-        self.refresh()?;
+        if self.widgets.len() <= self.active {
+            self.active -= 1;
+        }
         Ok(widget)
+    }
+
+    pub fn remove_widget(&mut self, index: usize) -> HResult<()> {
+        let len = self.widgets.len();
+        if len > 1 {
+            self.widgets.remove(index);
+            if index+1 == len {
+                self.active -= 1;
+            }
+        }
+        Ok(())
     }
 
     pub fn active_tab_(&self) -> &T {
@@ -61,8 +74,7 @@ impl<T> TabView<T> where T: Widget, TabView<T>: Tabbable {
     }
 
     pub fn close_tab_(&mut self) -> HResult<()> {
-        self.pop_widget()?;
-        self.active -= 1;
+        self.remove_widget(self.active).log();
         Ok(())
     }
 
