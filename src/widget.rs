@@ -203,10 +203,10 @@ pub trait Widget {
     }
 
     fn popup(&mut self) -> HResult<()> {
-        self.run_widget().log();
+        let result = self.run_widget();
         self.clear().log();
         self.get_core()?.get_sender().send(Events::ExclusiveEvent(None))?;
-        Ok(())
+        result
     }
 
     fn run_widget(&mut self) -> HResult<()> {
@@ -220,9 +220,7 @@ pub trait Widget {
         for event in rx_event.iter() {
             match event {
                 Events::InputEvent(input) => {
-                    if let Err(HError::PopupFinnished) = self.on_event(input) {
-                        return Err(HError::PopupFinnished)
-                    }
+                    self.on_event(input)?;
                 }
                 Events::WidgetReady => {
                     self.refresh().log();

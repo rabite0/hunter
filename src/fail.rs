@@ -55,7 +55,11 @@ pub enum HError {
     #[fail(display = "INofify failed: {}", error)]
     INotifyError{#[cause] error: notify::Error},
     #[fail(display = "Tags not loaded yet")]
-    TagsNotLoadedYetError
+    TagsNotLoadedYetError,
+    #[fail(display = "Input cancelled!")]
+    MiniBufferCancelledInput,
+    #[fail(display = "Empty input!")]
+    MiniBufferEmptyInput
 }
 
 impl HError {
@@ -77,6 +81,12 @@ impl HError {
     }
     pub fn tags_not_loaded<T>() -> HResult<T> {
         Err(HError::TagsNotLoadedYetError)
+    }
+    pub fn minibuffer_cancel<T>() -> HResult<T> {
+        Err(HError::MiniBufferCancelledInput)
+    }
+    pub fn minibuffer_empty<T>() -> HResult<T> {
+        Err(HError::MiniBufferEmptyInput)
     }
 }
 

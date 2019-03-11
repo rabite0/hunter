@@ -546,7 +546,7 @@ impl FileBrowser {
     }
 
     pub fn turbo_cd(&mut self) -> HResult<()> {
-        let dir = self.minibuffer("cd: ");
+        let dir = self.minibuffer("cd");
 
         match dir {
             Ok(dir) => {
@@ -589,7 +589,7 @@ impl FileBrowser {
         let file_names
             = selected_files.iter().map(|f| f.name.clone()).collect::<Vec<String>>();
 
-        let cmd = self.minibuffer("exec:")?;
+        let cmd = self.minibuffer("exec")?;
 
         self.show_status(&format!("Running: \"{}\"", &cmd)).log();
 

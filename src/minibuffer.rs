@@ -1,9 +1,131 @@
 use termion::event::Key;
 
+use std::collections::HashMap;
+
 use crate::coordinates::{Coordinates};
 use crate::widget::{Widget, WidgetCore};
 use crate::fail::{HResult, HError, ErrorLog};
 use crate::term::ScreenExt;
+
+type HMap = HashMap<String, Vec<String>>;
+
+#[derive(Debug)]
+struct History {
+    history: HMap,
+    position: Option<usize>,
+    loaded: bool
+}
+
+impl History {
+    fn new() -> History {
+        History {
+            history: HashMap::new(),
+            position: None,
+            loaded: false
+        }
+    }
+
+    fn load(&mut self) -> HResult<()> {
+        if self.loaded { return Ok(()) }
+
+        let hpath = crate::paths::history_path()?;
+        let hf_content = std::fs::read_to_string(hpath)?;
+
+        let history = hf_content.lines().fold(HashMap::new(), |mut hm: HMap, line| {
+            let parts = line.splitn(2, ":").collect::<Vec<&str>>();
+            if parts.len() == 2 {
+                let (htype, hline) = (parts[0].to_string(), parts[1].to_string());
+
+                match hm.get_mut(&htype) {
+                    Some(hvec) => hvec.push(hline),
+                    None => {
+                        let hvec = vec![hline];
+                        hm.insert(htype, hvec);
+                    }
+                };
+            }
+            hm
+        });
+
+        self.history = history;
+        self.loaded = true;
+
+        Ok(())
+    }
+
+    fn save(&self) -> HResult<()> {
+        let hpath = crate::paths::history_path()?;
+
+        let history = self.history.iter().map(|(htype, hlines)| {
+            hlines.iter().map(|hline| format!("{}: {}\n", htype, hline))
+                .collect::<String>()
+        }).collect::<String>();
+
+        std::fs::write(hpath, history)?;
+        Ok(())
+    }
+
+    fn reset(&mut self) {
+        self.position = None;
+    }
+
+    fn add(&mut self, htype: &str, input: &str) {
+        self.load().log();
+        let history = match self.history.get_mut(htype) {
+            Some(history) => history,
+            None => {
+                let hvec = Vec::new();
+                self.history.insert(htype.to_string(), hvec);
+                self.history.get_mut(htype).unwrap()
+            }
+        };
+        history.push(input.to_string());
+        self.save().log();
+    }
+
+    fn get_prev(&mut self, htype: &str) -> HResult<String> {
+        self.load()?;
+        let history = self.history.get(htype)?;
+        let mut position = self.position;
+        let hist_len = history.len();
+
+        if position == Some(0) { position = None; }
+        if hist_len == 0 { return Err(HError::NoHistoryError); }
+
+        if let Some(position) = position {
+            let historic = history[position - 1].clone();
+            self.position = Some(position - 1);
+            Ok(historic)
+        } else {
+            let historic = history[hist_len - 1].clone();
+            self.position = Some(hist_len - 1);
+            Ok(historic)
+        }
+
+    }
+
+    fn get_next(&mut self, htype: &str) -> HResult<String> {
+        self.load()?;
+        let history = self.history.get(htype)?;
+        let mut position = self.position;
+        let hist_len = history.len();
+
+        if hist_len == 0 { return Err(HError::NoHistoryError); }
+        if position == Some(hist_len) ||
+           position == None
+            { position = Some(0); }
+
+        if let Some(position) = position {
+            let historic = history[position].clone();
+            self.position = Some(position + 1);
+            Ok(historic)
+        } else {
+            let historic = history[0].clone();
+            self.position = Some(1);
+            Ok(historic)
+        }
+    }
+}
 
 #[derive(Debug)]
 pub struct MiniBuffer {
@@ -11,8 +133,7 @@ pub struct MiniBuffer {
     query: String,
     input: String,
     position: usize,
-    history: Vec<String>,
-    history_pos: Option<usize>,
+    history: History,
     completions: Vec<String>,
     last_completion: Option<String>
 }
@@ -29,8 +150,7 @@ impl MiniBuffer {
             query: String::new(),
             input: String::new(),
             position: 0,
-            history: vec![],
-            history_pos: None,
+            history: History::new(),
             completions: vec![],
             last_completion: None
         }
@@ -40,13 +160,18 @@ impl MiniBuffer {
         self.query = query.to_string();
         self.input.clear();
         self.position = 0;
-        self.history_pos = None;
+        self.history.reset();
         self.completions.clear();
         self.last_completion = None;
 
         self.get_core()?.screen.lock()?.cursor_hide().log();
 
-        self.popup()?;
+        match self.popup() {
+            Err(HError::MiniBufferCancelledInput) => self.input_cancelled()?,
+            _ => {}
+        };
+
+        if self.input == "" { self.input_empty()?; }
 
         Ok(self.input.clone())
     }
@@ -112,45 +237,17 @@ impl MiniBuffer {
     }
 
     pub fn history_up(&mut self) -> HResult<()> {
-        if self.history_pos == Some(0) { self.history_pos = None; }
-        if self.history.len() == 0 { return Err(HError::NoHistoryError); }
-
-        if let Some(history_pos) = self.history_pos {
-            let historic = self.history[history_pos - 1].clone();
-
+        if let Ok(historic) = self.history.get_prev(&self.query) {
+            self.position = historic.len();
             self.input = historic;
-            self.position = self.input.len();
-            self.history_pos = Some(history_pos - 1);
-        } else {
-            let historic = self.history[self.history.len() - 1].clone();
-
-            self.input = historic;
-            self.position = self.input.len();
-            self.history_pos = Some(self.history.len() - 1);
         }
         Ok(())
     }
 
     pub fn history_down(&mut self) -> HResult<()> {
-        let hist_len = self.history.len();
-
-        if hist_len == 0 { return Err(HError::NoHistoryError); }
-        if self.history_pos == Some(hist_len) ||
-           self.history_pos == None
-            { self.history_pos = Some(0); }
-
-        if let Some(history_pos) = self.history_pos {
-            let historic = self.history[history_pos].clone();
-
+        if let Ok(historic) = self.history.get_next(&self.query) {
+            self.position = historic.len();
             self.input = historic;
-            self.position = self.input.len();
-            self.history_pos = Some(history_pos + 1);
-        } else {
-            let historic = self.history[0].clone();
-
-            self.input = historic;
-            self.position = self.input.len();
-            self.history_pos = Some(1);
         }
         Ok(())
     }
@@ -219,8 +316,18 @@ impl MiniBuffer {
         Ok(())
     }
 
-    pub fn input_finnished(&mut self) -> HResult<()> {
-        return Err(HError::PopupFinnished)
+    pub fn input_finnished(&self) -> HResult<()> {
+        return HError::popup_finnished()
+    }
+
+    pub fn input_cancelled(&self) -> HResult<()> {
+        self.show_status("Input cancelled").log();
+        return HError::minibuffer_cancel()
+    }
+
+    pub fn input_empty(&self) -> HResult<()> {
+        self.show_status("Empty!").log();
+        return HError::minibuffer_empty()
     }
 }
 
@@ -297,19 +404,22 @@ impl Widget for MiniBuffer {
 
     fn get_drawlist(&self) -> HResult<String> {
         let (xpos, ypos) = self.get_coordinates()?.u16position();
-        Ok(format!("{}{}{}: {}",
+        Ok(format!("{}{}{}{}: {}",
                 crate::term::goto_xy(xpos, ypos),
                 termion::clear::CurrentLine,
+                crate::term::header_color(),
                 self.query,
                 self.input))
     }
 
     fn on_key(&mut self, key: Key) -> HResult<()> {
         match key {
-            Key::Esc | Key::Ctrl('c') => { self.input_finnished()?; },
+            Key::Esc | Key::Ctrl('c') => {
+                self.input_cancelled()?;
+            },
             Key::Char('\n') => {
                 if self.input != "" {
-                    self.history.push(self.input.clone());
+                    self.history.add(&self.query, &self.input);
                 }
                 self.input_finnished()?;
             }
