@@ -7,7 +7,8 @@ pub trait Tabbable {
     fn new_tab(&mut self) -> HResult<()>;
     fn close_tab(&mut self) -> HResult<()>;
     fn next_tab(&mut self) -> HResult<()>;
-    fn on_next_tab(&mut self) -> HResult<()> {
+    fn goto_tab(&mut self, index: usize) -> HResult<()>;
+    fn on_tab_switch(&mut self) -> HResult<()> {
         Ok(())
     }
     fn get_tab_names(&self) -> Vec<Option<String>>;
@@ -16,6 +17,7 @@ pub trait Tabbable {
     fn on_key_sub(&mut self, key: Key) -> HResult<()>;
     fn on_key(&mut self, key: Key) -> HResult<()> {
         match key {
+            Key::F(n) => self.goto_tab(n as usize -1),
             Key::Ctrl('t') => self.new_tab(),
             Key::Ctrl('w') => self.close_tab(),
             Key::Char('\t') => self.next_tab(),
@@ -65,6 +67,14 @@ impl<T> TabView<T> where T: Widget, TabView<T>: Tabbable {
         Ok(())
     }
 
+    pub fn goto_tab_(&mut self, index: usize) -> HResult<()> {
+        if index < self.widgets.len() {
+            self.active = index;
+            self.on_tab_switch().log();
+        }
+        Ok(())
+    }
+
     pub fn active_tab_(&self) -> &T {
         &self.widgets[self.active]
     }
@@ -84,7 +94,7 @@ impl<T> TabView<T> where T: Widget, TabView<T>: Tabbable {
         } else {
             self.active += 1
         }
-        self.on_next_tab().log();
+        self.on_tab_switch().log();
     }
 }
 

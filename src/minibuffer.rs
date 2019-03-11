@@ -44,7 +44,7 @@ impl MiniBuffer {
         self.completions.clear();
         self.last_completion = None;
 
-        self.get_core()?.screen.lock()?.cursor_hide();
+        self.get_core()?.screen.lock()?.cursor_hide().log();
 
         self.popup()?;
 
@@ -315,6 +315,11 @@ impl Widget for MiniBuffer {
             }
             Key::Char('\t') => {
                 self.complete()?;
+            }
+            Key::F(n) => {
+                let fnstr = format!("${}", n-1);
+                self.input.insert_str(self.position, &fnstr);
+                self.position += 2;
             }
             Key::Backspace => {
                 if self.position != 0 {

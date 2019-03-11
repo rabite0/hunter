@@ -89,6 +89,10 @@ impl Tabbable for TabView<FileBrowser> {
         Ok(())
     }
 
+    fn goto_tab(&mut self, index: usize) -> HResult<()> {
+        self.goto_tab_(index)
+    }
+
     fn get_tab_names(&self) -> Vec<Option<String>> {
         self.widgets.iter().map(|filebrowser| {
             let path = filebrowser.cwd.path();
@@ -106,7 +110,7 @@ impl Tabbable for TabView<FileBrowser> {
         self.active_tab_mut_()
     }
 
-    fn on_next_tab(&mut self) -> HResult<()> {
+    fn on_tab_switch(&mut self) -> HResult<()> {
         self.active_tab_mut().refresh()
     }
 
