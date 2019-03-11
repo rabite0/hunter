@@ -18,6 +18,7 @@ use crate::fail::{HResult, HError, ErrorLog};
 use crate::widget::{Events, WidgetCore};
 use crate::proclist::ProcView;
 use crate::bookmarks::BMPopup;
+use crate::term::ScreenExt;
 
 #[derive(PartialEq)]
 pub enum FileBrowserWidgets {
@@ -336,6 +337,12 @@ impl FileBrowser {
     pub fn add_bookmark(&mut self) -> HResult<()> {
         let cwd = self.cwd.path.to_string_lossy().to_string();
         self.bookmarks.lock()?.add(&cwd)?;
+        Ok(())
+    }
+
+    pub fn set_title(&self) -> HResult<()> {
+        let cwd = &self.cwd.path.to_string_lossy();
+        self.core.screen.lock()?.set_title(cwd)?;
         Ok(())
     }
 
@@ -680,6 +687,7 @@ impl Widget for FileBrowser {
     }
     fn refresh(&mut self) -> HResult<()> {
         //self.proc_view.lock()?.set_coordinates(self.get_coordinates()?);
+        self.set_title().ok();
         self.handle_dir_events().ok();
         self.columns.refresh().ok();
         self.set_left_selection().log();

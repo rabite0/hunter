@@ -40,6 +40,10 @@ pub trait ScreenExt: Write {
         let (_, ysize) = termion::terminal_size()?;
         Ok((ysize - 1) as usize)
     }
+    fn set_title(&mut self, title: &str) -> HResult<()> {
+        write!(self, "\x1b]2;{}", title)?;
+        Ok(())
+    }
 }
 
 impl ScreenExt for AlternateScreen<Box<Stdout>> {}
