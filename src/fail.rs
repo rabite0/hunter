@@ -54,6 +54,8 @@ pub enum HError {
     StripPrefixError{#[cause] error: std::path::StripPrefixError},
     #[fail(display = "INofify failed: {}", error)]
     INotifyError{#[cause] error: notify::Error},
+    #[fail(display = "Tags not loaded yet")]
+    TagsNotLoadedYetError
 }
 
 impl HError {
@@ -72,6 +74,9 @@ impl HError {
     }
     pub fn popup_finnished<T>() -> HResult<T> {
         Err(HError::PopupFinnished)
+    }
+    pub fn tags_not_loaded<T>() -> HResult<T> {
+        Err(HError::TagsNotLoadedYetError)
     }
 }
 

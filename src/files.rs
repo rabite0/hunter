@@ -19,6 +19,32 @@ use crate::fail::{HResult, HError};
 
 lazy_static! {
     static ref COLORS: LsColors = LsColors::from_env().unwrap();
+    static ref TAGS: Mutex<(bool, Vec<PathBuf>)> = Mutex::new((false, vec![]));
+}
+
+pub fn load_tags() -> HResult<()> {
+    std::thread::spawn(|| -> HResult<()> {
+        let tag_path = crate::paths::tagfile_path()?;
+        let tags = std::fs::read_to_string(tag_path)?;
+        let mut tags = tags.lines().map(|f| PathBuf::from(f)).collect::<Vec<PathBuf>>();
+        let mut tag_lock = TAGS.lock()?;
+        tag_lock.0 = true;
+        tag_lock.1.append(&mut tags);
+        Ok(())
+    });
+    Ok(())
+}
+
+pub fn check_tag(path: &PathBuf) -> HResult<bool> {
+    tags_loaded()?;
+    let tagged = TAGS.lock()?.1.contains(path);
+    Ok(tagged)
+}
+
+pub fn tags_loaded() -> HResult<()> {
+    let loaded = TAGS.lock()?.0;
+    if loaded { Ok(()) }
+    else { HError::tags_not_loaded() }
 }
 
 #[derive(PartialEq, Eq, Hash, Clone, Debug)]
@@ -312,7 +338,8 @@ pub struct File {
     pub kind: Kind,
     pub color: Option<lscolors::Color>,
     pub meta: Option<std::fs::Metadata>,
-    pub selected: bool
+    pub selected: bool,
+    pub tag: Option<bool>
     // flags: Option<String>,
 }
 
@@ -321,13 +348,16 @@ impl File {
         name: &str,
         path: PathBuf,
     ) -> File {
+        let tag = check_tag(&path).ok();
+
         File {
             name: name.to_string(),
             kind: if path.is_dir() { Kind::Directory } else { Kind::File },
             path: path,
             meta: None,
             color: None,
-            selected: false
+            selected: false,
+            tag: tag,
         }
     }
 
@@ -459,6 +489,46 @@ impl File {
 
     pub fn is_selected(&self) -> bool {
         self.selected
+    }
+
+    pub fn is_tagged(&self) -> HResult<bool> {
+        if let Some(tag) = self.tag {
+            return Ok(tag);
+        }
+        let tag = check_tag(&self.path)?;
+        Ok(tag)
+    }
+
+    pub fn toggle_tag(&mut self) -> HResult<()> {
+        let new_state = match self.tag {
+            Some(tag) => !tag,
+            None => {
+                let tag = check_tag(&self.path);
+                !tag?
+            }
+        };
+        self.tag = Some(new_state);
+
+        match new_state {
+            true => TAGS.lock()?.1.push(self.path.clone()),
+            false => { TAGS.lock()?.1.remove_item(&self.path); },
+        }
+        self.save_tags()?;
+        Ok(())
+    }
+
+    pub fn save_tags(&self) -> HResult<()> {
+        std::thread::spawn(|| -> HResult<()> {
+            let tagfile_path = crate::paths::tagfile_path()?;
+            let tags = TAGS.lock()?.clone();
+            let tags_str = tags.1.iter().map(|p| {
+                let path = p.to_string_lossy().to_string();
+                format!("{}\n", path)
+            }).collect::<String>();
+            std::fs::write(tagfile_path, tags_str)?;
+            Ok(())
+        });
+        Ok(())
     }
 
     pub fn pretty_print_permissions(&self) -> HResult<String> {

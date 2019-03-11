@@ -66,6 +66,10 @@ fn main() -> HResult<()> {
 }
 
 fn run() -> HResult<()> {
+    // do this early so it might be ready when needed
+    crate::files::load_tags()?;
+
+
     let bufout = std::io::BufWriter::new(std::io::stdout());
     // Need to do this here to actually turn terminal into raw mode...
     let mut screen = AlternateScreen::from(bufout);

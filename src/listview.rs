@@ -46,6 +46,7 @@ impl Listable for ListView<Files> {
             Key::Left => self.goto_grand_parent()?,
             Key::Right => self.goto_selected()?,
             Key::Char(' ') => self.multi_select_file(),
+            Key::Char('t') => self.toggle_tag()?,
             Key::Char('h') => self.toggle_hidden(),
             Key::Char('r') => self.reverse_sort(),
             Key::Char('s') => self.cycle_sort(),
@@ -136,6 +137,11 @@ where
     fn render_line(&self, file: &File) -> String {
         let name = &file.name;
         let (size, unit) = file.calculate_size().unwrap_or((0, "".to_string()));
+        let tag = match file.is_tagged() {
+            Ok(true) => term::color_red() + "*",
+            _ => "".to_string()
+        };
+        let tag_len = if tag != "" { 1 } else { 0 };
 
         let selection_gap = "  ".to_string();
         let (name, selection_color) =  if file.is_selected() {
@@ -149,18 +155,21 @@ where
                                 + unit.to_string().len() as u16);
         let padding = sized_string.len() - sized_string.width_cjk();
         let padding = xsize - padding as u16;
+        let padding = padding - tag_len;
 
         format!(
             "{}{}{}{}{}{}{}",
             termion::cursor::Save,
             match &file.color {
-                Some(color) => format!("{}{}{:padding$}{}",
+                Some(color) => format!("{}{}{}{:padding$}{}",
+                                       tag,
                                        term::from_lscolor(color),
                                        selection_color,
                                        &sized_string,
                                        term::normal_color(),
                                        padding = padding as usize),
-                _ => format!("{}{}{:padding$}{}",
+                _ => format!("{}{}{}{:padding$}{}",
+                             tag,
                              term::normal_color(),
                              selection_color,
                              &sized_string,
@@ -333,6 +342,12 @@ impl ListView<Files>
         file.toggle_selection();
         self.move_down();
         self.refresh().log();
+    }
+
+    fn toggle_tag(&mut self) -> HResult<()> {
+        self.selected_file_mut().toggle_tag()?;
+        self.move_down();
+        Ok(())
     }
 
     fn find_file(&mut self) -> HResult<()> {
