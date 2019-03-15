@@ -20,6 +20,7 @@ libc = "*"
 failure = "0.1.5"
 failure_derive = "0.1.1"
 notify = "4.0.9"
+parse-ansi = "0.1.6"
 
 #[profile.release]
 #debug = true

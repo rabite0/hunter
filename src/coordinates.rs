@@ -76,12 +76,22 @@ impl Coordinates {
         self.position.position()
     }
 
+    pub fn position_u(&self) -> (usize, usize) {
+        let (xpos, ypos) = self.u16position();
+        ((xpos-1) as usize, (ypos-1) as usize)
+    }
+
     pub fn size(&self) -> &Size {
         &self.size
     }
 
     pub fn u16size(&self) -> (u16, u16) {
         self.size.size()
+    }
+
+    pub fn size_u(&self) -> (usize, usize) {
+        let (xsize, ysize) = self.u16size();
+        ((xsize-1) as usize, (ysize-1) as usize)
     }
 
     pub fn top(&self) -> Position {
@@ -95,6 +105,10 @@ impl Size {
     pub fn size(&self) -> (u16, u16) {
         self.0
     }
+    pub fn size_u(&self) -> (usize, usize) {
+        let (xsize, ysize) = self.0;
+        (xsize as usize, ysize as usize)
+    }
     pub fn xsize(&self) -> u16 {
         (self.0).0
     }
@@ -106,6 +120,10 @@ impl Size {
 impl Position {
     pub fn position(&self) -> (u16, u16) {
         self.0
+    }
+    pub fn position_u(&self) -> (usize, usize) {
+        let (xpos, ypos) = self.0;
+        (xpos as usize, ypos as usize)
     }
     pub fn x(&self) -> u16 {
         (self.0).0

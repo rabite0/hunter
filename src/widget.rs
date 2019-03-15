@@ -3,16 +3,14 @@ use std::sync::mpsc::{Sender, Receiver, channel};
 
 use termion::event::{Event, Key, MouseEvent};
 use termion::input::TermRead;
-use termion::screen::AlternateScreen;
-
 
 use crate::coordinates::{Coordinates, Position, Size};
 use crate::fail::{HResult, HError, ErrorLog};
 use crate::minibuffer::MiniBuffer;
 use crate::term;
-use crate::term::ScreenExt;
+use crate::term::{Screen, ScreenExt};
 
-use std::io::{BufWriter, stdin, stdout, Stdout};
+use std::io::stdin;
 
 #[derive(Debug)]
 pub enum Events {
@@ -44,7 +42,7 @@ impl std::fmt::Debug for WidgetCore {
 
 #[derive(Clone)]
 pub struct WidgetCore {
-    pub screen: Arc<Mutex<AlternateScreen<BufWriter<Stdout>>>>,
+    pub screen: Screen,
     pub coordinates: Coordinates,
     pub minibuffer: Arc<Mutex<Option<MiniBuffer>>>,
     pub event_sender: Sender<Events>,
@@ -54,7 +52,7 @@ pub struct WidgetCore {
 
 impl WidgetCore {
     pub fn new() -> HResult<WidgetCore> {
-        let screen = AlternateScreen::from(BufWriter::new(stdout()));
+        let screen = Screen::new()?;
         let coords = Coordinates::new_at(term::xsize(),
                                          term::ysize() - 2,
                                          1,
@@ -63,7 +61,7 @@ impl WidgetCore {
         let status_bar_content = Arc::new(Mutex::new(None));
 
         let core = WidgetCore {
-            screen: Arc::new(Mutex::new(screen)),
+            screen: screen,
             coordinates: coords,
             minibuffer: Arc::new(Mutex::new(None)),
             event_sender: sender,
@@ -209,6 +207,10 @@ pub trait Widget {
         result
     }
 
+    fn popup_finnished(&self) -> HResult<()> {
+        HError::popup_finnished()
+    }
+
     fn run_widget(&mut self) -> HResult<()> {
         let (tx_event, rx_event) = channel();
         self.get_core()?.get_sender().send(Events::ExclusiveEvent(Some(tx_event)))?;
@@ -220,7 +222,13 @@ pub trait Widget {
         for event in rx_event.iter() {
             match event {
                 Events::InputEvent(input) => {
-                    self.on_event(input)?;
+                    match self.on_event(input) {
+                        err @ Err(HError::PopupFinnished) |
+                        err @ Err(HError::Quit) |
+                        err @ Err(HError::MiniBufferCancelledInput) => err?,
+                        err @ Err(_) => err.log(),
+                        Ok(_) => {}
+                    }
                 }
                 Events::WidgetReady => {
                     self.refresh().log();
@@ -342,13 +350,17 @@ pub trait Widget {
 
     fn minibuffer(&self, query: &str) -> HResult<String> {
         let answer = self.get_core()?.minibuffer.lock()?.as_mut()?.query(query);
-        let mut screen = self.get_core()?.screen.lock()?;
+        let mut screen = self.screen()?;
         screen.cursor_hide().log();
         answer
     }
 
+    fn screen(&self) -> HResult<Screen> {
+        Ok(self.get_core()?.screen.clone())
+    }
+
     fn write_to_screen(&self, s: &str) -> HResult<()> {
-        let mut screen = self.get_core()?.screen.lock()?;
+        let mut screen = self.screen()?;
         screen.write_str(s)
     }
 }

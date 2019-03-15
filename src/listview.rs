@@ -63,11 +63,11 @@ impl Listable for ListView<Files> {
 pub struct ListView<T> where ListView<T>: Listable
 {
     pub content: T,
-    lines: usize,
+    pub lines: usize,
     selection: usize,
-    offset: usize,
-    buffer: Vec<String>,
-    core: WidgetCore,
+    pub offset: usize,
+    pub buffer: Vec<String>,
+    pub core: WidgetCore,
     seeking: bool,
 }
 
@@ -121,7 +121,7 @@ where
         self.selection
     }
 
-    fn set_selection(&mut self, position: usize) {
+    pub fn set_selection(&mut self, position: usize) {
         let ysize = self.get_coordinates().unwrap().ysize() as usize;
         let mut offset = 0;
 
@@ -134,55 +134,6 @@ where
         self.selection = position;
     }
 
-    fn render_line(&self, file: &File) -> String {
-        let name = &file.name;
-        let (size, unit) = file.calculate_size().unwrap_or((0, "".to_string()));
-        let tag = match file.is_tagged() {
-            Ok(true) => term::color_red() + "*",
-            _ => "".to_string()
-        };
-        let tag_len = if tag != "" { 1 } else { 0 };
-
-        let selection_gap = "  ".to_string();
-        let (name, selection_color) =  if file.is_selected() {
-            (selection_gap + name, crate::term::color_yellow())
-        } else { (name.clone(), "".to_string()) };
-
-
-        let xsize = self.get_coordinates().unwrap().xsize();
-        let sized_string = term::sized_string(&name, xsize);
-        let size_pos = xsize - (size.to_string().len() as u16
-                                + unit.to_string().len() as u16);
-        let padding = sized_string.len() - sized_string.width_cjk();
-        let padding = xsize - padding as u16;
-        let padding = padding - tag_len;
-
-        format!(
-            "{}{}{}{}{}{}{}",
-            termion::cursor::Save,
-            match &file.color {
-                Some(color) => format!("{}{}{}{:padding$}{}",
-                                       tag,
-                                       term::from_lscolor(color),
-                                       selection_color,
-                                       &sized_string,
-                                       term::normal_color(),
-                                       padding = padding as usize),
-                _ => format!("{}{}{}{:padding$}{}",
-                             tag,
-                             term::normal_color(),
-                             selection_color,
-                             &sized_string,
-                             term::normal_color(),
-                             padding = padding as usize),
-            } ,
-            termion::cursor::Restore,
-            termion::cursor::Right(size_pos),
-            term::highlight_color(),
-            size,
-            unit
-        )
-    }
 }
 
 impl ListView<Files>
@@ -362,6 +313,56 @@ impl ListView<Files>
 
         self.select_file(&file);
         Ok(())
+    }
+
+    fn render_line(&self, file: &File) -> String {
+        let name = &file.name;
+        let (size, unit) = file.calculate_size().unwrap_or((0, "".to_string()));
+        let tag = match file.is_tagged() {
+            Ok(true) => term::color_red() + "*",
+            _ => "".to_string()
+        };
+        let tag_len = if tag != "" { 1 } else { 0 };
+
+        let selection_gap = "  ".to_string();
+        let (name, selection_color) =  if file.is_selected() {
+            (selection_gap + name, crate::term::color_yellow())
+        } else { (name.clone(), "".to_string()) };
+
+
+        let xsize = self.get_coordinates().unwrap().xsize();
+        let sized_string = term::sized_string(&name, xsize);
+        let size_pos = xsize - (size.to_string().len() as u16
+                                + unit.to_string().len() as u16);
+        let padding = sized_string.len() - sized_string.width_cjk();
+        let padding = xsize - padding as u16;
+        let padding = padding - tag_len;
+
+        format!(
+            "{}{}{}{}{}{}{}",
+            termion::cursor::Save,
+            match &file.color {
+                Some(color) => format!("{}{}{}{:padding$}{}",
+                                       tag,
+                                       term::from_lscolor(color),
+                                       selection_color,
+                                       &sized_string,
+                                       term::normal_color(),
+                                       padding = padding as usize),
+                _ => format!("{}{}{}{:padding$}{}",
+                             tag,
+                             term::normal_color(),
+                             selection_color,
+                             &sized_string,
+                             term::normal_color(),
+                             padding = padding as usize),
+            } ,
+            termion::cursor::Restore,
+            termion::cursor::Right(size_pos),
+            term::highlight_color(),
+            size,
+            unit
+        )
     }
 
     fn render(&self) -> Vec<String> {

@@ -2,14 +2,19 @@ use failure;
 use failure::Fail;
 use failure::Backtrace;
 
+use termion::event::Key;
+
 use std::path::PathBuf;
+use std::sync::Mutex;
+
+use crate::foldview::LogEntry;
 
 pub type HResult<T> = Result<T, HError>;
 
 #[derive(Fail, Debug)]
 pub enum HError {
-    #[fail(display = "IO error: {}", error)]
-    IoError{#[cause] error: std::io::Error},
+    #[fail(display = "IO error: {} ", error)]
+    IoError{#[cause] error: std::io::Error, backtrace: Backtrace},
     #[fail(display = "Mutex failed")]
     MutexError,
     #[fail(display = "Can't lock!")]
@@ -59,7 +64,9 @@ pub enum HError {
     #[fail(display = "Input cancelled!")]
     MiniBufferCancelledInput,
     #[fail(display = "Empty input!")]
-    MiniBufferEmptyInput
+    MiniBufferEmptyInput,
+    #[fail(display = "Undefined key: {:?}", key)]
+    WidgetUndefinedKeyError{key: Key}
 }
 
 impl HError {
@@ -88,6 +95,24 @@ impl HError {
     pub fn minibuffer_empty<T>() -> HResult<T> {
         Err(HError::MiniBufferEmptyInput)
     }
+    pub fn undefined_key<T>(key: Key) -> HResult<T> {
+        Err(HError::WidgetUndefinedKeyError { key: key })
+    }
+}
+
+
+lazy_static! {
+    static ref LOG: Mutex<Vec<LogEntry>> = Mutex::new(vec![]);
+}
+
+pub fn get_logs() -> HResult<Vec<LogEntry>> {
+    let logs = LOG.lock()?.drain(..).collect();
+    Ok(logs)
+}
+
+pub fn put_log<L: Into<LogEntry>>(log: L) -> HResult<()> {
+    LOG.lock()?.push(log.into());
+    Ok(())
 }
 
 pub trait ErrorLog where Self: Sized {
@@ -98,6 +123,7 @@ impl<T> ErrorLog for HResult<T> {
     fn log(self) {
         if let Err(err) = self {
             eprintln!("{:?}", err);
+            put_log(&err).ok();
         }
     }
 }
@@ -115,69 +141,89 @@ impl<T> ErrorLog for HResult<T> {
 impl From<std::io::Error> for HError {
     fn from(error: std::io::Error) -> Self {
         dbg!(&error);
-        HError::IoError { error: error }
+        let err = HError::IoError { error: error, backtrace: Backtrace::new() };
+        put_log(&err).ok();
+        err
     }
 }
 
 impl From<failure::Error> for HError {
     fn from(error: failure::Error) -> Self {
         dbg!(&error);
-        HError::Error { error: error }
+        let err = HError::Error { error: error };
+        put_log(&err).ok();
+        err
     }
 }
 
 impl From<std::sync::mpsc::TryRecvError> for HError {
     fn from(error: std::sync::mpsc::TryRecvError) -> Self {
         dbg!(&error);
-        HError::ChannelTryRecvError { error: error }
+        let err = HError::ChannelTryRecvError { error: error };
+        put_log(&err).ok();
+        err
     }
 }
 
 impl From<std::sync::mpsc::RecvError> for HError {
     fn from(error: std::sync::mpsc::RecvError) -> Self {
         dbg!(&error);
-        HError::ChannelRecvError { error: error }
+        let err = HError::ChannelRecvError { error: error };
+        put_log(&err).ok();
+        err
     }
 }
 
 impl<T> From<std::sync::mpsc::SendError<T>> for HError {
     fn from(error: std::sync::mpsc::SendError<T>) -> Self {
         dbg!(&error);
-        HError::ChannelSendError
+        let err = HError::ChannelSendError;
+        put_log(&err).ok();
+        err
     }
 }
 
 impl<T> From<std::sync::PoisonError<T>> for HError {
     fn from(_: std::sync::PoisonError<T>) -> Self {
         dbg!("Poisoned Mutex");
-        HError::MutexError
+        let err = HError::MutexError;
+        put_log(&err).ok();
+        err
     }
 }
 
 impl<T> From<std::sync::TryLockError<T>> for HError {
     fn from(error: std::sync::TryLockError<T>) -> Self {
         dbg!(&error);
-        HError::TryLockError
+        let err = HError::TryLockError;
+        put_log(&err).ok();
+        err
     }
 }
 
 impl From<std::option::NoneError> for HError {
     fn from(error: std::option::NoneError) -> Self {
-        dbg!(&error);
-        HError::NoneError
+        //dbg!(&error);
+        let err = HError::NoneError;
+        //put_log(&err).ok();
+        err
     }
 }
 
 impl From<std::path::StripPrefixError> for HError {
     fn from(error: std::path::StripPrefixError) -> Self {
         dbg!(&error);
-        HError::StripPrefixError{error: error}
+        let err = HError::StripPrefixError{error: error};
+        put_log(&err).ok();
+        err
     }
 }
 
 impl From<notify::Error> for HError {
     fn from(error: notify::Error) -> Self {
         dbg!(&error);
-        HError::INotifyError{error: error}
+        let err = HError::INotifyError{error: error};
+        put_log(&err).ok();
+        err
     }
 }

@@ -164,7 +164,7 @@ impl MiniBuffer {
         self.completions.clear();
         self.last_completion = None;
 
-        self.get_core()?.screen.lock()?.cursor_hide().log();
+        self.screen()?.cursor_hide().log();
 
         match self.popup() {
             Err(HError::MiniBufferCancelledInput) => self.input_cancelled()?,
@@ -476,7 +476,7 @@ impl Widget for MiniBuffer {
                          ": ".len() +
                          self.position;
 
-        let mut screen = self.get_core()?.screen.lock()?;
+        let mut screen = self.screen()?;
         let ysize = screen.ysize()?;
 
         screen.goto_xy(cursor_pos, ysize).log();

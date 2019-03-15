@@ -17,6 +17,7 @@ extern crate mime_detective;
 extern crate rayon;
 extern crate libc;
 extern crate notify;
+extern crate parse_ansi;
 
 use failure::Fail;
 
@@ -44,6 +45,8 @@ mod minibuffer;
 mod proclist;
 mod bookmarks;
 mod paths;
+mod foldview;
+
 
 
 
@@ -55,8 +58,14 @@ use fail::HResult;
 use file_browser::FileBrowser;
 use tabview::TabView;
 
+
 fn main() -> HResult<()> {
-    match run() {
+    // do this early so it might be ready when needed
+    crate::files::load_tags().ok();
+
+    let core = WidgetCore::new().expect("Can't create WidgetCore!");
+
+    match run(core.clone()) {
         Ok(_) => Ok(()),
         Err(err) => {
             eprintln!("{:?}\n{:?}", err, err.cause());
@@ -65,29 +74,15 @@ fn main() -> HResult<()> {
     }
 }
 
-fn run() -> HResult<()> {
-    // do this early so it might be ready when needed
-    crate::files::load_tags()?;
-
-
-    let bufout = std::io::BufWriter::new(std::io::stdout());
-    // Need to do this here to actually turn terminal into raw mode...
-    let mut screen = AlternateScreen::from(bufout);
-    let mut _stdout = MouseTerminal::from(stdout().into_raw_mode()?);
-    screen.cursor_hide()?;
-    screen.clear()?;
-    screen.flush()?;
-
-    let core = WidgetCore::new()?;
-
+fn run(mut core: WidgetCore) -> HResult<()> {
     let filebrowser = FileBrowser::new_cored(&core)?;
     let mut tabview = TabView::new(&core);
     tabview.push_widget(filebrowser)?;
 
     tabview.handle_input()?;
 
-    screen.cursor_show()?;
-    screen.flush()?;
+    core.screen.cursor_show()?;
+    core.screen.flush()?;
 
     Ok(())
 }

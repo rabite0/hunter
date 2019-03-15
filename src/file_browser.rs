@@ -19,6 +19,7 @@ use crate::widget::{Events, WidgetCore};
 use crate::proclist::ProcView;
 use crate::bookmarks::BMPopup;
 use crate::term::ScreenExt;
+use crate::foldview::LogView;
 
 #[derive(PartialEq)]
 pub enum FileBrowserWidgets {
@@ -64,7 +65,8 @@ pub struct FileBrowser {
     watches: Vec<PathBuf>,
     dir_events: Arc<Mutex<Vec<DebouncedEvent>>>,
     proc_view: Arc<Mutex<ProcView>>,
-    bookmarks: Arc<Mutex<BMPopup>>
+    bookmarks: Arc<Mutex<BMPopup>>,
+    log_view: Arc<Mutex<LogView>>
 }
 
 impl Tabbable for TabView<FileBrowser> {
@@ -73,8 +75,10 @@ impl Tabbable for TabView<FileBrowser> {
 
         let proc_view = self.active_tab_().proc_view.clone();
         let bookmarks = self.active_tab_().bookmarks.clone();
+        let log_view  = self.active_tab_().log_view.clone();
         tab.proc_view = proc_view;
         tab.bookmarks = bookmarks;
+        tab.log_view  = log_view;
 
         self.push_widget(tab)?;
         self.active += 1;
@@ -209,6 +213,7 @@ impl FileBrowser {
 
         let proc_view = ProcView::new(&core);
         let bookmarks = BMPopup::new(&core);
+        let log_view = LogView::new(&core, vec![]);
 
 
 
@@ -222,7 +227,8 @@ impl FileBrowser {
                          watches: vec![],
                          dir_events: dir_events,
                          proc_view: Arc::new(Mutex::new(proc_view)),
-                         bookmarks: Arc::new(Mutex::new(bookmarks)) })
+                         bookmarks: Arc::new(Mutex::new(bookmarks)),
+                         log_view: Arc::new(Mutex::new(log_view)) })
     }
 
     pub fn enter_dir(&mut self) -> HResult<()> {
@@ -342,7 +348,7 @@ impl FileBrowser {
 
     pub fn set_title(&self) -> HResult<()> {
         let cwd = &self.cwd.path.to_string_lossy();
-        self.core.screen.lock()?.set_title(cwd)?;
+        self.screen()?.set_title(cwd)?;
         Ok(())
     }
 
@@ -716,10 +722,8 @@ impl Widget for FileBrowser {
             Key::Char('-') => { self.goto_prev_cwd()?; },
             Key::Char('`') => { self.goto_bookmark()?; },
             Key::Char('m') => { self.add_bookmark()?; },
-            Key::Char('w') => {
-                self.proc_view.lock()?.popup()?;
-            }
-                                ,
+            Key::Char('w') => { self.proc_view.lock()?.popup()?; },
+            Key::Char('l') => self.log_view.lock()?.popup()?,
             _ => { self.main_widget_mut()?.on_key(key)?; },
         }
         self.update_preview()?;

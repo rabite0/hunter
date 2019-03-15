@@ -1,9 +1,42 @@
 use std::io::{Stdout, Write, BufWriter};
+use std::sync::{Arc, Mutex};
 
 use termion;
 use termion::screen::AlternateScreen;
+use termion::input::MouseTerminal;
+use termion::raw::{IntoRawMode, RawTerminal};
+
+use parse_ansi::parse_bytes;
 
 use crate::fail::HResult;
+
+#[derive(Clone)]
+pub struct Screen {
+    screen: Arc<Mutex<RawTerminal<MouseTerminal<AlternateScreen<BufWriter<Stdout>>>>>>
+}
+
+impl Screen {
+    pub fn new() -> HResult<Screen> {
+        let screen = BufWriter::new(std::io::stdout());
+        let screen = AlternateScreen::from(screen);
+        let mut screen = MouseTerminal::from(screen).into_raw_mode()?;
+        screen.cursor_hide()?;
+        screen.flush()?;
+        screen.clear()?;
+        Ok(Screen {
+            screen: Arc::new(Mutex::new(screen))
+        })
+    }
+}
+
+impl Write for Screen {
+    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        self.screen.lock().unwrap().write(buf)
+    }
+    fn flush(&mut self) -> std::io::Result<()> {
+        self.screen.lock().unwrap().flush()
+    }
+}
 
 pub trait ScreenExt: Write {
     fn cursor_hide(&mut self) -> HResult<()> {
@@ -36,12 +69,17 @@ pub trait ScreenExt: Write {
         write!(self, "{}", goto_xy(x + 1, y + 1))?;
         Ok(())
     }
+    fn xsize(&self) -> HResult<usize> {
+        let (xsize, _) = termion::terminal_size()?;
+        Ok((xsize - 1) as usize)
+    }
     fn ysize(&self) -> HResult<usize> {
         let (_, ysize) = termion::terminal_size()?;
         Ok((ysize - 1) as usize)
     }
     fn set_title(&mut self, title: &str) -> HResult<()> {
-        write!(self, "\x1b]2;{}", title)?;
+        write!(self, "\x1b]2;hunter: {}", title)?;
+        write!(self, "\x1bkhunter: {}\x1b\\", title)?;
         Ok(())
     }
 }
@@ -49,6 +87,7 @@ pub trait ScreenExt: Write {
 impl ScreenExt for AlternateScreen<Box<Stdout>> {}
 impl ScreenExt for AlternateScreen<Stdout> {}
 impl ScreenExt for AlternateScreen<BufWriter<Stdout>> {}
+impl ScreenExt for Screen {}
 
 pub fn xsize() -> u16 {
     let (xsize, _) = termion::terminal_size().unwrap();
@@ -71,6 +110,43 @@ pub fn sized_string(string: &str, xsize: u16) -> String {
     })
 }
 
+fn is_ansi(ansi_pos: &Vec<(usize, usize)>, char_pos: &usize) -> bool {
+    ansi_pos.iter().fold(false, |is_ansi, (start, end)| {
+        if char_pos >= start && char_pos <= end {
+            true
+        } else { is_ansi }
+    })
+}
+
+fn ansi_len_at(ansi_pos: &Vec<(usize, usize)>, char_pos: &usize) -> usize {
+    ansi_pos.iter().fold(0, |len, (start, end)| {
+        if char_pos >= end {
+            len + (end-start)
+        } else { len }
+    })
+}
+
+pub fn sized_string_u(string: &str, xsize: usize) -> String {
+    let ansi_pos = parse_bytes(string.as_bytes()).map(|m| {
+        (m.start(), m.end())
+    }).collect();
+
+    let sized = string.chars().enumerate().fold("".to_string(), |acc, (i, ch)| {
+        let width: usize = unicode_width::UnicodeWidthStr::width_cjk(acc.as_str());
+        let ansi_len = ansi_len_at(&ansi_pos, &i);
+
+        if width >= xsize as usize + ansi_len {
+            acc
+        } else {
+            acc + &ch.to_string()
+        }
+
+    });
+    let ansi_len = ansi_len_at(&ansi_pos, &(sized.len().saturating_sub(1)));
+    let padded = format!("{:padding$}", sized, padding=xsize + ansi_len + 1);
+    padded
+}
+
 // Do these as constants
 
 pub fn highlight_color() -> String {
@@ -84,7 +160,7 @@ pub fn highlight_color() -> String {
 pub fn normal_color() -> String {
     format!(
         "{}",
-        termion::color::Fg(termion::color::LightBlue),
+        termion::color::Fg(termion::color::White),
         //termion::color::Bg(termion::color::Black)
     )
 }
@@ -127,6 +203,12 @@ pub fn goto_xy(x: u16, y: u16) -> String {
     format!("{}", termion::cursor::Goto(x, y))
 }
 
+pub fn goto_xy_u(x: usize, y: usize) -> String {
+    let x = (x+1) as u16;
+    let y = (y+1) as u16;
+    format!("{}", termion::cursor::Goto(x, y))
+}
+
 // pub fn move_top() -> String {
 //     gotoy(1)
 // }
@@ -141,6 +223,14 @@ pub fn reset() -> String {
 
 pub fn invert() -> String {
     format!("{}", termion::style::Invert)
+}
+
+pub fn cursor_save() -> String {
+    format!("{}", termion::cursor::Save)
+}
+
+pub fn cursor_restore() -> String {
+    format!("{}", termion::cursor::Restore)
 }
 
 pub fn header_color() -> String {
