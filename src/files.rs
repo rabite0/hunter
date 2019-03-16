@@ -256,8 +256,7 @@ impl Files {
         if dir == path {
             Ok(true)
         } else {
-            Err(HError::WrongDirectoryError{path: path.into(),
-                                            dir: dir})
+            HError::wrong_directory(path.into(), dir)?
         }
     }
 
@@ -381,14 +380,14 @@ impl File {
     pub fn meta(&self) -> HResult<std::fs::Metadata> {
         match &self.meta {
             Some(meta) => Ok(meta.clone()),
-            None => { Ok(std::fs::metadata(&self.path)?) }
+            None => { Ok(std::fs::symlink_metadata(&self.path)?) }
         }
     }
 
     pub fn get_meta(&mut self) -> HResult<()> {
         if let Some(_) = self.meta { return Ok(()) }
 
-        let meta = std::fs::metadata(&self.path)?;
+        let meta = std::fs::symlink_metadata(&self.path)?;
         let color = self.get_color(&meta);
 
         self.meta = Some(meta);

@@ -320,7 +320,7 @@ impl Previewer {
     }
 
     fn preview_failed(file: &File) -> HResult<WidgetO> {
-        Err(HError::PreviewFailed { file: file.name.clone() })
+        HError::preview_failed(file)
     }
 
     fn preview_dir(file: &File,
@@ -397,9 +397,9 @@ impl Previewer {
         }
 
         let status = output.status.code()
-            .ok_or(HError::PreviewFailed{file: file.name.clone()})?;
+            .ok_or(HError::preview_failed(file)?);
 
-        if status == 0 || status == 5 && !is_stale(&stale)? { //is_current(&file) {
+        if status == Ok(0) || status == Ok(5) && !is_stale(&stale)? {
             let output = std::str::from_utf8(&output.stdout)
                 .unwrap()
                 .to_string();
@@ -414,7 +414,7 @@ impl Previewer {
             textview.animate_slide_up().log();
             return Ok(Box::new(textview))
         }
-        Err(HError::PreviewFailed{file: file.name.clone()})
+        HError::preview_failed(file)
     }
 
 }

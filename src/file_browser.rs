@@ -364,11 +364,13 @@ impl FileBrowser {
 
     pub fn set_left_selection(&mut self) -> HResult<()> {
         if !self.left_widget()?.ready() { return Ok(()) }
+        if self.cwd.parent().is_none() { return Ok(()) }
 
         let parent = self.cwd()?.parent_as_file();
 
-        let left_selection = self.get_selection(&parent?)?;
-        self.left_widget()?.widget()?.lock()?.as_mut()?.select_file(&left_selection);
+        if let Ok(left_selection) = self.get_selection(&parent?) {
+            self.left_widget()?.widget()?.lock()?.as_mut()?.select_file(&left_selection);
+        }
 
         Ok(())
     }
@@ -448,8 +450,15 @@ impl FileBrowser {
         }
         if let Some(preview_dir) = preview_dir {
             if !watched_dirs.contains(&preview_dir) && preview_dir.is_dir() {
-                self.watcher.watch(&preview_dir, RecursiveMode::NonRecursive)?;
-                self.watches.push(preview_dir);
+                match self.watcher.watch(&preview_dir, RecursiveMode::NonRecursive) {
+                    Ok(_) => self.watches.push(preview_dir),
+                    Err(notify::Error::Io(ioerr)) => {
+                        if ioerr.kind() != std::io::ErrorKind::PermissionDenied {
+                            Err(ioerr)?
+                        }
+                    }
+                    err @ _ => err?
+                }
             }
         }
         Ok(())
