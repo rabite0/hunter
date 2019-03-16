@@ -13,6 +13,7 @@ use failure::Error;
 use notify::DebouncedEvent;
 
 use crate::fail::{HResult, HError};
+use crate::dirty::{DirtyBit, Dirtyable};
 
 
 
@@ -54,7 +55,8 @@ pub struct Files {
     pub sort: SortBy,
     pub dirs_first: bool,
     pub reverse: bool,
-    pub show_hidden: bool
+    pub show_hidden: bool,
+    pub dirty: DirtyBit
 }
 
 impl Index<usize> for Files {
@@ -65,7 +67,15 @@ impl Index<usize> for Files {
 }
 
 
+impl Dirtyable for Files {
+    fn get_bit(&self) -> &DirtyBit {
+        &self.dirty
+    }
 
+    fn get_bit_mut(&mut self) -> &mut DirtyBit {
+        &mut self.dirty
+    }
+}
 
 
 impl Files {
@@ -88,7 +98,8 @@ impl Files {
             sort: SortBy::Name,
             dirs_first: true,
             reverse: false,
-            show_hidden: true
+            show_hidden: true,
+            dirty: DirtyBit::new()
         };
 
         files.sort();
@@ -131,7 +142,8 @@ impl Files {
             sort: SortBy::Name,
             dirs_first: true,
             reverse: false,
-            show_hidden: true
+            show_hidden: true,
+            dirty: DirtyBit::new()
         };
 
         files.sort();
@@ -188,6 +200,7 @@ impl Files {
         if self.reverse {
             self.files.reverse();
         }
+        self.set_dirty();
     }
 
     pub fn cycle_sort(&mut self) {
@@ -216,6 +229,7 @@ impl Files {
             .collect();
 
         self.files = files;
+        self.set_dirty();
     }
 
     pub fn handle_event(&mut self, event: &DebouncedEvent) -> HResult<()> {
@@ -247,6 +261,7 @@ impl Files {
             },
             _ => {},
         }
+        self.set_dirty();
         Ok(())
     }
 

@@ -150,6 +150,6 @@ impl<T> Widget for TabView<T> where T: Widget, TabView<T>: Tabbable {
 
     fn on_key(&mut self, key: Key) -> HResult<()> {
         Tabbable::on_key(self, key)?;
-        self.refresh()
+        Ok(())
     }
 }

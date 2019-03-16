@@ -28,7 +28,7 @@ fn kill_proc() -> HResult<()> {
 }
 
 pub fn is_stale(stale: &Arc<Mutex<bool>>) -> HResult<bool> {
-    let stale = *(stale.try_lock().unwrap());
+    let stale = *(stale.lock().unwrap());
     Ok(stale)
 }
 
@@ -405,7 +405,6 @@ impl Previewer {
                 .to_string();
             let mut textview = TextView {
                 lines: output.lines().map(|s| s.to_string()).collect(),
-                buffer: String::new(),
                 core: core.clone(),
                 follow: false,
                 offset: 0};

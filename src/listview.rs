@@ -7,6 +7,7 @@ use crate::files::{File, Files};
 use crate::fail::{HResult, ErrorLog};
 use crate::term;
 use crate::widget::{Widget, WidgetCore};
+use crate::dirty::Dirtyable;
 
 pub trait Listable {
     fn len(&self) -> usize;
@@ -27,6 +28,11 @@ impl Listable for ListView<Files> {
     fn on_refresh(&mut self) -> HResult<()> {
         let visible_file_num = self.selection + self.get_coordinates()?.ysize() as usize;
         self.content.meta_upto(visible_file_num);
+
+        if self.content.is_dirty() {
+            self.core.set_dirty();
+            self.content.set_clean();
+        }
         Ok(())
     }
 
@@ -366,13 +372,9 @@ impl ListView<Files>
     }
 
     fn render(&self) -> Vec<String> {
-        let ysize = self.get_coordinates().unwrap().ysize() as usize;
-        let offset = self.offset;
         self.content
             .files
             .iter()
-            .skip(offset)
-            .take(ysize)
             .map(|file| self.render_line(&file))
             .collect()
     }
@@ -389,10 +391,15 @@ impl<T> Widget for ListView<T> where ListView<T>: Listable {
     fn refresh(&mut self) -> HResult<()> {
         self.on_refresh().log();
         self.lines = self.len();
+
         if self.selection >= self.lines && self.selection != 0 {
             self.selection -= 1;
         }
-        self.buffer = self.render();
+
+        if self.core.is_dirty() || self.buffer.len() != self.len() {
+            self.buffer = self.render();
+            self.core.set_clean();
+        }
         Ok(())
     }
 
@@ -400,10 +407,13 @@ impl<T> Widget for ListView<T> where ListView<T>: Listable {
     fn get_drawlist(&self) -> HResult<String> {
         let mut output = term::reset();
         let (xpos, ypos) = self.get_coordinates().unwrap().position().position();
+        let ysize = self.get_coordinates().unwrap().ysize() as usize;
 
         output += &self
             .buffer
             .iter()
+            .skip(self.offset)
+            .take(ysize)
             .enumerate()
             .map(|(i, item)| {
                 let mut output = term::normal_color();
@@ -424,9 +434,6 @@ impl<T> Widget for ListView<T> where ListView<T>: Listable {
         output += &self.get_redraw_empty_list(self.buffer.len())?;
 
         Ok(output)
-    }
-    fn render_header(&self) -> HResult<String> {
-        Ok(format!("{} files", self.len()))
     }
 
     fn on_key(&mut self, key: Key) -> HResult<()> {

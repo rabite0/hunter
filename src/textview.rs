@@ -4,11 +4,11 @@ use crate::files::File;
 use crate::term::sized_string;
 use crate::widget::{Widget, WidgetCore};
 use crate::fail::HResult;
+use crate::dirty::Dirtyable;
 
 #[derive(PartialEq)]
 pub struct TextView {
     pub lines: Vec<String>,
-    pub buffer: String,
     pub core: WidgetCore,
     pub follow: bool,
     pub offset: usize,
@@ -18,7 +18,6 @@ impl TextView {
     pub fn new_blank(core: &WidgetCore) -> TextView {
         TextView {
             lines: vec![],
-            buffer: String::new(),
             core: core.clone(),
             follow: false,
             offset: 0,
@@ -35,7 +34,6 @@ impl TextView {
 
         Ok(TextView {
             lines: lines,
-            buffer: String::new(),
             core: core.clone(),
             follow: false,
             offset: 0,
@@ -56,7 +54,6 @@ impl TextView {
 
         Ok(TextView {
             lines: lines,
-            buffer: String::new(),
             core: core.clone(),
             follow: false,
             offset: 0,
@@ -66,6 +63,7 @@ impl TextView {
     pub fn set_text(&mut self, text: &str) -> HResult<()> {
         let lines = text.lines().map(|l| l.to_string()).collect();
         self.lines = lines;
+        self.core.set_dirty();
         self.refresh()
     }
 
@@ -93,6 +91,10 @@ impl TextView {
             } else {
                 self.offset = 0;
             }
+        }
+
+        if offset != self.offset as isize {
+            self.core.set_dirty();
         }
     }
 
@@ -140,8 +142,17 @@ impl Widget for TextView {
             self.scroll_bottom();
         }
 
+        if self.core.is_dirty() {
+            self.core.set_clean();
+        }
+        Ok(())
+    }
 
-        self.buffer = self.get_clearlist()? +
+    fn get_drawlist(&self) -> HResult<String> {
+        let (xsize, ysize) = self.get_coordinates()?.size().size();
+        let (xpos, ypos) = self.get_coordinates()?.position().position();
+
+        let output = self.get_clearlist()? +
             &self
             .lines
             .iter()
@@ -156,10 +167,6 @@ impl Widget for TextView {
                     sized_string(&line, xsize))
             })
             .collect::<String>();
-        Ok(())
-    }
-
-    fn get_drawlist(&self) -> HResult<String> {
-        Ok(self.buffer.clone())
+        Ok(output)
     }
 }

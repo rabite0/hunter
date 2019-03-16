@@ -1,11 +1,12 @@
 use termion::event::Key;
 use failure::Fail;
-use chrono::{DateTime, TimeZone, Local};
+use chrono::{DateTime, Local};
 
 use crate::term;
 use crate::widget::Widget;
 use crate::listview::{ListView, Listable};
 use crate::fail::{HResult, HError};
+use crate::dirty::Dirtyable;
 
 pub type LogView = ListView<Vec<LogEntry>>;
 
@@ -82,25 +83,30 @@ pub trait FoldableWidgetExt {
 
 impl FoldableWidgetExt for  ListView<Vec<LogEntry>> {
     fn on_refresh(&mut self) -> HResult<()> {
-        self.content.refresh_logs()
+        if self.content.refresh_logs()? > 0 {
+            self.core.set_dirty();
+        }
+        Ok(())
     }
 }
 
 trait LogList {
-    fn refresh_logs(&mut self) -> HResult<()>;
+    fn refresh_logs(&mut self) -> HResult<usize>;
 }
 
 impl LogList for Vec<LogEntry> {
-    fn refresh_logs(&mut self) -> HResult<()> {
+    fn refresh_logs(&mut self) -> HResult<usize> {
         let logs = crate::fail::get_logs()?;
 
         let mut logentries = logs.into_iter().map(|log| {
             LogEntry::from(log)
-        }).collect();
+        }).collect::<Vec<_>>();
+
+        let n = logentries.len();
 
         self.append(&mut logentries);
-        //self.truncate(10);
-        Ok(())
+
+        Ok(n)
     }
 }
 
@@ -154,7 +160,8 @@ where
             self.set_selection(fold_pos);
         }
 
-        self.refresh()
+        self.core.set_dirty();
+        Ok(())
     }
 
     fn fold_start_pos(&self, fold: usize) -> usize {
@@ -201,11 +208,9 @@ where
     }
 
     fn render(&self) -> Vec<String> {
-        let (xsize, ysize) = self.core.coordinates.size_u();
-        let offset = self.offset;
+        let (xsize, _) = self.core.coordinates.size_u();
         self.content
             .iter()
-            //.skip(offset)
             .map(|foldable|
                  foldable
                  .render()
@@ -213,8 +218,6 @@ where
                  .map(|line| term::sized_string_u(line, xsize))
                  .collect::<Vec<_>>())
             .flatten()
-            .skip(offset)
-            .take(ysize+1)
             .collect()
     }
     fn on_refresh(&mut self) -> HResult<()> {
@@ -223,18 +226,12 @@ where
 
     fn on_key(&mut self, key: Key) -> HResult<()> {
         match key {
-            Key::Up | Key::Char('p') => {
-                self.move_up();
-                self.refresh()?;
-            }
-            Key::Char('P') => { for _ in 0..10 { self.move_up() } self.refresh()?; }
-            Key::Char('N') => { for _ in 0..10 { self.move_down() } self.refresh()?; }
-            Key::Down | Key::Char('n') => {
-                self.move_down();
-                self.refresh()?;
-            },
-            Key::Char('t') => { self.toggle_fold()?; }
-            Key::Char('l') => { self.popup_finnished()?; }
+            Key::Up | Key::Char('p') => self.move_up(),
+            Key::Char('P') => for _ in 0..10 { self.move_up() },
+            Key::Char('N') => for _ in 0..10 { self.move_down() },
+            Key::Down | Key::Char('n') => self.move_down(),
+            Key::Char('t') => self.toggle_fold()?,
+            Key::Char('l') => self.popup_finnished()?,
             _ => {}
         }
         Ok(())

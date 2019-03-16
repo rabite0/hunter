@@ -51,7 +51,6 @@ pub trait ScreenExt: Write {
     }
     fn reset(&mut self) -> HResult<()> {
         write!(self, "{}", termion::style::Reset)?;
-        self.flush()?;
         Ok(())
     }
     fn clear(&mut self) -> HResult<()> {
@@ -60,7 +59,6 @@ pub trait ScreenExt: Write {
     }
     fn write_str(&mut self, str: &str) -> HResult<()> {
         write!(self, "{}", str)?;
-        self.flush()?;
         Ok(())
     }
     fn goto_xy(&mut self, x: usize, y: usize) -> HResult<()> {
@@ -148,6 +146,9 @@ pub fn sized_string_u(string: &str, xsize: usize) -> String {
 }
 
 // Do these as constants
+
+
+
 
 pub fn highlight_color() -> String {
     format!(

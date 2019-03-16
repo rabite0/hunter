@@ -1,5 +1,6 @@
 use std::sync::{Arc, Mutex};
 use std::sync::mpsc::{Sender, Receiver, channel};
+use std::io::Write;
 
 use termion::event::{Event, Key, MouseEvent};
 use termion::input::TermRead;
@@ -9,6 +10,7 @@ use crate::fail::{HResult, HError, ErrorLog};
 use crate::minibuffer::MiniBuffer;
 use crate::term;
 use crate::term::{Screen, ScreenExt};
+use crate::dirty::{Dirtyable, DirtyBit};
 
 use std::io::stdin;
 
@@ -47,7 +49,8 @@ pub struct WidgetCore {
     pub minibuffer: Arc<Mutex<Option<MiniBuffer>>>,
     pub event_sender: Sender<Events>,
     event_receiver: Arc<Mutex<Option<Receiver<Events>>>>,
-    pub status_bar_content: Arc<Mutex<Option<String>>>
+    pub status_bar_content: Arc<Mutex<Option<String>>>,
+    dirty: DirtyBit
 }
 
 impl WidgetCore {
@@ -66,7 +69,8 @@ impl WidgetCore {
             minibuffer: Arc::new(Mutex::new(None)),
             event_sender: sender,
             event_receiver: Arc::new(Mutex::new(Some(receiver))),
-            status_bar_content: status_bar_content };
+            status_bar_content: status_bar_content,
+            dirty: DirtyBit::new() };
 
         let minibuffer = MiniBuffer::new(&core);
         *core.minibuffer.lock().unwrap() = Some(minibuffer);
@@ -77,6 +81,17 @@ impl WidgetCore {
         self.event_sender.clone()
     }
 }
+
+impl Dirtyable for WidgetCore {
+    fn get_bit(&self) -> &DirtyBit {
+        &self.dirty
+    }
+
+    fn get_bit_mut(&mut self) -> &mut DirtyBit {
+        &mut self.dirty
+    }
+}
+
 
 pub trait Widget {
     fn get_core(&self) -> HResult<&WidgetCore>; // {
@@ -89,8 +104,12 @@ pub trait Widget {
         Ok(&self.get_core()?.coordinates)
     }
     fn set_coordinates(&mut self, coordinates: &Coordinates) -> HResult<()> {
-        self.get_core_mut()?.coordinates = coordinates.clone();
-        self.refresh()?;
+        let widget_coords = &mut self.get_core_mut()?.coordinates;
+        if widget_coords != coordinates {
+            *widget_coords = coordinates.clone();
+            self.get_core_mut()?.set_dirty();
+            self.refresh()?;
+        }
         Ok(())
     }
     fn render_header(&self) -> HResult<String> {
@@ -235,8 +254,10 @@ pub trait Widget {
                 }
                 _ => {}
             }
+            self.refresh().log();
             self.draw().log();
             self.after_draw().log();
+            self.get_core_mut()?.screen.flush().ok();
         }
         Ok(())
     }

@@ -45,6 +45,8 @@ mod proclist;
 mod bookmarks;
 mod paths;
 mod foldview;
+mod dirty;
+
 
 
 
