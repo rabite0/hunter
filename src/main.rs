@@ -36,7 +36,6 @@ mod preview;
 mod term;
 mod textview;
 mod widget;
-mod win_main;
 mod hbox;
 mod tabview;
 mod async_widget;
