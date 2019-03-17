@@ -19,6 +19,8 @@ pub enum Events {
     InputEvent(Event),
     WidgetReady,
     ExclusiveEvent(Option<Sender<Events>>),
+    InputEnabled(bool),
+    RequestInput,
     Status(String)
 }
 
@@ -233,6 +235,7 @@ pub trait Widget {
     fn run_widget(&mut self) -> HResult<()> {
         let (tx_event, rx_event) = channel();
         self.get_core()?.get_sender().send(Events::ExclusiveEvent(Some(tx_event)))?;
+        self.get_core()?.get_sender().send(Events::RequestInput)?;
 
         self.clear()?;
         self.refresh().log();
@@ -248,9 +251,13 @@ pub trait Widget {
                         err @ Err(_) => err.log(),
                         Ok(_) => {}
                     }
+                    self.get_core()?.get_sender().send(Events::RequestInput)?;
                 }
                 Events::WidgetReady => {
                     self.refresh().log();
+                }
+                Events::Status(status) => {
+                    self.show_status(&status).log();
                 }
                 _ => {}
             }
@@ -303,13 +310,10 @@ pub trait Widget {
     }
 
     fn handle_input(&mut self) -> HResult<()> {
-        let (tx_event, rx_event) = channel();
         let (tx_internal_event, rx_internal_event) = channel();
         let rx_global_event = self.get_core()?.event_receiver.lock()?.take()?;
 
-        input_thread(tx_event.clone());
-        global_event_thread(rx_global_event, tx_event.clone());
-        dispatch_events(rx_event, tx_internal_event);
+        dispatch_events(tx_internal_event, rx_global_event);
 
         for event in rx_internal_event.iter() {
             match event {
@@ -318,16 +322,15 @@ pub trait Widget {
                         Err(HError::Quit) => { HError::quit()?; },
                         _ => {}
                     }
-                    self.draw().ok();
-                },
+                    self.get_core()?.get_sender().send(Events::RequestInput)?;
+                }
                 Events::Status(status) => {
                     self.show_status(&status).log();
                 }
-                _ => {
-                    self.refresh().ok();
-                    self.draw().ok();
-                },
+                _ => {}
             }
+            self.refresh().ok();
+            self.draw().ok();
         }
         Ok(())
     }
@@ -386,26 +389,44 @@ pub trait Widget {
     }
 }
 
-fn dispatch_events(rx: Receiver<Events>, tx: Sender<Events>) {
+fn dispatch_events(tx_internal: Sender<Events>, rx_global: Receiver<Events>) {
+    let (tx_event, rx_event) = channel();
+    let (tx_input_req, rx_input_req) = channel();
+
+    input_thread(tx_event.clone(), rx_input_req);
+    event_thread(rx_global, tx_event.clone());
+
     std::thread::spawn(move || {
         let mut tx_exclusive_event: Option<Sender<Events>> = None;
-        for event in rx.iter() {
+        let mut input_enabled = true;
+
+        for event in rx_event.iter() {
             match &event {
                 Events::ExclusiveEvent(tx_event) => {
                     tx_exclusive_event = tx_event.clone();
                 }
+                Events::InputEnabled(state) => {
+                    input_enabled = *state;
+                    continue;
+                }
+                Events::RequestInput => {
+                    if input_enabled {
+                        tx_input_req.send(()).unwrap();
+                    }
+                    continue;
+                }
                 _ => {}
             }
-            if let Some(tx_event) = &tx_exclusive_event {
-                tx_event.send(event).ok();
+            if let Some(tx_exclusive) =  &tx_exclusive_event {
+                tx_exclusive.send(event).unwrap();
             } else {
-                tx.send(event).ok();
+                tx_internal.send(event).unwrap();
             }
         }
     });
 }
 
-fn global_event_thread(rx_global: Receiver<Events>,
+fn event_thread(rx_global: Receiver<Events>,
                        tx: Sender<Events>) {
     std::thread::spawn(move || {
         for event in rx_global.iter() {
@@ -414,11 +435,12 @@ fn global_event_thread(rx_global: Receiver<Events>,
     });
 }
 
-fn input_thread(tx: Sender<Events>) {
+fn input_thread(tx: Sender<Events>, rx_input_request: Receiver<()>) {
     std::thread::spawn(move || {
         for input in stdin().events() {
             let input = input.unwrap();
             tx.send(Events::InputEvent(input)).unwrap();
+            rx_input_request.recv().unwrap();
         }
     });
 }

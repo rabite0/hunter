@@ -237,9 +237,16 @@ impl FileBrowser {
         if file.is_dir() {
             self.main_widget_goto(&file).log();
         } else {
+            self.core.get_sender().send(Events::InputEnabled(false))?;
+
             let status = std::process::Command::new("rifle")
                 .args(file.path.file_name())
                 .status();
+
+            self.clear().log();
+            self.core.screen.cursor_hide().log();
+
+            self.core.get_sender().send(Events::InputEnabled(true))?;
 
             match status {
                 Ok(status) =>
