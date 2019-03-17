@@ -153,9 +153,10 @@ impl ListView<Vec<Process>> {
     }
 
     pub fn render_proc(&self, proc: &Process) -> HResult<String> {
-        let status = match *proc.status.lock().unwrap() {
+        let pid = proc.handle.lock()?.id();
+        let status = match *proc.status.lock()? {
             Some(status) => format!("{}", status),
-            None => "<R>".to_string()
+            None => format!("<{}>", pid),
         };
 
         let xsize = self.get_coordinates()?.xsize();
