@@ -335,17 +335,25 @@ impl ListView<Files>
             (selection_gap + name, crate::term::color_yellow())
         } else { (name.clone(), "".to_string()) };
 
+        let (link_indicator, link_indicator_len) = if file.target.is_some() {
+            (format!("{}{}{}",
+                     term::color_yellow(),
+                     "--> ".to_string(),
+                     term::highlight_color()),
+             4)
+        } else { ("".to_string(), 0) };
 
         let xsize = self.get_coordinates().unwrap().xsize();
         let sized_string = term::sized_string(&name, xsize);
         let size_pos = xsize - (size.to_string().len() as u16
-                                + unit.to_string().len() as u16);
+                                + unit.to_string().len() as u16
+                                + link_indicator_len);
         let padding = sized_string.len() - sized_string.width_cjk();
         let padding = xsize - padding as u16;
         let padding = padding - tag_len;
 
         format!(
-            "{}{}{}{}{}{}{}",
+            "{}{}{}{}{}{}{}{}",
             termion::cursor::Save,
             match &file.color {
                 Some(color) => format!("{}{}{}{:padding$}{}",
@@ -365,6 +373,7 @@ impl ListView<Files>
             } ,
             termion::cursor::Restore,
             termion::cursor::Right(size_pos),
+            link_indicator,
             term::highlight_color(),
             size,
             unit

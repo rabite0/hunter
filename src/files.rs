@@ -350,6 +350,7 @@ pub struct File {
     pub name: String,
     pub path: PathBuf,
     pub kind: Kind,
+    pub target: Option<PathBuf>,
     pub color: Option<lscolors::Color>,
     pub meta: Option<std::fs::Metadata>,
     pub selected: bool,
@@ -368,6 +369,7 @@ impl File {
             name: name.to_string(),
             kind: if path.is_dir() { Kind::Directory } else { Kind::File },
             path: path,
+            target: None,
             meta: None,
             color: None,
             selected: false,
@@ -404,9 +406,13 @@ impl File {
 
         let meta = std::fs::symlink_metadata(&self.path)?;
         let color = self.get_color(&meta);
+        let target = if meta.file_type().is_symlink() {
+            self.path.read_link().ok()
+        } else { None };
 
         self.meta = Some(meta);
         self.color = color;
+        self.target = target;
         Ok(())
     }
 
@@ -603,14 +609,25 @@ impl File {
         Some(time.format("%F %R").to_string())
     }
 
-    pub fn short_path(&self) -> HResult<PathBuf> {
+    pub fn short_string(&self) -> String {
+        self.path.short_string()
+    }
+}
+
+
+pub trait ShortPaths {
+    fn short_string(&self) -> String;
+}
+
+impl ShortPaths for PathBuf {
+    fn short_string(&self) -> String {
         if let Ok(home) = crate::paths::home_path() {
-            if let Ok(short) = self.path.strip_prefix(home) {
+            if let Ok(short) = self.strip_prefix(home) {
                 let mut path = PathBuf::from("~");
                 path.push(short);
-                return Ok(path);
+                return path.to_string_lossy().to_string();
             }
         }
-        return Ok(self.path.clone())
+        return self.to_string_lossy().to_string();
     }
 }

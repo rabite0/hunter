@@ -8,7 +8,7 @@ use std::time::Duration;
 use std::path::PathBuf;
 use std::collections::HashMap;
 
-use crate::files::{File, Files};
+use crate::files::{File, Files, ShortPaths};
 use crate::listview::ListView;
 use crate::miller_columns::MillerColumns;
 use crate::widget::Widget;
@@ -347,12 +347,8 @@ impl FileBrowser {
     }
 
     pub fn set_title(&self) -> HResult<()> {
-        let path = match self.cwd.short_path() {
-            Ok(path) => path,
-            Err(_) => self.cwd.path.clone()
-        };
+        let path = self.cwd.short_string();
 
-        let path = path.to_string_lossy().to_string();
         self.screen()?.set_title(&path)?;
         Ok(())
     }
@@ -658,6 +654,9 @@ impl FileBrowser {
         let user = file.pretty_user().unwrap_or("NOUSER".into());
         let group = file.pretty_group().unwrap_or("NOGROUP".into());
         let mtime = file.pretty_mtime().unwrap_or("NOMTIME".into());
+        let target = if let Some(target) = file.target {
+            "--> ".to_string() + &target.short_string()
+        } else { "".to_string() };
 
         let main_widget = self.main_widget()?.widget()?;
         let selection = main_widget.lock()?.as_ref().unwrap().get_selection();
@@ -671,8 +670,17 @@ impl FileBrowser {
         let count_xpos = xsize - file_count.len() as u16;
         let count_ypos = ypos + self.get_coordinates()?.ysize();
 
-        let status = format!("{} {}:{} {} {} {}", permissions, user, group, mtime,
-                             crate::term::goto_xy(count_xpos, count_ypos), file_count);
+        let status = format!("{} {}:{} {}{} {}{}{} {}{}",
+                             permissions,
+                             user,
+                             group,
+                             crate::term::header_color(),
+                             mtime,
+                             crate::term::color_yellow(),
+                             target,
+                             crate::term::header_color(),
+                             crate::term::goto_xy(count_xpos, count_ypos),
+                             file_count);
         Ok(status)
     }
 }
@@ -693,12 +701,9 @@ impl Widget for FileBrowser {
             crate::term::highlight_color() } else {
             crate::term::from_lscolor(file.color.as_ref().unwrap()) };
 
-        let path = match self.cwd.short_path() {
-            Ok(path) => path,
-            Err(_) => file.path
-        };
+        let path = self.cwd.short_string();
 
-        let mut path = path.to_string_lossy().to_string();
+        let mut path = path;
         if &path == "" { path.clear(); }
         if &path == "~/" { path.pop(); }
         if &path == "/" { path.pop(); }
