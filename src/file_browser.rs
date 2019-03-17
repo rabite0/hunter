@@ -347,8 +347,13 @@ impl FileBrowser {
     }
 
     pub fn set_title(&self) -> HResult<()> {
-        let cwd = &self.cwd.path.to_string_lossy();
-        self.screen()?.set_title(cwd)?;
+        let path = match self.cwd.short_path() {
+            Ok(path) => path,
+            Err(_) => self.cwd.path.clone()
+        };
+
+        let path = path.to_string_lossy().to_string();
+        self.screen()?.set_title(&path)?;
         Ok(())
     }
 
@@ -688,7 +693,16 @@ impl Widget for FileBrowser {
             crate::term::highlight_color() } else {
             crate::term::from_lscolor(file.color.as_ref().unwrap()) };
 
-        let path = file.path.parent()?.to_string_lossy().to_string();
+        let path = match self.cwd.short_path() {
+            Ok(path) => path,
+            Err(_) => file.path
+        };
+
+        let mut path = path.to_string_lossy().to_string();
+        if &path == "" { path.clear(); }
+        if &path == "~/" { path.pop(); }
+        if &path == "/" { path.pop(); }
+
 
         let pretty_path = format!("{}/{}{}", path, &color, name );
         let sized_path = crate::term::sized_string(&pretty_path, xsize);

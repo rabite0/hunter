@@ -602,4 +602,15 @@ impl File {
             = chrono::Local.timestamp(self.meta().unwrap().mtime(), 0);
         Some(time.format("%F %R").to_string())
     }
+
+    pub fn short_path(&self) -> HResult<PathBuf> {
+        if let Ok(home) = crate::paths::home_path() {
+            if let Ok(short) = self.path.strip_prefix(home) {
+                let mut path = PathBuf::from("~");
+                path.push(short);
+                return Ok(path);
+            }
+        }
+        return Ok(self.path.clone())
+    }
 }

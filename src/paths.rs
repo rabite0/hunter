@@ -4,6 +4,11 @@ use std::path::PathBuf;
 
 use crate::fail::HResult;
 
+pub fn home_path() -> HResult<PathBuf> {
+    let home = dirs_2::home_dir()?;
+    Ok(home)
+}
+
 pub fn hunter_path() -> HResult<PathBuf> {
     let mut config_dir = dirs_2::config_dir()?;
     config_dir.push("hunter/");

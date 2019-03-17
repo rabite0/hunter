@@ -257,7 +257,6 @@ pub trait Widget {
             self.refresh().log();
             self.draw().log();
             self.after_draw().log();
-            self.get_core_mut()?.screen.flush().ok();
         }
         Ok(())
     }
@@ -299,6 +298,7 @@ pub trait Widget {
             &self.get_header_drawlist().unwrap_or("".to_string()) +
             &self.get_footer_drawlist().unwrap_or("".to_string());
         self.write_to_screen(&output).log();
+        self.screen()?.flush().ok();
         Ok(())
     }
 
