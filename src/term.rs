@@ -10,31 +10,47 @@ use parse_ansi::parse_bytes;
 
 use crate::fail::HResult;
 
+pub type TermMode = AlternateScreen<MouseTerminal<RawTerminal<BufWriter<Stdout>>>>;
+
 #[derive(Clone)]
 pub struct Screen {
-    screen: Arc<Mutex<RawTerminal<MouseTerminal<AlternateScreen<BufWriter<Stdout>>>>>>
+    screen: Arc<Mutex<Option<TermMode>>>
 }
 
 impl Screen {
     pub fn new() -> HResult<Screen> {
-        let screen = BufWriter::new(std::io::stdout());
-        let screen = AlternateScreen::from(screen);
-        let mut screen = MouseTerminal::from(screen).into_raw_mode()?;
+        let screen = BufWriter::new(std::io::stdout()).into_raw_mode()?;
+        let mut screen = MouseTerminal::from(screen);
+        let mut screen = AlternateScreen::from(screen);
+
         screen.cursor_hide()?;
-        screen.flush()?;
-        screen.clear()?;
         Ok(Screen {
-            screen: Arc::new(Mutex::new(screen))
+            screen: Arc::new(Mutex::new(Some(screen)))
         })
+    }
+
+    pub fn drop_screen(&mut self) {
+        self.cursor_show();
+        self.to_main_screen();
+        self.screen = Arc::new(Mutex::new(None));
+
+        // Terminal stays fucked without this. Why?
+        std::process::Command::new("reset").arg("-I").spawn();
+    }
+
+    pub fn reset_screen(&mut self) -> HResult<()> {
+        let screen = Screen::new()?.screen.lock()?.take()?;
+        *self.screen.lock()? = Some(screen);
+        Ok(())
     }
 }
 
 impl Write for Screen {
     fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
-        self.screen.lock().unwrap().write(buf)
+        self.screen.lock().unwrap().as_mut().unwrap().write(buf)
     }
     fn flush(&mut self) -> std::io::Result<()> {
-        self.screen.lock().unwrap().flush()
+        self.screen.lock().unwrap().as_mut().unwrap().flush()
     }
 }
 
@@ -80,12 +96,15 @@ pub trait ScreenExt: Write {
         write!(self, "\x1bkhunter: {}\x1b\\", title)?;
         Ok(())
     }
+    fn to_main_screen(&mut self) -> HResult<()> {
+        write!(self, "{}", termion::screen::ToMainScreen)?;
+        self.flush()?;
+        Ok(())
+    }
 }
 
-impl ScreenExt for AlternateScreen<Box<Stdout>> {}
-impl ScreenExt for AlternateScreen<Stdout> {}
-impl ScreenExt for AlternateScreen<BufWriter<Stdout>> {}
 impl ScreenExt for Screen {}
+impl ScreenExt for TermMode {}
 
 pub fn xsize() -> u16 {
     let (xsize, _) = termion::terminal_size().unwrap();

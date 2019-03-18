@@ -652,6 +652,34 @@ impl FileBrowser {
         Ok(())
     }
 
+    pub fn run_subshell(&mut self) -> HResult<()> {
+        self.core.get_sender().send(Events::InputEnabled(false))?;
+
+        self.core.screen.cursor_show().log();
+        self.core.screen.drop_screen();
+
+        let shell = std::env::var("SHELL").unwrap_or("bash".into());
+        let status = std::process::Command::new(&shell).status();
+
+        self.core.screen.reset_screen();
+
+
+        self.core.get_sender().send(Events::InputEnabled(true))?;
+
+        match status {
+            Ok(status) =>
+                self.show_status(&format!("\"{}\" exited with {}",
+                                          shell, status)).log(),
+            Err(err) =>
+                self.show_status(&format!("Can't run this \"{}\": {}",
+                                          shell, err)).log()
+        }
+
+
+
+        Ok(())
+    }
+
     pub fn get_footer(&self) -> HResult<String> {
         let xsize = self.get_coordinates()?.xsize();
         let ypos = self.get_coordinates()?.position().y();
@@ -759,6 +787,7 @@ impl Widget for FileBrowser {
             Key::Char('m') => { self.add_bookmark()?; },
             Key::Char('w') => { self.proc_view.lock()?.popup()?; },
             Key::Char('l') => self.log_view.lock()?.popup()?,
+            Key::Char('z') => self.run_subshell()?,
             _ => { self.main_widget_mut()?.on_key(key)?; },
         }
         self.update_preview()?;

@@ -64,11 +64,12 @@ fn main() -> HResult<()> {
     // do this early so it might be ready when needed
     crate::files::load_tags().ok();
 
-    let core = WidgetCore::new().expect("Can't create WidgetCore!");
+    let mut core = WidgetCore::new().expect("Can't create WidgetCore!");
 
     match run(core.clone()) {
         Ok(_) => Ok(()),
         Err(err) => {
+            core.screen.drop_screen();
             eprintln!("{:?}\n{:?}", err, err.cause());
             return Err(err);
         }

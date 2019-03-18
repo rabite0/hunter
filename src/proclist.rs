@@ -114,7 +114,9 @@ impl Listable for ListView<Vec<Process>> {
 
 impl ListView<Vec<Process>> {
     fn run_proc(&mut self, cmd: &str) -> HResult<()> {
-        let handle = std::process::Command::new("sh")
+        let shell = std::env::var("SHELL").unwrap_or("sh".into());
+
+        let handle = std::process::Command::new(shell)
             .arg("-c")
             .arg(cmd)
             .stdin(std::process::Stdio::null())
