@@ -388,7 +388,7 @@ impl Previewer {
                         -> Result<Box<dyn Widget + Send>, HError> {
         let process =
             std::process::Command::new("scope.sh")
-            .arg(&file.name)
+            .arg(&file.path)
             .arg("10".to_string())
             .arg("10".to_string())
             .arg("".to_string())

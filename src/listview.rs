@@ -300,6 +300,7 @@ impl ListView<Files>
         let file = self.selected_file_mut();
         file.toggle_selection();
         self.move_down();
+        self.core.set_dirty();
         self.refresh().log();
     }
 

@@ -4,6 +4,8 @@ use std::os::unix::fs::MetadataExt;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::hash::{Hash, Hasher};
+use std::os::unix::ffi::{OsStringExt, OsStrExt};
+use std::ffi::{OsStr, OsString};
 
 use lscolors::LsColors;
 use mime_detective;
@@ -609,25 +611,144 @@ impl File {
         Some(time.format("%F %R").to_string())
     }
 
+    pub fn short_path(&self) -> PathBuf {
+        self.path.short_path()
+    }
+
     pub fn short_string(&self) -> String {
         self.path.short_string()
     }
 }
 
 
-pub trait ShortPaths {
+pub trait PathBufExt {
+    fn short_path(&self) -> PathBuf;
     fn short_string(&self) -> String;
+    fn name_starts_with(&self, pat: &str) -> bool;
+    fn quoted_file_name(&self) -> Option<OsString>;
+    fn quoted_path(&self) -> OsString;
 }
 
-impl ShortPaths for PathBuf {
-    fn short_string(&self) -> String {
+impl PathBufExt for PathBuf {
+    fn short_path(&self) -> PathBuf {
         if let Ok(home) = crate::paths::home_path() {
             if let Ok(short) = self.strip_prefix(home) {
                 let mut path = PathBuf::from("~");
                 path.push(short);
-                return path.to_string_lossy().to_string();
+                return path
             }
         }
-        return self.to_string_lossy().to_string();
+        return self.clone();
+    }
+
+    fn short_string(&self) -> String {
+        self.short_path().to_string_lossy().to_string()
+    }
+
+    fn name_starts_with(&self, pat: &str) -> bool {
+        if let Some(name) = self.file_name() {
+            let nbytes = name.as_bytes();
+            let pbytes = pat.as_bytes();
+
+            if nbytes.starts_with(pbytes) {
+                return true;
+            } else {
+                return false;
+            }
+        }
+        false
+    }
+
+    fn quoted_file_name(&self) -> Option<OsString> {
+        if let Some(name) = self.file_name() {
+            let mut name = name.as_bytes().to_vec();
+            let mut quote = "\"".as_bytes().to_vec();
+            //let mut quote_after = "\"".as_bytes().to_vec();
+            let mut quoted = vec![];
+            quoted.append(&mut quote.clone());
+            quoted.append(&mut name);
+            quoted.append(&mut quote);
+
+            let quoted_name = OsStr::from_bytes(&quoted).to_os_string();
+            return Some(quoted_name);
+        }
+        None
+    }
+
+    fn quoted_path(&self) -> OsString {
+        let mut path = self.clone().into_os_string().into_vec();
+        let mut quote = "\"".as_bytes().to_vec();
+
+        let mut quoted = vec![];
+        quoted.append(&mut quote.clone());
+        quoted.append(&mut path);
+        quoted.append(&mut quote);
+
+        OsString::from_vec(quoted)
+    }
+}
+
+pub trait OsStrTools {
+    fn replace(&self, from: &OsStr, to: &OsStr) -> OsString;
+    fn trim_last_space(&self) -> OsString;
+    fn contains_osstr(&self, pat: &OsStr) -> bool;
+    fn position(&self, pat: &OsStr) -> Option<usize>;
+}
+
+impl OsStrTools for OsStr {
+    fn replace(&self, from: &OsStr, to: &OsStr) -> OsString {
+        let orig_string = self.as_bytes().to_vec();
+        let from = from.as_bytes();
+        let to = to.as_bytes().to_vec();
+        let from_len = from.len();
+
+        let new_string = orig_string
+            .windows(from_len)
+            .enumerate()
+            .fold(Vec::new(), |mut pos, (i, chars)| {
+                if chars == from {
+                    pos.push(i);
+                }
+                pos
+            }).iter().rev().fold(orig_string.to_vec(), |mut string, pos| {
+                let pos = *pos;
+                string.splice(pos..pos+from_len, to.clone());
+                string
+            });
+
+        OsString::from_vec(new_string)
+    }
+
+    fn trim_last_space(&self) -> OsString {
+        let string = self.as_bytes();
+        let len = string.len();
+
+        if len > 0 {
+            OsString::from_vec(string[..len-1].to_vec())
+        } else {
+            self.to_os_string()
+        }
+    }
+
+    fn contains_osstr(&self, pat: &OsStr) -> bool {
+        let string = self.as_bytes();
+        let pat = pat.as_bytes();
+        let pat_len = pat.len();
+
+        string.windows(pat_len)
+            .find(|chars|
+                  chars == &pat
+            ).is_some()
+    }
+
+    fn position(&self, pat: &OsStr) -> Option<usize> {
+        let string = self.as_bytes();
+        let pat = pat.as_bytes();
+        let pat_len = pat.len();
+
+        string.windows(pat_len)
+            .position(|chars|
+                      chars == pat
+            )
     }
 }

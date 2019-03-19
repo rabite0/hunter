@@ -3,6 +3,7 @@ use std::sync::mpsc::Sender;
 use std::process::Child;
 use std::os::unix::process::{CommandExt, ExitStatusExt};
 use std::io::{BufRead, BufReader};
+use std::ffi::OsString;
 
 use termion::event::Key;
 use unicode_width::UnicodeWidthStr;
@@ -15,6 +16,7 @@ use crate::hbox::HBox;
 use crate::preview::WillBeWidget;
 use crate::fail::{HResult, HError, ErrorLog};
 use crate::term;
+use crate::files::OsStrTools;
 
 #[derive(Debug)]
 struct Process {
@@ -114,8 +116,13 @@ impl Listable for ListView<Vec<Process>> {
 }
 
 impl ListView<Vec<Process>> {
-    fn run_proc(&mut self, cmd: &str) -> HResult<()> {
+    fn run_proc(&mut self, cmd: &OsString) -> HResult<()> {
         let shell = std::env::var("SHELL").unwrap_or("sh".into());
+        let home = crate::paths::home_path()?.into_os_string();
+        let short = OsString::from("~");
+        let short_cmd = cmd.replace(&home, &short).to_string_lossy().to_string();
+
+        self.show_status(&format!("Running: {}", &short_cmd)).log();
 
         let handle = std::process::Command::new(shell)
             .arg("-c")
@@ -125,7 +132,7 @@ impl ListView<Vec<Process>> {
             .before_exec(|| unsafe { libc::dup2(1, 2); Ok(()) })
             .spawn()?;
         let mut proc = Process {
-            cmd: cmd.to_string(),
+            cmd: short_cmd,
             handle: Arc::new(Mutex::new(handle)),
             output: Arc::new(Mutex::new(String::new())),
             status: Arc::new(Mutex::new(None)),
@@ -278,7 +285,7 @@ impl ProcView {
         self.hbox.get_textview()
     }
 
-    pub fn run_proc(&mut self, cmd: &str) -> HResult<()> {
+    pub fn run_proc(&mut self, cmd: &OsString) -> HResult<()> {
         self.get_listview_mut().run_proc(cmd)?;
         Ok(())
     }

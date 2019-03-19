@@ -7,8 +7,9 @@ use std::sync::mpsc::{channel, Receiver, Sender};
 use std::time::Duration;
 use std::path::PathBuf;
 use std::collections::HashMap;
+use std::ffi::{OsString, OsStr};
 
-use crate::files::{File, Files, ShortPaths};
+use crate::files::{File, Files, PathBufExt, OsStrTools};
 use crate::listview::ListView;
 use crate::miller_columns::MillerColumns;
 use crate::widget::Widget;
@@ -131,13 +132,15 @@ impl Tabbable for TabView<FileBrowser> {
             Key::Char('!') => {
                 let tab_dirs = self.widgets.iter().map(|w| w.cwd.clone())
                                                   .collect::<Vec<_>>();
-                let selected_files = self.widgets.iter().fold(HashMap::new(),
-                                                              |mut f, w| {
-                    let dir = w.cwd().unwrap().clone();
-                    let selected_files = w.selected_files().unwrap();
-                    f.insert(dir, selected_files);
-                    f
-                });
+                let selected_files = self
+                    .widgets
+                    .iter()
+                    .map(|w| {
+                        w.selected_files()
+                            .map_err(|_| Vec::<Files>::new())
+                            .unwrap()
+                    }).collect();
+
                 self.widgets[self.active].exec_cmd(tab_dirs, selected_files)
             }
             _ => { self.active_tab_mut().on_key(key) }
@@ -633,39 +636,55 @@ impl FileBrowser {
 
     fn exec_cmd(&mut self,
                 tab_dirs: Vec<File>,
-                tab_files: HashMap<File, Vec<File>>) -> HResult<()> {
+                tab_files: Vec<Vec<File>>) -> HResult<()> {
         let cwd = self.cwd()?;
-        let filename = self.selected_file()?.name.clone();
+        let filename = self.selected_file()?.path.quoted_file_name()?;
         let selected_files = self.selected_files()?;
 
-        let file_names
-            = selected_files.iter().map(|f| f.name.clone()).collect::<Vec<String>>();
+        let files = selected_files.iter()
+            .map(|f| f.path())
+            .collect::<Vec<PathBuf>>();
 
-        let cmd = self.minibuffer("exec")?;
+        let cmd = self.minibuffer("exec")?.trim_start().to_string();
 
-        self.show_status(&format!("Running: \"{}\"", &cmd)).log();
+        let cmd = OsString::from(cmd);
+        let space = OsString::from(" ");
 
-        let mut cmd = if file_names.len() == 0 {
-            cmd.replace("$s", &format!("{}", &filename))
+        let mut cmd = if files.len() == 0 {
+            cmd.replace(&OsString::from("$s"), &filename)
         } else {
-            let args = file_names.iter().map(|f| {
-                format!(" \"{}\" ", f)
-            }).collect::<String>();
-            cmd.replace("$s", &args)
+            let args = files.iter()
+                .fold(OsString::new(), |mut args, file| {
+                    if let Some(name) = file.quoted_file_name() {
+                        args.push(name);
+                        args.push(space.clone());
+                    }
+                    args
+                });
+            let args = args.trim_last_space();
+
+            cmd.replace(&OsString::from("$s"), &args)
         };
 
         for (i, tab_dir) in tab_dirs.iter().enumerate() {
-            if let Some(tab_files) = tab_files.get(tab_dir) {
-                let tab_file_identifier = format!("${}s", i);
-                let args = tab_files.iter().map(|f| {
-                    let file_path = f.strip_prefix(&cwd);
-                    format!(" \"{}\" ", file_path.to_string_lossy())
-                }).collect::<String>();
+            if let Some(tab_files) = tab_files.get(i) {
+                let tab_file_identifier = OsString::from(format!("${}s", i));
+
+                let args = tab_files.iter()
+                    .fold(OsString::new(), |mut args, file| {
+                        let file_path = file.strip_prefix(&cwd);
+                        let name = file_path.quoted_path();
+                        args.push(name);
+                        args.push(space.clone());
+
+                        args
+                    });
+
                 cmd = cmd.replace(&tab_file_identifier, &args);
             }
 
-            let tab_identifier = format!("${}", i);
-            let tab_path = tab_dir.path.to_string_lossy();
+            let tab_identifier = OsString::from(format!("${}", i));
+            let tab_path = tab_dir.path().into_os_string();
             cmd = cmd.replace(&tab_identifier, &tab_path);
         }
 
