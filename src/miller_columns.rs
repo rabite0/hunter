@@ -93,9 +93,14 @@ where
     fn get_core_mut(&mut self) -> HResult<&mut WidgetCore> {
         Ok(&mut self.core)
     }
+
+    fn set_coordinates(&mut self, coordinates: &Coordinates) -> HResult<()> {
+        self.core.coordinates = coordinates.clone();
+        self.widgets.set_coordinates(&coordinates)
+    }
+
     fn refresh(&mut self) -> HResult<()> {
-        self.widgets.refresh().log();
-        Ok(())
+        self.widgets.refresh()
     }
 
     fn get_drawlist(&self) -> HResult<String> {

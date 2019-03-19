@@ -2,6 +2,8 @@ use termion::event::Key;
 
 use crate::widget::{Widget, WidgetCore};
 use crate::fail::{HResult, ErrorLog};
+use crate::coordinates::Coordinates;
+use crate::dirty::Dirtyable;
 
 pub trait Tabbable {
     fn new_tab(&mut self) -> HResult<()>;
@@ -105,6 +107,15 @@ impl<T> Widget for TabView<T> where T: Widget, TabView<T>: Tabbable {
     fn get_core_mut(&mut self) -> HResult<&mut WidgetCore> {
         Ok(&mut self.core)
     }
+
+    fn set_coordinates(&mut self, coordinates: &Coordinates) -> HResult<()> {
+        self.core.coordinates = coordinates.clone();
+        for widget in &mut self.widgets {
+            widget.set_coordinates(coordinates).log();
+        }
+        Ok(())
+    }
+
     fn render_header(&self) -> HResult<String> {
         let xsize = self.get_coordinates()?.xsize();
         let header = self.active_tab_().render_header()?;

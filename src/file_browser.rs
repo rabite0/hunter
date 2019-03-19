@@ -20,6 +20,7 @@ use crate::proclist::ProcView;
 use crate::bookmarks::BMPopup;
 use crate::term::ScreenExt;
 use crate::foldview::LogView;
+use crate::coordinates::Coordinates;
 
 #[derive(PartialEq)]
 pub enum FileBrowserWidgets {
@@ -38,6 +39,12 @@ impl Widget for FileBrowserWidgets {
         match self {
             FileBrowserWidgets::FileList(widget) => widget.get_core_mut(),
             FileBrowserWidgets::Previewer(widget) => widget.get_core_mut()
+        }
+    }
+    fn set_coordinates(&mut self, coordinates: &Coordinates) -> HResult<()> {
+        match self {
+            FileBrowserWidgets::FileList(widget) => widget.set_coordinates(coordinates),
+            FileBrowserWidgets::Previewer(widget) => widget.set_coordinates(coordinates),
         }
     }
     fn refresh(&mut self) -> HResult<()> {
@@ -335,13 +342,28 @@ impl FileBrowser {
         Ok(())
     }
 
-    pub fn goto_bookmark(&mut self) -> HResult<()> {
-        let cwd = match self.prev_cwd.as_ref() {
+    fn get_boomark(&mut self) -> HResult<String> {
+        let cwd = &match self.prev_cwd.as_ref() {
             Some(cwd) => cwd,
             None => &self.cwd
         }.path.to_string_lossy().to_string();
 
-        let path = self.bookmarks.lock()?.pick(cwd)?;
+        loop {
+            let bookmark =  self.bookmarks.lock()?.pick(cwd.to_string());
+
+            if let Err(HError::TerminalResizedError) = bookmark {
+                    self.core.screen.clear();
+                    self.resize();
+                    self.refresh();
+                    self.draw();
+                    continue;
+            }
+            return bookmark;
+        }
+    }
+
+    pub fn goto_bookmark(&mut self) -> HResult<()> {
+        let path = self.get_boomark()?;
         let path = File::new_from_path(&PathBuf::from(path))?;
         self.main_widget_goto(&path)?;
         Ok(())
@@ -727,6 +749,16 @@ impl Widget for FileBrowser {
     fn get_core_mut(&mut self) -> HResult<&mut WidgetCore> {
         Ok(&mut self.core)
     }
+
+    fn set_coordinates(&mut self, coordinates: &Coordinates) -> HResult<()> {
+        self.core.coordinates = coordinates.clone();
+        self.columns.set_coordinates(&coordinates).log();
+        self.proc_view.lock()?.set_coordinates(&coordinates).log();
+        self.log_view.lock()?.set_coordinates(&coordinates).log();
+        self.bookmarks.lock()?.set_coordinates(&coordinates).log();
+        Ok(())
+    }
+
     fn render_header(&self) -> HResult<String> {
         let xsize = self.get_coordinates()?.xsize();
         let file = self.selected_file()?;

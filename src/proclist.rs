@@ -10,6 +10,7 @@ use unicode_width::UnicodeWidthStr;
 use crate::listview::{Listable, ListView};
 use crate::textview::TextView;
 use crate::widget::{Widget, Events, WidgetCore};
+use crate::coordinates::Coordinates;
 use crate::hbox::HBox;
 use crate::preview::WillBeWidget;
 use crate::fail::{HResult, HError, ErrorLog};
@@ -227,7 +228,13 @@ pub struct ProcView {
 }
 
 impl HBox<ProcViewWidgets> {
-    fn get_listview(&mut self) -> &mut ListView<Vec<Process>> {
+    fn get_listview(&self) -> &ListView<Vec<Process>> {
+        match &self.widgets[0] {
+            ProcViewWidgets::List(listview) => listview,
+            _ => unreachable!()
+        }
+    }
+    fn get_listview_mut(&mut self) -> &mut ListView<Vec<Process>> {
         match &mut self.widgets[0] {
             ProcViewWidgets::List(listview) => listview,
             _ => unreachable!()
@@ -259,8 +266,12 @@ impl ProcView {
         }
     }
 
-    fn get_listview(&mut self) -> &mut ListView<Vec<Process>> {
+    fn get_listview(& self) -> & ListView<Vec<Process>> {
         self.hbox.get_listview()
+    }
+
+    fn get_listview_mut(&mut self) -> &mut ListView<Vec<Process>> {
+        self.hbox.get_listview_mut()
     }
 
     fn get_textview(&mut self) -> &mut WillBeWidget<TextView> {
@@ -268,13 +279,13 @@ impl ProcView {
     }
 
     pub fn run_proc(&mut self, cmd: &str) -> HResult<()> {
-        self.get_listview().run_proc(cmd)?;
+        self.get_listview_mut().run_proc(cmd)?;
         Ok(())
     }
 
     pub fn remove_proc(&mut self) -> HResult<()> {
-        if self.get_listview().content.len() == 0 { return Ok(()) }
-        self.get_listview().remove_proc()?;
+        if self.get_listview_mut().content.len() == 0 { return Ok(()) }
+        self.get_listview_mut().remove_proc()?;
         self.get_textview().change_to(Box::new(move |_, core| {
             let mut textview = TextView::new_blank(&core);
             textview.refresh().log();
@@ -285,10 +296,10 @@ impl ProcView {
     }
 
     fn show_output(&mut self) -> HResult<()> {
-        if Some(self.get_listview().get_selection()) == self.viewing {
+        if Some(self.get_listview_mut().get_selection()) == self.viewing {
             return Ok(());
         }
-        let output = self.get_listview().selected_proc()?.output.lock()?.clone();
+        let output = self.get_listview_mut().selected_proc()?.output.lock()?.clone();
 
         self.get_textview().change_to(Box::new(move |_, core| {
             let mut textview = TextView::new_blank(&core);
@@ -296,7 +307,7 @@ impl ProcView {
             textview.animate_slide_up().log();
             Ok(textview)
         })).log();
-        self.viewing = Some(self.get_listview().get_selection());
+        self.viewing = Some(self.get_listview_mut().get_selection());
         Ok(())
     }
 
@@ -343,11 +354,75 @@ impl Widget for ProcView {
     fn get_core_mut(&mut self) -> HResult<&mut WidgetCore> {
         Ok(&mut self.core)
     }
+    fn set_coordinates(&mut self, coordinates: &Coordinates) -> HResult<()> {
+        self.core.coordinates = coordinates.clone();
+        self.hbox.core.coordinates = coordinates.clone();
+        self.hbox.set_coordinates(&coordinates)
+    }
+
+    fn render_header(&self) -> HResult<String> {
+        let listview = self.get_listview();
+        let procs_num = listview.len();
+        let procs_running = listview
+            .content
+            .iter()
+            .filter(|proc| proc.status.lock().unwrap().is_none())
+            .count();
+
+        let header = format!("Running processes: {} / {}",
+                             procs_running,
+                             procs_num);
+        Ok(header)
+    }
+
+    fn render_footer(&self) -> HResult<String> {
+        let listview = self.get_listview();
+        let selection = listview.get_selection();
+
+        if let Some(proc) = listview.content.get(selection) {
+            let cmd = &proc.cmd;
+            let pid = proc.handle.lock()?.id();
+            let proc_status = proc.status.lock()?;
+            let proc_success = proc.success.lock()?;
+
+            let procinfo = if proc_status.is_some() {
+                let color_success =
+                    if let Some(_) = *proc_success {
+                        format!("{}successfully", term::color_green())
+                    } else {
+                        format!("{}unsuccessfully", term::color_red())
+                    };
+
+                let color_status =
+                    if let Some(success) = *proc_success {
+                        if success {
+                            format!("{}{}", term::color_green(), proc_status.unwrap())
+                        } else {
+                            format!("{}{}", term::color_red(), proc_status.unwrap())
+                        }
+                    } else { "wtf".to_string() };
+
+                let procinfo = format!("Process: {}:{} exited {}{}{} with status: {}",
+                                     cmd,
+                                     pid,
+                                     color_success,
+                                     term::reset(),
+                                     term::status_bg(),
+                                     color_status);
+                procinfo
+            } else { "still running".to_string() };
+
+            let footer = format!("{}: {}", cmd, procinfo);
+
+            Ok(footer)
+        } else { Ok("No proccesses".to_string()) }
+    }
+
     fn refresh(&mut self) -> HResult<()> {
         self.hbox.refresh().log();
 
         self.show_output().log();
-        self.get_listview().refresh().log();
+        self.get_listview_mut().refresh().log();
         self.get_textview().refresh().log();
 
         Ok(())
@@ -359,12 +434,12 @@ impl Widget for ProcView {
         match key {
             Key::Char('w') => { return Err(HError::PopupFinnished) }
             Key::Char('d') => { self.remove_proc()? }
-            Key::Char('k') => { self.get_listview().kill_proc()? }
+            Key::Char('k') => { self.get_listview_mut().kill_proc()? }
             Key::Up | Key::Char('p') => {
-                self.get_listview().move_up();
+                self.get_listview_mut().move_up();
             }
             Key::Down | Key::Char('n') => {
-                self.get_listview().move_down();
+                self.get_listview_mut().move_down();
             }
             Key::Char('f') => { self.toggle_follow().log(); }
             Key::Ctrl('n') => { self.scroll_down().log(); },

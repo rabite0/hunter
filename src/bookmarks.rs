@@ -4,6 +4,7 @@ use std::collections::HashMap;
 
 use crate::fail::{HResult, HError, ErrorLog};
 use crate::widget::{Widget, WidgetCore};
+use crate::coordinates::Coordinates;
 use crate::files::{Files, File};
 use crate::term;
 
@@ -68,19 +69,25 @@ pub struct BMPopup {
 
 impl BMPopup {
     pub fn new(core: &WidgetCore) -> BMPopup {
-        let bmpopup = BMPopup {
+        let mut bmpopup = BMPopup {
             core: core.clone(),
             bookmarks: Bookmarks::new(),
             bookmark_path: None,
             add_mode: false
         };
+        bmpopup.set_coordinates(&core.coordinates).log();
         bmpopup
     }
 
     pub fn pick(&mut self, cwd: String) -> HResult<String> {
         self.bookmark_path = Some(cwd);
         self.refresh()?;
-        self.popup()?;
+        match self.popup() {
+            Ok(_) => {},
+            Err(HError::PopupFinnished) => {},
+            err @ Err(HError::TerminalResizedError) => err?,
+            err @ Err(_) => err?,
+        }
         self.clear()?;
 
         let bookmark = self.bookmark_path.take();
@@ -120,16 +127,24 @@ impl Widget for BMPopup {
         Ok(&mut self.core)
     }
     fn refresh(&mut self) -> HResult<()> {
-        let tysize = crate::term::ysize();
-        let txsize = crate::term::xsize();
-        let len = self.bookmarks.mapping.len() as u16;
-        let ysize = tysize - (len + 1);
+        Ok(())
+    }
 
-        self.core.coordinates.set_position(1, ysize);
-        self.core.coordinates.set_size(txsize, len+1);
+    fn resize(&mut self) -> HResult<()> {
+        HError::terminal_resized()
+    }
+
+    fn set_coordinates(&mut self, coordinates: &Coordinates) -> HResult<()> {
+        let (xsize, ysize) = coordinates.size_u();
+        let len = self.bookmarks.mapping.len();
+        let ysize = ysize.saturating_sub( len + 1 );
+
+        self.core.coordinates.set_size_u(xsize.saturating_sub(1), len);
+        self.core.coordinates.set_position_u(1, ysize+2);
 
         Ok(())
     }
+
     fn get_drawlist(&self) -> HResult<String> {
         let ypos = self.get_coordinates()?.ypos();
 

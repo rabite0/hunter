@@ -66,7 +66,9 @@ pub enum HError {
     #[fail(display = "Empty input!")]
     MiniBufferEmptyInput,
     #[fail(display = "Undefined key: {:?}", key)]
-    WidgetUndefinedKeyError{key: Key}
+    WidgetUndefinedKeyError{key: Key},
+    #[fail(display = "Terminal has been resized!")]
+    TerminalResizedError,
 }
 
 impl HError {
@@ -108,6 +110,10 @@ impl HError {
         let name = file.name.clone();
         Err(HError::PreviewFailed{ file: name,
                                    backtrace: Backtrace::new() })
+    }
+
+    pub fn terminal_resized<T>() -> HResult<T> {
+        Err(HError::TerminalResizedError)
     }
 }
 

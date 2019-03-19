@@ -12,6 +12,8 @@ use crate::dirty::Dirtyable;
 pub trait Listable {
     fn len(&self) -> usize;
     fn render(&self) -> Vec<String>;
+    fn render_header(&self) -> HResult<String> { Ok("".to_string()) }
+    fn render_footer(&self) -> HResult<String> { Ok("".to_string()) }
     fn on_refresh(&mut self) -> HResult<()> { Ok(()) }
     fn on_key(&mut self, _key: Key) -> HResult<()> { Ok(()) }
 }
@@ -304,6 +306,7 @@ impl ListView<Files>
     fn toggle_tag(&mut self) -> HResult<()> {
         self.selected_file_mut().toggle_tag()?;
         self.move_down();
+        self.core.set_dirty();
         Ok(())
     }
 
@@ -412,6 +415,13 @@ impl<T> Widget for ListView<T> where ListView<T>: Listable {
         Ok(())
     }
 
+    fn render_header(&self) -> HResult<String> {
+        Listable::render_header(self)
+    }
+
+    fn render_footer(&self) -> HResult<String> {
+        Listable::render_footer(self)
+    }
 
     fn get_drawlist(&self) -> HResult<String> {
         let mut output = term::reset();

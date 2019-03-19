@@ -1,5 +1,5 @@
 use std::io::{Stdout, Write, BufWriter};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, RwLock};
 
 use termion;
 use termion::screen::AlternateScreen;
@@ -14,7 +14,8 @@ pub type TermMode = AlternateScreen<MouseTerminal<RawTerminal<BufWriter<Stdout>>
 
 #[derive(Clone)]
 pub struct Screen {
-    screen: Arc<Mutex<Option<TermMode>>>
+    screen: Arc<Mutex<Option<TermMode>>>,
+    size: Arc<RwLock<Option<(usize, usize)>>>
 }
 
 impl Screen {
@@ -25,7 +26,8 @@ impl Screen {
 
         screen.cursor_hide()?;
         Ok(Screen {
-            screen: Arc::new(Mutex::new(Some(screen)))
+            screen: Arc::new(Mutex::new(Some(screen))),
+            size: Arc::new(RwLock::new(None))
         })
     }
 
@@ -42,6 +44,19 @@ impl Screen {
         let screen = Screen::new()?.screen.lock()?.take()?;
         *self.screen.lock()? = Some(screen);
         Ok(())
+    }
+
+    pub fn set_size(&self, size: (usize, usize)) -> HResult<()> {
+        *self.size.write()? = Some(size);
+        Ok(())
+    }
+
+    pub fn is_resized(&self) -> HResult<(usize, usize)> {
+        Ok(self.size.read()?.clone()?)
+    }
+
+    pub fn take_size(&self) -> HResult<(usize, usize)> {
+        Ok(self.size.write()?.take()?)
     }
 }
 
@@ -70,7 +85,9 @@ pub trait ScreenExt: Write {
         Ok(())
     }
     fn clear(&mut self) -> HResult<()> {
-        write!(self, "{}", termion::clear::All)?;
+        write!(self, "{}{}",
+               termion::style::Reset,
+               termion::clear::All)?;
         Ok(())
     }
     fn write_str(&mut self, str: &str) -> HResult<()> {
@@ -82,6 +99,10 @@ pub trait ScreenExt: Write {
         let y = y as u16;
         write!(self, "{}", goto_xy(x + 1, y + 1))?;
         Ok(())
+    }
+    fn size(&self) -> HResult<(usize, usize)> {
+        let (xsize, ysize) = termion::terminal_size()?;
+        Ok(((xsize-1) as usize, (ysize-1) as usize))
     }
     fn xsize(&self) -> HResult<usize> {
         let (xsize, _) = termion::terminal_size()?;
@@ -114,6 +135,11 @@ pub fn xsize() -> u16 {
 pub fn ysize() -> u16 {
     let (_, ysize) = termion::terminal_size().unwrap();
     ysize
+}
+
+pub fn size() -> HResult<(usize, usize)> {
+    let (xsize, ysize) = termion::terminal_size()?;
+    Ok(((xsize-1) as usize, (ysize-1) as usize))
 }
 
 pub fn sized_string(string: &str, xsize: u16) -> String {

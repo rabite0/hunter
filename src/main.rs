@@ -18,6 +18,7 @@ extern crate rayon;
 extern crate libc;
 extern crate notify;
 extern crate parse_ansi;
+extern crate signal_notify;
 
 use failure::Fail;
 

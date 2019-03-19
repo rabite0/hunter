@@ -32,6 +32,10 @@ impl Coordinates {
         self.size.0 = (x, y);
     }
 
+    pub fn set_size_u(&mut self, x: usize, y: usize) {
+        self.size.0 = ((x+1) as u16, (y+1) as u16);
+    }
+
     pub fn set_xsize(&mut self, x: u16) {
         (self.size.0).0 = x;
     }
@@ -42,6 +46,10 @@ impl Coordinates {
 
     pub fn set_position(&mut self, x: u16, y: u16) {
         self.position.0 = (x, y);
+    }
+
+    pub fn set_position_u(&mut self, x: usize, y: usize) {
+        self.position.0 = ((x+1) as u16, (y+1) as u16);
     }
 
     pub fn set_xpos(&mut self, x: u16) {

@@ -5,7 +5,7 @@ use chrono::{DateTime, Local};
 use crate::term;
 use crate::widget::Widget;
 use crate::listview::{ListView, Listable};
-use crate::fail::{HResult, HError};
+use crate::fail::{HResult, HError, ErrorLog};
 use crate::dirty::Dirtyable;
 
 pub type LogView = ListView<Vec<LogEntry>>;
@@ -79,6 +79,8 @@ impl From<&HError> for LogEntry {
 
 pub trait FoldableWidgetExt {
     fn on_refresh(&mut self) -> HResult<()> { Ok(()) }
+    fn render_header(&self) -> HResult<String> { Ok("".to_string()) }
+    fn render_footer(&self) -> HResult<String> { Ok("".to_string()) }
 }
 
 impl FoldableWidgetExt for  ListView<Vec<LogEntry>> {
@@ -87,6 +89,43 @@ impl FoldableWidgetExt for  ListView<Vec<LogEntry>> {
             self.core.set_dirty();
         }
         Ok(())
+    }
+
+    fn render_header(&self) -> HResult<String> {
+        let (xsize, _) = self.core.coordinates.size_u();
+        let current = self.current_fold().unwrap_or(0);
+        let num = self.content.len();
+        let hint = format!("{} / {}", current, num);
+        let hint_xpos = xsize - hint.len();
+        let header = format!("Logged entries: {}{}{}",
+                             num,
+                             term::goto_xy_u(hint_xpos, 0),
+                             hint);
+        Ok(header)
+    }
+
+    fn render_footer(&self) -> HResult<String> {
+        let current = self.current_fold()?;
+        if let Some(logentry) = self.content.get(current) {
+            let (xsize, ysize) = self.core.coordinates.size_u();
+            let (_, ypos) = self.core.coordinates.position_u();
+            let description = logentry.description();
+            let lines = logentry.lines();
+            let start_pos = self.fold_start_pos(current);
+            let selection = self.get_selection();
+            let current_line = (selection - start_pos) + 1;
+            let line_hint = format!("{} / {}", current_line, lines);
+            let hint_xpos = xsize - line_hint.len();
+            let hint_ypos = ysize + ypos + 1;
+
+            let footer = format!("LogEntry: {}{}{}{}{}",
+                                 description,
+                                 term::reset(),
+                                 term::status_bg(),
+                                 term::goto_xy_u(hint_xpos, hint_ypos),
+                                 line_hint);
+            Ok(footer)
+        } else { Ok("No log entries".to_string()) }
     }
 }
 
@@ -151,7 +190,7 @@ where
     ListView<Vec<F>>: FoldableWidgetExt {
 
     fn toggle_fold(&mut self) -> HResult<()> {
-        let fold = self.current_fold();
+        let fold = self.current_fold()?;
         let fold_pos = self.fold_start_pos(fold);
 
         self.content[fold].toggle_fold();
@@ -173,7 +212,7 @@ where
             })
     }
 
-    fn current_fold(&self) -> usize {
+    fn current_fold(&self) -> Option<usize> {
         let pos = self.get_selection();
 
         let fold_lines = self
@@ -194,7 +233,7 @@ where
                     } else {
                         (lines + current_fold_lines, None)
                     }
-                }}).1.unwrap()
+                }}).1
     }
 }
 
@@ -220,6 +259,15 @@ where
             .flatten()
             .collect()
     }
+
+    fn render_header(&self) -> HResult<String> {
+        FoldableWidgetExt::render_header(self)
+    }
+
+    fn render_footer(&self) -> HResult<String> {
+        FoldableWidgetExt::render_footer(self)
+    }
+
     fn on_refresh(&mut self) -> HResult<()> {
         FoldableWidgetExt::on_refresh(self)
     }

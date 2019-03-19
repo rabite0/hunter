@@ -118,6 +118,12 @@ impl<T> Widget for HBox<T> where T: Widget + PartialEq {
     fn get_core_mut(&mut self) -> HResult<&mut WidgetCore> {
         Ok(&mut self.core)
     }
+
+    fn set_coordinates(&mut self, coordinates: &Coordinates) -> HResult<()> {
+        self.core.coordinates = coordinates.clone();
+        self.resize_children()
+    }
+
     fn render_header(&self) -> HResult<String> {
         self.active_widget().render_header()
     }
@@ -125,7 +131,7 @@ impl<T> Widget for HBox<T> where T: Widget + PartialEq {
     fn refresh(&mut self) -> HResult<()> {
         self.resize_children().log();
         for child in &mut self.widgets {
-            child.refresh()?
+            child.refresh().log();
         }
         Ok(())
     }

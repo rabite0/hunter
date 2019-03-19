@@ -11,6 +11,7 @@ use crate::minibuffer::MiniBuffer;
 use crate::term;
 use crate::term::{Screen, ScreenExt};
 use crate::dirty::{Dirtyable, DirtyBit};
+use crate::signal_notify::{notify, Signal};
 
 use std::io::stdin;
 
@@ -18,6 +19,7 @@ use std::io::stdin;
 pub enum Events {
     InputEvent(Event),
     WidgetReady,
+    TerminalResized,
     ExclusiveEvent(Option<Sender<Events>>),
     InputEnabled(bool),
     RequestInput,
@@ -52,12 +54,14 @@ pub struct WidgetCore {
     pub event_sender: Sender<Events>,
     event_receiver: Arc<Mutex<Option<Receiver<Events>>>>,
     pub status_bar_content: Arc<Mutex<Option<String>>>,
+    term_size: (usize, usize),
     dirty: DirtyBit
 }
 
 impl WidgetCore {
     pub fn new() -> HResult<WidgetCore> {
         let screen = Screen::new()?;
+        let (xsize, ysize) = screen.size()?;
         let coords = Coordinates::new_at(term::xsize(),
                                          term::ysize() - 2,
                                          1,
@@ -72,6 +76,7 @@ impl WidgetCore {
             event_sender: sender,
             event_receiver: Arc::new(Mutex::new(Some(receiver))),
             status_bar_content: status_bar_content,
+            term_size: (xsize, ysize),
             dirty: DirtyBit::new() };
 
         let minibuffer = MiniBuffer::new(&core);
@@ -106,11 +111,10 @@ pub trait Widget {
         Ok(&self.get_core()?.coordinates)
     }
     fn set_coordinates(&mut self, coordinates: &Coordinates) -> HResult<()> {
-        let widget_coords = &mut self.get_core_mut()?.coordinates;
-        if widget_coords != coordinates {
-            *widget_coords = coordinates.clone();
-            self.get_core_mut()?.set_dirty();
-            self.refresh()?;
+        let core = &mut self.get_core_mut()?;
+        if &core.coordinates != coordinates {
+            core.coordinates = coordinates.clone();
+            core.set_dirty();
         }
         Ok(())
     }
@@ -259,6 +263,13 @@ pub trait Widget {
                 Events::Status(status) => {
                     self.show_status(&status).log();
                 }
+                Events::TerminalResized => {
+                    self.screen()?.clear().log();
+                    match self.resize() {
+                        err @ Err(HError::TerminalResizedError) => err?,
+                        _ => {}
+                    }
+                }
                 _ => {}
             }
             self.refresh().log();
@@ -313,7 +324,7 @@ pub trait Widget {
         let (tx_internal_event, rx_internal_event) = channel();
         let rx_global_event = self.get_core()?.event_receiver.lock()?.take()?;
 
-        dispatch_events(tx_internal_event, rx_global_event);
+        dispatch_events(tx_internal_event, rx_global_event, self.screen()?);
 
         for event in rx_internal_event.iter() {
             match event {
@@ -327,8 +338,13 @@ pub trait Widget {
                 Events::Status(status) => {
                     self.show_status(&status).log();
                 }
+                Events::TerminalResized => {
+                    self.screen()?.clear().log();
+                }
                 _ => {}
             }
+            self.resize().log();
+            self.screen()?.take_size().ok();
             self.refresh().ok();
             self.draw().ok();
         }
@@ -387,14 +403,26 @@ pub trait Widget {
         let mut screen = self.screen()?;
         screen.write_str(s)
     }
+
+    fn resize(&mut self) -> HResult<()> {
+        if let Ok((xsize, ysize)) = self.screen()?.is_resized() {
+            let mut coords = self.get_core()?.coordinates.clone();
+            coords.set_size_u(xsize, ysize-2);
+            self.set_coordinates(&coords)?;
+        }
+        Ok(())
+    }
 }
 
-fn dispatch_events(tx_internal: Sender<Events>, rx_global: Receiver<Events>) {
+fn dispatch_events(tx_internal: Sender<Events>,
+                   rx_global: Receiver<Events>,
+                   screen: Screen) {
     let (tx_event, rx_event) = channel();
     let (tx_input_req, rx_input_req) = channel();
 
     input_thread(tx_event.clone(), rx_input_req);
     event_thread(rx_global, tx_event.clone());
+    signal_thread(tx_event.clone());
 
     std::thread::spawn(move || {
         let mut tx_exclusive_event: Option<Sender<Events>> = None;
@@ -414,6 +442,11 @@ fn dispatch_events(tx_internal: Sender<Events>, rx_global: Receiver<Events>) {
                         tx_input_req.send(()).unwrap();
                     }
                     continue;
+                }
+                Events::TerminalResized => {
+                    if let Ok(size) = term::size() {
+                        screen.set_size(size).log();
+                    }
                 }
                 _ => {}
             }
@@ -441,6 +474,15 @@ fn input_thread(tx: Sender<Events>, rx_input_request: Receiver<()>) {
             let input = input.unwrap();
             tx.send(Events::InputEvent(input)).unwrap();
             rx_input_request.recv().unwrap();
+        }
+    });
+}
+
+fn signal_thread(tx: Sender<Events>) {
+    std::thread::spawn(move || {
+        let rx = notify(&[Signal::WINCH]);
+        for _ in rx.iter() {
+            tx.send(Events::TerminalResized).unwrap();
         }
     });
 }

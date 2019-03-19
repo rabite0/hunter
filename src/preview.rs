@@ -6,6 +6,7 @@ use crate::files::{File, Files, Kind};
 use crate::listview::ListView;
 use crate::textview::TextView;
 use crate::widget::{Widget, WidgetCore};
+use crate::coordinates::Coordinates;
 use crate::fail::{HResult, HError, ErrorLog};
 
 
@@ -189,12 +190,29 @@ impl<T: Widget + Send + 'static> Widget for WillBeWidget<T> {
     fn get_core_mut(&mut self) -> HResult<&mut WidgetCore> {
         Ok(&mut self.core)
     }
-    fn refresh(&mut self) -> HResult<()> {
+
+    fn set_coordinates(&mut self, coordinates: &Coordinates) -> HResult<()> {
+        self.core.coordinates = coordinates.clone();
         if let Ok(widget) = self.widget() {
             let mut widget = widget.lock()?;
             let widget = widget.as_mut()?;
-            widget.set_coordinates(self.get_coordinates()?).log();
-            widget.refresh().log();
+            widget.set_coordinates(&coordinates)?;
+        }
+        Ok(())
+    }
+
+    fn refresh(&mut self) -> HResult<()> {
+        let coords = self.get_coordinates()?;
+        if let Ok(widget) = self.widget() {
+            let mut widget = widget.lock()?;
+            let widget = widget.as_mut()?;
+
+            if widget.get_coordinates()? != coords {
+                widget.set_coordinates(self.get_coordinates()?)?;
+                widget.refresh()?;
+            } else {
+                widget.refresh()?;
+            }
         }
         Ok(())
     }
@@ -427,6 +445,12 @@ impl Widget for Previewer {
     fn get_core_mut(&mut self) -> HResult<&mut WidgetCore> {
         Ok(&mut self.core)
     }
+
+    fn set_coordinates(&mut self, coordinates: &Coordinates) -> HResult<()> {
+        self.core.coordinates = coordinates.clone();
+        self.widget.set_coordinates(&coordinates)
+    }
+
     fn refresh(&mut self) -> HResult<()> {
         self.widget.refresh()
     }
