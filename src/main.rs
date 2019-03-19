@@ -56,7 +56,7 @@ mod dirty;
 
 use widget::{Widget, WidgetCore};
 use term::ScreenExt;
-use fail::HResult;
+use fail::{HResult, HError};
 use file_browser::FileBrowser;
 use tabview::TabView;
 
@@ -69,6 +69,10 @@ fn main() -> HResult<()> {
 
     match run(core.clone()) {
         Ok(_) => Ok(()),
+        Err(HError::Quit) => {
+            core.screen.drop_screen();
+            return Ok(())
+        },
         Err(err) => {
             core.screen.drop_screen();
             eprintln!("{:?}\n{:?}", err, err.cause());
@@ -78,6 +82,8 @@ fn main() -> HResult<()> {
 }
 
 fn run(mut core: WidgetCore) -> HResult<()> {
+    core.screen.clear()?;
+
     let filebrowser = FileBrowser::new_cored(&core)?;
     let mut tabview = TabView::new(&core);
     tabview.push_widget(filebrowser)?;
