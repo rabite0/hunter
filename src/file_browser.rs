@@ -11,8 +11,10 @@ use std::ffi::{OsString, OsStr};
 
 use crate::files::{File, Files, PathBufExt, OsStrTools};
 use crate::listview::ListView;
-use crate::miller_columns::MillerColumns;
+//use crate::miller_columns::MillerColumns;
+use crate::hbox::HBox;
 use crate::widget::Widget;
+use crate::dirty::Dirtyable;
 use crate::tabview::{TabView, Tabbable};
 use crate::preview::{Previewer, WillBeWidget};
 use crate::fail::{HResult, HError, ErrorLog};
@@ -64,7 +66,7 @@ impl Widget for FileBrowserWidgets {
 }
 
 pub struct FileBrowser {
-    pub columns: MillerColumns<FileBrowserWidgets>,
+    pub columns: HBox<FileBrowserWidgets>,
     pub cwd: File,
     pub prev_cwd: Option<File>,
     selections: HashMap<File, File>,
@@ -175,9 +177,9 @@ impl FileBrowser {
         let mut core_l = core.clone();
         let mut core_p = core.clone();
 
-        let mut miller = MillerColumns::new(core);
-        miller.set_ratios(vec![20,30,49]);
-        let list_coords = miller.calculate_coordinates()?;
+        let mut columns = HBox::new(core);
+        columns.set_ratios(vec![20,30,49]);
+        let list_coords = columns.calculate_coordinates()?;
 
         core_l.coordinates = list_coords[0].clone();
         core_m.coordinates = list_coords[1].clone();
@@ -205,14 +207,15 @@ impl FileBrowser {
                 Ok(list)
             }));
             let left_widget = FileBrowserWidgets::FileList(left_widget);
-            miller.push_widget(left_widget);
+            columns.push_widget(left_widget);
         }
 
         let previewer = Previewer::new(&core_p);
 
-        miller.push_widget(FileBrowserWidgets::FileList(main_widget));
-        miller.push_widget(FileBrowserWidgets::Previewer(previewer));
-        miller.refresh().log();
+        columns.push_widget(FileBrowserWidgets::FileList(main_widget));
+        columns.push_widget(FileBrowserWidgets::Previewer(previewer));
+        columns.set_active(1).log();
+        columns.refresh().log();
 
 
         let cwd = File::new_from_path(&cwd).unwrap();
@@ -228,7 +231,7 @@ impl FileBrowser {
 
 
 
-        Ok(FileBrowser { columns: miller,
+        Ok(FileBrowser { columns: columns,
                          cwd: cwd,
                          prev_cwd: None,
                          selections: HashMap::new(),
@@ -363,10 +366,10 @@ impl FileBrowser {
             let bookmark =  self.bookmarks.lock()?.pick(cwd.to_string());
 
             if let Err(HError::TerminalResizedError) = bookmark {
-                    self.core.screen.clear();
-                    self.resize();
-                    self.refresh();
-                    self.draw();
+                    self.core.screen.clear().log();
+                    self.resize().log();
+                    self.refresh().log();
+                    self.draw().log();
                     continue;
             }
             return bookmark;
@@ -546,23 +549,27 @@ impl FileBrowser {
     }
 
     pub fn main_widget(&self) -> HResult<&WillBeWidget<ListView<Files>>> {
-        let widget = match self.columns.get_main_widget()? {
+        let widget = self.columns.active_widget()?;
+
+        let widget = match widget {
             FileBrowserWidgets::FileList(filelist) => Ok(filelist),
-            _ => { return HError::wrong_widget("previewer", "filelist"); }
+            _ => { HError::wrong_widget("previewer", "filelist")? }
         };
         widget
     }
 
     pub fn main_widget_mut(&mut self) -> HResult<&mut WillBeWidget<ListView<Files>>> {
-        let widget = match self.columns.get_main_widget_mut()? {
+        let widget = self.columns.active_widget_mut()?;
+
+        let widget = match widget {
             FileBrowserWidgets::FileList(filelist) => Ok(filelist),
-            _ => { return HError::wrong_widget("previewer", "filelist"); }
+            _ => { HError::wrong_widget("previewer", "filelist")? }
         };
         widget
     }
 
     pub fn left_widget(&self) -> HResult<&WillBeWidget<ListView<Files>>> {
-        let widget = match self.columns.get_left_widget()? {
+        let widget = match self.columns.widgets.get(0)? {
             FileBrowserWidgets::FileList(filelist) => Ok(filelist),
             _ => { return HError::wrong_widget("previewer", "filelist"); }
         };
@@ -570,7 +577,7 @@ impl FileBrowser {
     }
 
     pub fn left_widget_mut(&mut self) -> HResult<&mut WillBeWidget<ListView<Files>>> {
-        let widget = match self.columns.get_left_widget_mut()? {
+        let widget = match self.columns.widgets.get_mut(0)? {
             FileBrowserWidgets::FileList(filelist) => Ok(filelist),
             _ => { return HError::wrong_widget("previewer", "filelist"); }
         };
@@ -578,17 +585,30 @@ impl FileBrowser {
     }
 
     pub fn preview_widget(&self) -> HResult<&Previewer> {
-        match self.columns.get_right_widget()? {
+        match self.columns.widgets.get(2)? {
             FileBrowserWidgets::Previewer(previewer) => Ok(previewer),
             _ => { return HError::wrong_widget("filelist", "previewer"); }
         }
     }
 
     pub fn preview_widget_mut(&mut self) -> HResult<&mut Previewer> {
-        match self.columns.get_right_widget_mut()? {
+        match self.columns.widgets.get_mut(2)? {
             FileBrowserWidgets::Previewer(previewer) => Ok(previewer),
             _ => { return HError::wrong_widget("filelist", "previewer"); }
         }
+    }
+
+    pub fn toggle_colums(&mut self) -> HResult<()> {
+        self.show_columns = !self.show_columns;
+
+        if !self.show_columns {
+            self.columns.set_ratios(vec![1,99,1]);
+            self.left_widget_mut()?.set_stale().log();
+            self.preview_widget_mut()?.set_stale().log()
+        }
+
+        self.core.set_dirty();
+        self.refresh()
     }
 
     pub fn quit_with_dir(&self) -> HResult<()> {
@@ -613,7 +633,7 @@ impl FileBrowser {
 
         match dir {
             Ok(dir) => {
-                self.columns.widgets.widgets.clear();
+                self.columns.widgets.clear();
                 let cwd = File::new_from_path(&std::path::PathBuf::from(&dir))?;
                 self.cwd = cwd;
                 let dir = std::path::PathBuf::from(&dir);
@@ -710,7 +730,7 @@ impl FileBrowser {
         let shell = std::env::var("SHELL").unwrap_or("bash".into());
         let status = std::process::Command::new(&shell).status();
 
-        self.core.screen.reset_screen();
+        self.core.screen.reset_screen().log();
 
 
         self.core.get_sender().send(Events::InputEnabled(true))?;
@@ -815,19 +835,20 @@ impl Widget for FileBrowser {
     }
     fn refresh(&mut self) -> HResult<()> {
         //self.proc_view.lock()?.set_coordinates(self.get_coordinates()?);
-        self.set_title().ok();
-        self.handle_dir_events().ok();
-        self.columns.refresh().ok();
+        self.set_title().log();
+        self.handle_dir_events().log();
+        self.columns.refresh().log();
         self.set_left_selection().log();
         self.save_selection().log();
-        self.set_cwd().ok();
-        self.update_watches().ok();
-        self.update_preview().ok();
-        self.columns.refresh().ok();
+        self.set_cwd().log();
+        self.update_watches().log();
+        self.update_preview().log();
+        self.columns.refresh().log();
         Ok(())
     }
 
     fn get_drawlist(&self) -> HResult<String> {
+        return self.columns.get_drawlist();
         let left = self.left_widget()?.get_drawlist()?;
         let main = self.main_widget()?.get_drawlist()?;
         let prev = self.preview_widget()?.get_drawlist()?;

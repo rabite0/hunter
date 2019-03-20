@@ -102,10 +102,21 @@ impl<T> HBox<T> where T: Widget + PartialEq {
         Ok(coords)
     }
 
-    pub fn active_widget(&self) -> &T {
-        &self.widgets.last().unwrap()
+    pub fn set_active(&mut self, i: usize) -> HResult<()> {
+        if i+1 > self.widgets.len() {
+            HError::no_widget()?
+        }
+        self.active = Some(i);
+        Ok(())
     }
 
+    pub fn active_widget(&self) -> Option<&T> {
+        self.widgets.get(self.active?)
+    }
+
+    pub fn active_widget_mut(&mut self) -> Option<&mut T> {
+        self.widgets.get_mut(self.active?)
+    }
 }
 
 
@@ -125,7 +136,7 @@ impl<T> Widget for HBox<T> where T: Widget + PartialEq {
     }
 
     fn render_header(&self) -> HResult<String> {
-        self.active_widget().render_header()
+        self.active_widget()?.render_header()
     }
 
     fn refresh(&mut self) -> HResult<()> {
