@@ -297,17 +297,23 @@ impl ListView<Files>
     }
 
     fn multi_select_file(&mut self) {
-        let file = self.selected_file_mut();
-        file.toggle_selection();
+        self.selected_file_mut().toggle_selection();
+
+        let selection = self.get_selection();
+        let line = self.render_line(self.selected_file());
+        self.buffer[selection] = line;
+
         self.move_down();
-        self.core.set_dirty();
-        self.refresh().log();
     }
 
     fn toggle_tag(&mut self) -> HResult<()> {
         self.selected_file_mut().toggle_tag()?;
+
+        let selection = self.get_selection();
+        let line = self.render_line(self.selected_file());
+        self.buffer[selection] = line;
+
         self.move_down();
-        self.core.set_dirty();
         Ok(())
     }
 
