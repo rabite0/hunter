@@ -83,6 +83,10 @@ impl<T: Send + 'static> WillBe<T> where {
         Ok(())
     }
 
+    pub fn is_stale(&self) -> HResult<bool> {
+        is_stale(&self.stale)
+    }
+
     pub fn take(&mut self) -> HResult<T> {
         self.check()?;
         Ok(self.thing.lock()?.take()?)
@@ -154,19 +158,27 @@ impl<T: Widget + Send + 'static> WillBeWidget<T> {
         self.willbe = willbe;
         Ok(())
     }
+
     pub fn set_stale(&mut self) -> HResult<()> {
         self.willbe.set_stale()
     }
+
+    pub fn is_stale(&self) -> HResult<bool> {
+        self.willbe.is_stale()
+    }
+
     pub fn widget(&self) -> HResult<Arc<Mutex<Option<T>>>> {
         self.willbe.check()?;
         Ok(self.willbe.thing.clone())
     }
+
     pub fn ready(&self) -> bool {
         match self.willbe.check() {
             Ok(_) => true,
             _ => false
         }
     }
+
     pub fn take(&mut self) -> HResult<T> {
         self.willbe.take()
     }
@@ -223,9 +235,11 @@ impl<T: Widget + Send + 'static> Widget for WillBeWidget<T> {
             let pos = crate::term::goto_xy(xpos, ypos);
             return Ok(clear + &pos + "...")
         }
-        if is_stale(&self.willbe.stale)? {
+
+        if self.is_stale()? {
             return self.get_clearlist()
         }
+
         let widget = self.widget()?;
         let widget = widget.lock()?;
         let widget = widget.as_ref()?;
@@ -280,6 +294,10 @@ impl Previewer {
         let coordinates = self.get_coordinates().unwrap().clone();
         self.widget =  widget.unwrap();
         self.widget.set_coordinates(&coordinates).ok();
+    }
+
+    pub fn set_stale(&mut self) -> HResult<()> {
+        self.widget.set_stale()
     }
 
     pub fn set_file(&mut self,

@@ -9,6 +9,7 @@ pub struct HBox<T: Widget> {
     pub core: WidgetCore,
     pub widgets: Vec<T>,
     pub ratios: Option<Vec<usize>>,
+    pub zoom_active: bool,
     pub active: Option<usize>,
 }
 
@@ -18,6 +19,7 @@ impl<T> HBox<T> where T: Widget + PartialEq {
         HBox { core: core.clone(),
                widgets: vec![],
                ratios: None,
+               zoom_active: false,
                active: None
          }
     }
@@ -26,6 +28,12 @@ impl<T> HBox<T> where T: Widget + PartialEq {
     pub fn resize_children(&mut self) -> HResult<()> {
         let len = self.widgets.len();
         if len == 0 { return Ok(()) }
+
+        if self.zoom_active {
+            let coords = self.core.coordinates.clone();
+            self.active_widget_mut()?.set_coordinates(&coords).log();
+            return Ok(());
+        }
 
         let coords: Vec<Coordinates> = self.calculate_coordinates()?;
 
@@ -48,6 +56,12 @@ impl<T> HBox<T> where T: Widget + PartialEq {
 
     pub fn prepend_widget(&mut self, widget: T) {
         self.widgets.insert(0, widget);
+    }
+
+    pub fn toggle_zoom(&mut self) -> HResult<()> {
+        self.clear().log();
+        self.zoom_active = !self.zoom_active;
+        self.resize_children()
     }
 
     pub fn set_ratios(&mut self, ratios: Vec<usize>) {
@@ -140,6 +154,11 @@ impl<T> Widget for HBox<T> where T: Widget + PartialEq {
     }
 
     fn refresh(&mut self) -> HResult<()> {
+        if self.zoom_active {
+            self.active_widget_mut()?.refresh().log();
+            return Ok(());
+        }
+
         self.resize_children().log();
         for child in &mut self.widgets {
             child.refresh().log();
@@ -148,13 +167,17 @@ impl<T> Widget for HBox<T> where T: Widget + PartialEq {
     }
 
     fn get_drawlist(&self) -> HResult<String> {
+        if self.zoom_active {
+            return self.active_widget()?.get_drawlist();
+        }
+
         Ok(self.widgets.iter().map(|child| {
-            child.get_drawlist().unwrap()
+            child.get_drawlist().log_and().unwrap_or_else(|_| String::new())
         }).collect())
     }
 
     fn on_event(&mut self, event: Event) -> HResult<()> {
-        self.widgets.last_mut()?.on_event(event)?;
+        self.active_widget_mut()?.on_event(event)?;
         Ok(())
     }
 }

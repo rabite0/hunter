@@ -29,6 +29,8 @@ pub enum HError {
     PreviewFailed{file: String, backtrace: Backtrace},
     #[fail(display = "StalePreviewer for file: {}", file)]
     StalePreviewError{file: String},
+    #[fail(display = "Accessed stale value")]
+    StaleError(Backtrace),
     #[fail(display = "Failed: {}", error)]
     Error{#[cause] error: failure::Error , backtrace: Backtrace},
     #[fail(display = "Was None!")]
@@ -120,6 +122,10 @@ impl HError {
     pub fn terminal_resized<T>() -> HResult<T> {
         Err(HError::TerminalResizedError)
     }
+
+    pub fn stale<T>() -> HResult<T> {
+        Err(HError::StaleError(Backtrace::new()))
+    }
 }
 
 
@@ -138,7 +144,8 @@ pub fn put_log<L: Into<LogEntry>>(log: L) -> HResult<()> {
 }
 
 pub trait ErrorLog where Self: Sized {
-    fn log(self) {}
+    fn log(self);
+    fn log_and(self) -> Self;
 }
 
 impl<T> ErrorLog for HResult<T> {
@@ -147,6 +154,13 @@ impl<T> ErrorLog for HResult<T> {
             // eprintln!("{:?}", err);
             put_log(&err).ok();
         }
+    }
+
+    fn log_and(self) -> Self {
+        if let Err(err) = &self {
+            put_log(err).ok();
+        }
+        self
     }
 }
 

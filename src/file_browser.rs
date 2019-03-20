@@ -11,7 +11,6 @@ use std::ffi::{OsString, OsStr};
 
 use crate::files::{File, Files, PathBufExt, OsStrTools};
 use crate::listview::ListView;
-//use crate::miller_columns::MillerColumns;
 use crate::hbox::HBox;
 use crate::widget::Widget;
 use crate::dirty::Dirtyable;
@@ -598,17 +597,8 @@ impl FileBrowser {
         }
     }
 
-    pub fn toggle_colums(&mut self) -> HResult<()> {
-        self.show_columns = !self.show_columns;
-
-        if !self.show_columns {
-            self.columns.set_ratios(vec![1,99,1]);
-            self.left_widget_mut()?.set_stale().log();
-            self.preview_widget_mut()?.set_stale().log()
-        }
-
-        self.core.set_dirty();
-        self.refresh()
+    pub fn toggle_colums(&mut self) {
+        self.columns.toggle_zoom().log();
     }
 
     pub fn quit_with_dir(&self) -> HResult<()> {
@@ -842,18 +832,13 @@ impl Widget for FileBrowser {
         self.save_selection().log();
         self.set_cwd().log();
         self.update_watches().log();
-        self.update_preview().log();
+        if !self.columns.zoom_active { self.update_preview().log(); }
         self.columns.refresh().log();
         Ok(())
     }
 
     fn get_drawlist(&self) -> HResult<String> {
-        return self.columns.get_drawlist();
-        let left = self.left_widget()?.get_drawlist()?;
-        let main = self.main_widget()?.get_drawlist()?;
-        let prev = self.preview_widget()?.get_drawlist()?;
-
-        Ok(left + &main + &prev)
+        self.columns.get_drawlist()
     }
 
     fn on_key(&mut self, key: Key) -> HResult<()> {
@@ -868,9 +853,10 @@ impl Widget for FileBrowser {
             Key::Char('w') => { self.proc_view.lock()?.popup()?; },
             Key::Char('l') => self.log_view.lock()?.popup()?,
             Key::Char('z') => self.run_subshell()?,
+            Key::Char('c') => self.toggle_colums(),
             _ => { self.main_widget_mut()?.on_key(key)?; },
         }
-        self.update_preview()?;
+        if !self.columns.zoom_active { self.update_preview().log(); }
         Ok(())
     }
 }
