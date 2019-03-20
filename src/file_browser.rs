@@ -397,6 +397,16 @@ impl FileBrowser {
 
     pub fn update_preview(&mut self) -> HResult<()> {
         if !self.main_widget()?.ready() { return Ok(()) }
+        if self.main_widget()?
+            .widget()?
+            .lock()?
+            .as_ref()
+            .unwrap()
+            .content
+            .len() == 0 {
+                self.preview_widget_mut()?.set_stale();
+                return Ok(());
+            }
         let file = self.selected_file()?.clone();
         let selection = self.get_selection(&file).ok().cloned();
         let cached_files = self.get_cached_files(&file).ok();

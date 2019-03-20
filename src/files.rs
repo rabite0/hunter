@@ -61,6 +61,7 @@ pub struct Files {
     pub dirs_first: bool,
     pub reverse: bool,
     pub show_hidden: bool,
+    pub filter: Option<String>,
     pub dirty: DirtyBit
 }
 
@@ -104,6 +105,7 @@ impl Files {
             dirs_first: true,
             reverse: false,
             show_hidden: true,
+            filter: None,
             dirty: DirtyBit::new()
         };
 
@@ -148,6 +150,7 @@ impl Files {
             dirs_first: true,
             reverse: false,
             show_hidden: true,
+            filter: None,
             dirty: DirtyBit::new()
         };
 
@@ -295,8 +298,25 @@ impl Files {
         }
     }
 
+    pub fn set_filter(&mut self, filter: Option<String>) {
+        self.filter = filter;
+        self.set_dirty();
+    }
+
+    pub fn get_filter(&self) -> Option<String> {
+        self.filter.clone()
+    }
+
     pub fn len(&self) -> usize {
-        self.files.len()
+        match &self.filter {
+            None => self.files.len(),
+            Some(filter) => {
+                self.files
+                    .iter()
+                    .filter(|f| f.name.contains(filter))
+                    .count()
+            }
+        }
     }
 
     pub fn get_selected(&self) -> Vec<&File> {

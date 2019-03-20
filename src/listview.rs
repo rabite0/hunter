@@ -51,6 +51,7 @@ impl Listable for ListView<Files> {
                 self.refresh()?;
             },
             Key::Ctrl('s') => { self.find_file().ok(); }
+            Key::Char('F') => { self.filter().log(); }
             Key::Left => self.goto_grand_parent()?,
             Key::Right => self.goto_selected()?,
             Key::Char(' ') => self.multi_select_file(),
@@ -331,6 +332,17 @@ impl ListView<Files>
         Ok(())
     }
 
+    fn filter(&mut self) -> HResult<()> {
+        let filter = self.minibuffer("filter").ok();
+        self.content.set_filter(filter);
+
+
+        if self.get_selection() > self.len() {
+            self.set_selection(self.len());
+        }
+        Ok(())
+    }
+
     fn render_line(&self, file: &File) -> String {
         let name = &file.name;
         let (size, unit) = file.calculate_size().unwrap_or((0, "".to_string()));
@@ -391,11 +403,19 @@ impl ListView<Files>
     }
 
     fn render(&self) -> Vec<String> {
-        self.content
-            .files
-            .iter()
-            .map(|file| self.render_line(&file))
-            .collect()
+        match self.content.get_filter() {
+            Some(filter) => self.content
+                .files
+                .iter()
+                .filter(|f| f.name.contains(&filter))
+                .map(|file| self.render_line(&file))
+                .collect(),
+            None => self.content
+                .files
+                .iter()
+                .map(|file| self.render_line(&file))
+                .collect()
+        }
     }
 }
 

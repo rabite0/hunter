@@ -303,8 +303,8 @@ impl Previewer {
     pub fn set_file(&mut self,
                     file: &File,
                     selection: Option<File>,
-                    cached_files: Option<Files>) {
-        if Some(file) == self.file.as_ref() { return }
+                    cached_files: Option<Files>) -> HResult<()> {
+        if Some(file) == self.file.as_ref() && !self.widget.is_stale()? { return Ok(()) }
         self.file = Some(file.clone());
         self.selection = selection.clone();
         self.cached_files = cached_files.clone();
@@ -345,6 +345,7 @@ impl Previewer {
                 return Ok(blank)
             }
         }))));
+        Ok(())
     }
 
     pub fn reload(&mut self) {
