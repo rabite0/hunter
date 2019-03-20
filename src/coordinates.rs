@@ -60,6 +60,10 @@ impl Coordinates {
         (self.position.0).1 = y;
     }
 
+    pub fn xsize_u(&self) -> usize {
+        self.size.size_u().0
+    }
+
     pub fn xsize(&self) -> u16 {
         self.size.xsize()
     }
@@ -115,7 +119,7 @@ impl Size {
     }
     pub fn size_u(&self) -> (usize, usize) {
         let (xsize, ysize) = self.0;
-        (xsize as usize, ysize as usize)
+        ((xsize-1) as usize, (ysize-1) as usize)
     }
     pub fn xsize(&self) -> u16 {
         (self.0).0
@@ -131,7 +135,7 @@ impl Position {
     }
     pub fn position_u(&self) -> (usize, usize) {
         let (xpos, ypos) = self.0;
-        (xpos as usize, ypos as usize)
+        ((xpos-1) as usize, (ypos-1) as usize)
     }
     pub fn x(&self) -> u16 {
         (self.0).0

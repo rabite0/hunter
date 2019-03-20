@@ -44,15 +44,21 @@ impl Foldable for LogEntry {
 impl From<&HError> for LogEntry {
     fn from(from: &HError) -> LogEntry {
         let time: DateTime<Local> = Local::now();
+
+        let logcolor = match from {
+            HError::Log(_) => term::normal_color(),
+            _ => term::color_red()
+        };
+
         let description = format!("{}{}{}: {}",
                                   term::color_green(),
                                   time.format("%F %R"),
-                                  term::color_red(),
+                                  logcolor,
                                   from).lines().take(1).collect();
         let mut content = format!("{}{}{}: {}\n",
                                   term::color_green(),
                                   time.format("%F %R"),
-                                  term::color_red(),
+                                  logcolor,
                                   from);
 
 
@@ -93,7 +99,7 @@ impl FoldableWidgetExt for  ListView<Vec<LogEntry>> {
 
     fn render_header(&self) -> HResult<String> {
         let (xsize, _) = self.core.coordinates.size_u();
-        let current = self.current_fold().unwrap_or(0);
+        let current = self.current_fold().map(|n| n+1).unwrap_or(0);
         let num = self.content.len();
         let hint = format!("{} / {}", current, num);
         let hint_xpos = xsize - hint.len();
@@ -118,12 +124,17 @@ impl FoldableWidgetExt for  ListView<Vec<LogEntry>> {
             let hint_xpos = xsize - line_hint.len();
             let hint_ypos = ysize + ypos + 1;
 
-            let footer = format!("LogEntry: {}{}{}{}{}",
-                                 description,
+            let sized_description = term::sized_string_u(&description,
+                                                         xsize
+                                                         - (line_hint.len()+2));
+
+            let footer = format!("{}{}{}{}{}",
+                                 sized_description,
                                  term::reset(),
                                  term::status_bg(),
                                  term::goto_xy_u(hint_xpos, hint_ypos),
                                  line_hint);
+
             Ok(footer)
         } else { Ok("No log entries".to_string()) }
     }

@@ -69,9 +69,14 @@ pub enum HError {
     WidgetUndefinedKeyError{key: Key},
     #[fail(display = "Terminal has been resized!")]
     TerminalResizedError,
+    #[fail(display = "{}", _0)]
+    Log(String)
 }
 
 impl HError {
+    pub fn log(log: String) -> HResult<()> {
+        Err(HError::Log(log))
+    }
     pub fn quit() -> HResult<()> {
         Err(HError::Quit)
     }

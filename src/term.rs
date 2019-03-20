@@ -163,9 +163,13 @@ fn is_ansi(ansi_pos: &Vec<(usize, usize)>, char_pos: &usize) -> bool {
 
 fn ansi_len_at(ansi_pos: &Vec<(usize, usize)>, char_pos: &usize) -> usize {
     ansi_pos.iter().fold(0, |len, (start, end)| {
-        if char_pos >= end {
-            len + (end-start)
-        } else { len }
+        if char_pos >= start && char_pos <= end {
+            len + (char_pos - start)
+        } else if char_pos >= end {
+            len + (end - start)
+        } else {
+            len
+        }
     })
 }
 
@@ -174,18 +178,19 @@ pub fn sized_string_u(string: &str, xsize: usize) -> String {
         (m.start(), m.end())
     }).collect();
 
-    let sized = string.chars().enumerate().fold("".to_string(), |acc, (i, ch)| {
+    let sized = string.chars().fold(String::new(), |acc, ch| {
         let width: usize = unicode_width::UnicodeWidthStr::width_cjk(acc.as_str());
-        let ansi_len = ansi_len_at(&ansi_pos, &i);
+        let ansi_len = ansi_len_at(&ansi_pos, &acc.len());
+        let unprinted = acc.len() - width;
 
-        if width >= xsize as usize + ansi_len {
+        if width + unprinted >= xsize + ansi_len + 1{
             acc
         } else {
             acc + &ch.to_string()
         }
 
     });
-    let ansi_len = ansi_len_at(&ansi_pos, &(sized.len().saturating_sub(1)));
+    let ansi_len = ansi_len_at(&ansi_pos, &sized.len());
     let padded = format!("{:padding$}", sized, padding=xsize + ansi_len + 1);
     padded
 }

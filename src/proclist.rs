@@ -12,6 +12,7 @@ use crate::listview::{Listable, ListView};
 use crate::textview::TextView;
 use crate::widget::{Widget, Events, WidgetCore};
 use crate::coordinates::Coordinates;
+use crate::dirty::Dirtyable;
 use crate::hbox::HBox;
 use crate::preview::WillBeWidget;
 use crate::fail::{HResult, HError, ErrorLog};
@@ -90,12 +91,11 @@ impl Process {
                         format!("{}{}", term::color_red(), proc_status)
                     };
 
-                let status = format!("Process: {}:{} exited {}{}{} with status: {}",
+                let status = format!("Process: {}:{} exited {}{} with status: {}",
                                      cmd,
                                      pid,
                                      color_success,
-                                     term::reset(),
-                                     term::status_bg(),
+                                     term::normal_color(),
                                      color_status);
                 sender.send(Events::Status(status))?;
             }
@@ -112,6 +112,10 @@ impl Listable for ListView<Vec<Process>> {
         self.content.iter().map(|proc| {
             self.render_proc(proc).unwrap()
         }).collect()
+    }
+    fn on_refresh(&mut self) -> HResult<()> {
+        self.core.set_dirty();
+        Ok(())
     }
 }
 
@@ -385,6 +389,7 @@ impl Widget for ProcView {
     fn render_footer(&self) -> HResult<String> {
         let listview = self.get_listview();
         let selection = listview.get_selection();
+        let xsize = self.core.coordinates.xsize_u();
 
         if let Some(proc) = listview.content.get(selection) {
             let cmd = &proc.cmd;
@@ -409,7 +414,7 @@ impl Widget for ProcView {
                         }
                     } else { "wtf".to_string() };
 
-                let procinfo = format!("Process: {}:{} exited {}{}{} with status: {}",
+                let procinfo = format!("{}:{} exited {}{}{} with status: {}",
                                      cmd,
                                      pid,
                                      color_success,
@@ -419,7 +424,7 @@ impl Widget for ProcView {
                 procinfo
             } else { "still running".to_string() };
 
-            let footer = format!("{}: {}", cmd, procinfo);
+            let footer = term::sized_string_u(&procinfo, xsize);
 
             Ok(footer)
         } else { Ok("No proccesses".to_string()) }

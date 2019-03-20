@@ -373,9 +373,12 @@ pub trait Widget {
     }
 
     fn show_status(&self, status: &str) -> HResult<()> {
+        let xsize = self.get_core()?.coordinates.xsize_u();
+        let sized_status = term::sized_string_u(status, xsize);
+        HError::log(status.to_string()).log();
         {
             let mut status_content = self.get_core()?.status_bar_content.lock()?;
-            *status_content = Some(status.to_string());
+            *status_content = Some(sized_status);
         }
         self.draw_status()?;
         Ok(())
