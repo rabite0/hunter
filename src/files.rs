@@ -9,7 +9,10 @@ use std::ffi::{OsStr, OsString};
 
 use lscolors::LsColors;
 use mime_detective;
-use users;
+use users::{get_current_username,
+            get_current_groupname,
+            get_user_by_uid,
+            get_group_by_gid};
 use chrono::TimeZone;
 use failure::Error;
 use notify::DebouncedEvent;
@@ -551,6 +554,35 @@ impl File {
             Ok(())
         });
         Ok(())
+    }
+
+    pub fn is_readable(&self) -> HResult<bool> {
+        let meta = self.meta()?;
+        let current_user = get_current_username()?.to_string_lossy().to_string();
+        let current_group = get_current_groupname()?.to_string_lossy().to_string();
+        let file_user = get_user_by_uid(meta.uid())?
+            .name()
+            .to_string_lossy()
+            .to_string();
+        let file_group = get_group_by_gid(meta.gid())?
+            .name()
+            .to_string_lossy()
+            .to_string();
+        let perms = meta.mode();
+
+        let user_readable = perms & 0o400;
+        let group_readable = perms & 0o040;
+        let other_readable = perms & 0o004;
+
+        if current_user == file_user && user_readable > 0 {
+            Ok(true)
+        } else if current_group == file_group && group_readable > 0 {
+            Ok(true)
+        } else if other_readable > 0 {
+            Ok(true)
+        } else {
+            Ok(false)
+        }
     }
 
     pub fn pretty_print_permissions(&self) -> HResult<String> {

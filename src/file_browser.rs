@@ -19,6 +19,7 @@ use crate::fail::{HResult, HError, ErrorLog};
 use crate::widget::{Events, WidgetCore};
 use crate::proclist::ProcView;
 use crate::bookmarks::BMPopup;
+use crate::term;
 use crate::term::ScreenExt;
 use crate::foldview::LogView;
 use crate::coordinates::Coordinates;
@@ -271,9 +272,16 @@ impl FileBrowser {
     }
 
     pub fn main_widget_goto(&mut self, dir: &File) -> HResult<()> {
-        if dir.read_dir().is_err() {
-            self.show_status("Can't enter! Permission denied!").log();
-            return Ok(());
+        match dir.is_readable() {
+            Ok(true) => {},
+            Ok(false) => {
+                let status =
+                    format!("{}Stop right there, cowboy! Check your permisions!",
+                            term::color_red());
+                self.show_status(&status).log();
+                return Ok(());
+            }
+            err @ Err(_) => err.log()
         }
 
         let dir = dir.clone();
