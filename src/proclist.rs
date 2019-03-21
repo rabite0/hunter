@@ -547,17 +547,17 @@ impl Widget for ProcView {
     fn on_key(&mut self, key: Key) -> HResult<()> {
         match key {
             Key::Char('w') => { return Err(HError::PopupFinnished) }
-            Key::Char('d') => { self.remove_proc()? }
-            Key::Char('k') => { self.get_listview_mut().kill_proc()? }
-            Key::Up | Key::Char('p') => {
+            Key::Char('D') => { self.remove_proc()? }
+            Key::Char('d') => { self.get_listview_mut().kill_proc()? }
+            Key::Up | Key::Char('k') => {
                 self.get_listview_mut().move_up();
             }
-            Key::Down | Key::Char('n') => {
+            Key::Down | Key::Char('j') => {
                 self.get_listview_mut().move_down();
             }
             Key::Char('f') => { self.toggle_follow().log(); }
-            Key::Ctrl('n') => { self.scroll_down().log(); },
-            Key::Ctrl('p') => { self.scroll_up().log(); },
+            Key::Ctrl('j') => { self.scroll_down().log(); },
+            Key::Ctrl('k') => { self.scroll_up().log(); },
             Key::Ctrl('v') => { self.page_down().log(); },
             Key::Alt('v') => { self.page_up().log(); },
             Key::Char('>') => { self.scroll_bottom().log(); },
