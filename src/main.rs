@@ -39,7 +39,6 @@ mod textview;
 mod widget;
 mod hbox;
 mod tabview;
-mod async_widget;
 mod fail;
 mod minibuffer;
 mod proclist;
