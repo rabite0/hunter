@@ -50,7 +50,8 @@ impl Listable for ListView<Files> {
                 self.move_down();
                 self.refresh()?;
             },
-            Key::Ctrl('s') => { self.find_file().ok(); }
+            Key::Char('S') => { self.search_file().log(); }
+            Key::Alt('s') => { self.search_next().log(); }
             Key::Char('F') => { self.filter().log(); }
             Key::Left => self.goto_grand_parent()?,
             Key::Right => self.goto_selected()?,
@@ -78,6 +79,7 @@ pub struct ListView<T> where ListView<T>: Listable
     pub buffer: Vec<String>,
     pub core: WidgetCore,
     seeking: bool,
+    searching: Option<String>,
 }
 
 impl<T> ListView<T>
@@ -93,7 +95,8 @@ where
             offset: 0,
             buffer: Vec::new(),
             core: core.clone(),
-            seeking: false
+            seeking: false,
+            searching: None
         };
         view
     }
@@ -318,8 +321,8 @@ impl ListView<Files>
         Ok(())
     }
 
-    fn find_file(&mut self) -> HResult<()> {
-        let name = self.minibuffer("find")?;
+    fn search_file(&mut self) -> HResult<()> {
+        let name = self.minibuffer("search")?;
         let file = self.content.files.iter().find(|file| {
             if file.name.to_lowercase().contains(&name) {
                 true
@@ -329,13 +332,45 @@ impl ListView<Files>
         })?.clone();
 
         self.select_file(&file);
+        self.searching = Some(name);
+        Ok(())
+    }
+
+    fn search_next(&mut self) -> HResult<()> {
+        if self.searching.is_none() {
+            self.show_status("No search pattern set!").log();
+        }
+        let prev_search = self.searching.clone()?;
+        let selection = self.get_selection();
+
+        let file = self.content
+            .files
+            .iter()
+            .skip(selection+1)
+            .find(|file| {
+                if file.name.to_lowercase().contains(&prev_search) {
+                    true
+                } else {
+                    false
+                }
+            }).clone();
+
+        if let Some(file) = file {
+            let file = file.clone();
+            self.select_file(&file);
+        } else {
+            self.show_status("Reached last search result!").log();
+        }
         Ok(())
     }
 
     fn filter(&mut self) -> HResult<()> {
         let filter = self.minibuffer("filter").ok();
-        self.content.set_filter(filter);
 
+        let msgstr = filter.clone().unwrap_or(String::from(""));
+        self.show_status(&format!("Filtering with: \"{}\"", msgstr)).log();
+
+        self.content.set_filter(filter);
 
         if self.get_selection() > self.len() {
             self.set_selection(self.len());
