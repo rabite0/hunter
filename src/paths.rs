@@ -10,9 +10,15 @@ pub fn home_path() -> HResult<PathBuf> {
 }
 
 pub fn hunter_path() -> HResult<PathBuf> {
-    let mut config_dir = dirs_2::config_dir()?;
-    config_dir.push("hunter/");
-    Ok(config_dir)
+    let mut hunter_path = dirs_2::config_dir()?;
+    hunter_path.push("hunter/");
+    Ok(hunter_path)
+}
+
+pub fn config_path() -> HResult<PathBuf> {
+    let mut config_path = hunter_path()?;
+    config_path.push("config");
+    Ok(config_path)
 }
 
 pub fn bookmark_path() -> HResult<PathBuf> {

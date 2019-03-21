@@ -273,6 +273,25 @@ impl FileBrowser {
         Ok(())
     }
 
+    pub fn open_bg(&mut self) -> HResult<()> {
+        let cwd = self.cwd()?;
+        let file = self.selected_file()?;
+
+        let cmd = crate::proclist::Cmd {
+            cmd: OsString::from(file.strip_prefix(&cwd)),
+            short_cmd: None,
+            args: None,
+            cwd: cwd.clone(),
+            cwd_files: None,
+            tab_files: None,
+            tab_paths: None
+        };
+
+        self.proc_view.lock()?.run_proc_raw(cmd)?;
+
+        Ok(())
+    }
+
     pub fn main_widget_goto(&mut self, dir: &File) -> HResult<()> {
         match dir.is_readable() {
             Ok(true) => {},
@@ -665,58 +684,28 @@ impl FileBrowser {
     fn exec_cmd(&mut self,
                 tab_dirs: Vec<File>,
                 tab_files: Vec<Vec<File>>) -> HResult<()> {
-        let cwd = self.cwd()?;
-        let filename = self.selected_file()?.path.quoted_file_name()?;
+
+        let cwd = self.cwd()?.clone();
+        let selected_file = self.selected_file()?;
         let selected_files = self.selected_files()?;
 
-        let files = selected_files.iter()
-            .map(|f| f.path())
-            .collect::<Vec<PathBuf>>();
+        let cmd = self.minibuffer("exec")?.trim_start().to_string() + " ";
 
-        let cmd = self.minibuffer("exec")?.trim_start().to_string();
+        let cwd_files = if selected_files.len() == 0 {
+            vec![selected_file]
+        } else { selected_files };
 
-        let cmd = OsString::from(cmd);
-        let space = OsString::from(" ");
-
-        let mut cmd = if files.len() == 0 {
-            cmd.replace(&OsString::from("$s"), &filename)
-        } else {
-            let args = files.iter()
-                .fold(OsString::new(), |mut args, file| {
-                    if let Some(name) = file.quoted_file_name() {
-                        args.push(name);
-                        args.push(space.clone());
-                    }
-                    args
-                });
-            let args = args.trim_last_space();
-
-            cmd.replace(&OsString::from("$s"), &args)
+        let cmd = crate::proclist::Cmd {
+            cmd: OsString::from(cmd),
+            short_cmd: None,
+            args: None,
+            cwd: cwd,
+            cwd_files: Some(cwd_files),
+            tab_files: Some(tab_files),
+            tab_paths: Some(tab_dirs)
         };
 
-        for (i, tab_dir) in tab_dirs.iter().enumerate() {
-            if let Some(tab_files) = tab_files.get(i) {
-                let tab_file_identifier = OsString::from(format!("${}s", i));
-
-                let args = tab_files.iter()
-                    .fold(OsString::new(), |mut args, file| {
-                        let file_path = file.strip_prefix(&cwd);
-                        let name = file_path.quoted_path();
-                        args.push(name);
-                        args.push(space.clone());
-
-                        args
-                    });
-
-                cmd = cmd.replace(&tab_file_identifier, &args);
-            }
-
-            let tab_identifier = OsString::from(format!("${}", i));
-            let tab_path = tab_dir.path().into_os_string();
-            cmd = cmd.replace(&tab_identifier, &tab_path);
-        }
-
-        self.proc_view.lock()?.run_proc(&cmd)?;
+        self.proc_view.lock()?.run_proc_subshell(cmd)?;
 
         Ok(())
     }
@@ -856,6 +845,7 @@ impl Widget for FileBrowser {
             Key::Char('/') => { self.turbo_cd()?; },
             Key::Char('Q') => { self.quit_with_dir()?; },
             Key::Right | Key::Char('f') => { self.enter_dir()?; },
+            Key::Char('F') => { self.open_bg()?; },
             Key::Left | Key::Char('b') => { self.go_back()?; },
             Key::Char('-') => { self.goto_prev_cwd()?; },
             Key::Char('`') => { self.goto_bookmark()?; },

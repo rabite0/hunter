@@ -4,6 +4,7 @@ use std::process::Child;
 use std::os::unix::process::{CommandExt, ExitStatusExt};
 use std::io::{BufRead, BufReader};
 use std::ffi::OsString;
+use std::os::unix::ffi::{OsStringExt, OsStrExt};
 
 use termion::event::Key;
 use unicode_width::UnicodeWidthStr;
@@ -17,7 +18,7 @@ use crate::hbox::HBox;
 use crate::preview::WillBeWidget;
 use crate::fail::{HResult, HError, ErrorLog};
 use crate::term;
-use crate::files::OsStrTools;
+use crate::files::{File, OsStrTools};
 
 #[derive(Debug)]
 struct Process {
@@ -28,6 +29,75 @@ struct Process {
     success: Arc<Mutex<Option<bool>>>,
     sender: Sender<Events>
 
+}
+
+pub struct Cmd {
+    pub cmd: OsString,
+    pub args: Option<Vec<OsString>>,
+    pub short_cmd: Option<String>,
+    pub cwd: File,
+    pub cwd_files: Option<Vec<File>>,
+    pub tab_files: Option<Vec<Vec<File>>>,
+    pub tab_paths: Option<Vec<File>>,
+}
+
+impl Cmd {
+    fn process(&mut self) -> Vec<OsString> {
+        let cmd = self.cmd.clone().split(&OsString::from(" "));
+        let cmd = self.substitute_cwd_files(cmd);
+        let cmd = self.substitute_tab_files(cmd);
+        let cmd = self.substitute_tab_paths(cmd);
+        cmd
+    }
+
+    fn substitute_cwd_files(&mut self, cmd: Vec<OsString>) -> Vec<OsString> {
+        let cwd_pat = OsString::from("$s");
+        let cwd_files =  self.cwd_files
+            .take()
+            .unwrap()
+            .iter()
+            .map(|file| file.strip_prefix(&self.cwd).into_os_string())
+            .collect::<Vec<OsString>>();
+
+        cmd.iter()
+            .map(|part| part.splice_quoted(&cwd_pat,
+                                         cwd_files.clone()))
+            .flatten().collect()
+    }
+
+    fn substitute_tab_files(&mut self, cmd: Vec<OsString>) -> Vec<OsString> {
+        let tab_files = self.tab_files.take().unwrap();
+
+        tab_files.into_iter()
+            .enumerate()
+            .fold(cmd, |cmd, (i, tab_files)| {
+                let tab_files_pat = OsString::from(format!("${}s", i));
+                let tab_file_paths = tab_files.iter()
+                    .map(|file| file.strip_prefix(&self.cwd).into_os_string())
+                    .collect::<Vec<OsString>>();
+
+                cmd.iter().map(|part| {
+                    part.splice_quoted(&tab_files_pat,
+                                       tab_file_paths.clone())
+                }).flatten().collect()
+            })
+    }
+
+    fn substitute_tab_paths(&mut self, cmd: Vec<OsString>) -> Vec<OsString> {
+        let tab_paths = self.tab_paths.take().unwrap();
+
+        tab_paths.into_iter()
+            .enumerate()
+            .fold(cmd, |cmd, (i, tab_path)| {
+                let tab_path_pat = OsString::from(format!("${}", i));
+                let tab_path = tab_path.strip_prefix(&self.cwd).into_os_string();
+
+                cmd.iter().map(|part| {
+                    part.splice_quoted(&tab_path_pat,
+                                     vec![tab_path.clone()])
+                }).flatten().collect()
+            })
+    }
 }
 
 impl PartialEq for Process {
@@ -120,17 +190,44 @@ impl Listable for ListView<Vec<Process>> {
 }
 
 impl ListView<Vec<Process>> {
-    fn run_proc(&mut self, cmd: &OsString) -> HResult<()> {
+    fn run_proc_subshell(&mut self, mut cmd: Cmd) -> HResult<()> {
         let shell = std::env::var("SHELL").unwrap_or("sh".into());
         let home = crate::paths::home_path()?.into_os_string();
+
+        let cmd_args = cmd.process();
+
         let short = OsString::from("~");
-        let short_cmd = cmd.replace(&home, &short).to_string_lossy().to_string();
+        let short_cmd = cmd_args
+            .concat()
+            .replace(&home, &short)
+            .replace(&OsString::from("\""), &OsString::from(""))
+            .to_string_lossy()
+            .to_string();
 
         self.show_status(&format!("Running: {}", &short_cmd)).log();
 
-        let handle = std::process::Command::new(shell)
-            .arg("-c")
-            .arg(cmd)
+        let shell_args = cmd_args.concat();
+        let shell_args = vec![OsString::from("-c"), shell_args.clone()];
+
+        cmd.cmd = OsString::from(shell.clone());
+        cmd.args = Some(shell_args.clone());
+        cmd.short_cmd = Some(short_cmd);
+
+        self.run_proc_raw(cmd)
+    }
+
+    fn run_proc_raw(&mut self, cmd: Cmd) -> HResult<()> {
+        let real_cmd = cmd.cmd;
+        let short_cmd = cmd.short_cmd
+            .unwrap_or(real_cmd
+                       .to_string_lossy()
+                       .to_string());
+        let args = cmd.args.unwrap_or(vec![]);
+
+        self.show_status(&format!("Running: {}", &short_cmd)).log();
+
+        let handle = std::process::Command::new(real_cmd)
+            .args(args)
             .stdin(std::process::Stdio::null())
             .stdout(std::process::Stdio::piped())
             .before_exec(|| unsafe { libc::dup2(1, 2); Ok(()) })
@@ -289,8 +386,13 @@ impl ProcView {
         self.hbox.get_textview()
     }
 
-    pub fn run_proc(&mut self, cmd: &OsString) -> HResult<()> {
-        self.get_listview_mut().run_proc(cmd)?;
+    pub fn run_proc_subshell(&mut self, cmd: Cmd) -> HResult<()> {
+        self.get_listview_mut().run_proc_subshell(cmd)?;
+        Ok(())
+    }
+
+    pub fn run_proc_raw(&mut self, cmd: Cmd) -> HResult<()> {
+        self.get_listview_mut().run_proc_raw(cmd)?;
         Ok(())
     }
 
@@ -465,5 +567,52 @@ impl Widget for ProcView {
         self.refresh().log();
         self.draw().log();
         Ok(())
+    }
+}
+
+
+trait ConcatOsString {
+    fn concat(&self) -> OsString;
+    fn concat_quoted(&self) -> OsString;
+}
+
+impl ConcatOsString for Vec<OsString> {
+    fn concat(&self) -> OsString {
+        let len = self.len();
+        self.iter().enumerate().fold(OsString::new(), |string, (i, part)| {
+            let mut string = string.into_vec();
+            let mut space = " ".as_bytes().to_vec();
+            let mut part = part.clone().into_vec();
+
+            string.append(&mut part);
+
+            if i != len {
+                string.append(&mut space);
+            }
+
+            OsString::from_vec(string)
+        })
+    }
+
+    fn concat_quoted(&self) -> OsString {
+        let len = self.len();
+        self.iter().enumerate().fold(OsString::new(), |string, (i, part)| {
+            let mut string = string.into_vec();
+            let mut space = " ".as_bytes().to_vec();
+            let mut quote = "\"".as_bytes().to_vec();
+            let mut part = part.clone().into_vec();
+
+
+            string.append(&mut quote.clone());
+            string.append(&mut part);
+            string.append(&mut quote);
+
+
+            if i+1 != len {
+                string.append(&mut space);
+            }
+
+            OsString::from_vec(string)
+        })
     }
 }

@@ -517,6 +517,10 @@ impl File {
     }
 
     pub fn strip_prefix(&self, base: &File) -> PathBuf {
+        if self == base {
+            return PathBuf::from("./");
+        }
+
         let base_path = base.path.clone();
         match self.path.strip_prefix(base_path) {
             Ok(path) => PathBuf::from(path),
@@ -741,13 +745,105 @@ impl PathBufExt for PathBuf {
 }
 
 pub trait OsStrTools {
+    fn split(&self, pat: &OsStr) -> Vec<OsString>;
     fn replace(&self, from: &OsStr, to: &OsStr) -> OsString;
     fn trim_last_space(&self) -> OsString;
     fn contains_osstr(&self, pat: &OsStr) -> bool;
     fn position(&self, pat: &OsStr) -> Option<usize>;
+    fn splice_quoted(&self, from: &OsStr, to: Vec<OsString>) -> Vec<OsString>;
+    fn splice_with(&self, from: &OsStr, to: Vec<OsString>) -> Vec<OsString>;
+    fn quote(&self) -> OsString;
 }
 
 impl OsStrTools for OsStr {
+    fn split(&self, pat: &OsStr) -> Vec<OsString> {
+        let orig_string = self.as_bytes().to_vec();
+        let pat = pat.as_bytes().to_vec();
+        let pat_len = pat.len();
+
+        dbg!(&self);
+
+        let split_string = orig_string
+            .windows(pat_len)
+            .enumerate()
+            .fold(Vec::new(), |mut split_pos, (i, chars)| {
+                dbg!(&chars);
+                dbg!(&split_pos);
+                if chars == pat.as_slice() {
+                    if split_pos.len() == 0 {
+                        split_pos.push((0, i));
+                    } else {
+                        let len = split_pos.len();
+                        let last_split = split_pos[len-1].1;
+                        split_pos.push((last_split, i));
+                    }
+                }
+                split_pos
+            }).iter()
+            .map(|(start, end)| {
+                //let orig_string = orig_string.clone();
+                OsString::from_vec(orig_string[*start..*end]
+                                   .to_vec()).replace(&OsString::from_vec(pat.clone()),
+                                                      &OsString::from(""))
+            }).collect();
+        split_string
+    }
+
+
+    fn quote(&self) -> OsString {
+        let mut string = self.as_bytes().to_vec();
+        let mut quote = "\"".as_bytes().to_vec();
+
+        let mut quoted = vec![];
+        quoted.append(&mut quote.clone());
+        quoted.append(&mut string);
+        quoted.append(&mut quote);
+
+        OsString::from_vec(quoted)
+    }
+
+    fn splice_quoted(&self, from: &OsStr, to: Vec<OsString>) -> Vec<OsString> {
+        let quoted_to = to.iter()
+            .map(|to| to.quote())
+            .collect();
+        self.splice_with(from, quoted_to)
+    }
+
+    fn splice_with(&self, from: &OsStr, to: Vec<OsString>) -> Vec<OsString> {
+        let pos = self.position(from);
+
+        if pos.is_none() {
+            return vec![OsString::from(self)];
+        }
+
+        dbg!(&self);
+
+        let pos = pos.unwrap();
+        let string = self.as_bytes().to_vec();
+        let from = from.as_bytes().to_vec();
+        let fromlen = from.len();
+
+        let lpart = OsString::from_vec(string[0..pos].to_vec());
+        let rpart = OsString::from_vec(string[pos+fromlen..].to_vec());
+
+        dbg!(&lpart);
+        dbg!(&rpart);
+
+        let mut result = vec![
+            vec![lpart.trim_last_space()],
+            to,
+            vec![rpart]
+        ].into_iter()
+            .flatten()
+            .filter(|part| part.len() != 0)
+            .collect::<Vec<OsString>>();
+
+        if result.last() == Some(&OsString::from("")) {
+            result.pop();
+            result
+        } else { result }
+    }
+
     fn replace(&self, from: &OsStr, to: &OsStr) -> OsString {
         let orig_string = self.as_bytes().to_vec();
         let from = from.as_bytes();
