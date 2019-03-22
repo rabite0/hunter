@@ -15,7 +15,6 @@ use crate::widget::{Widget, Events, WidgetCore};
 use crate::coordinates::Coordinates;
 use crate::dirty::Dirtyable;
 use crate::hbox::HBox;
-use crate::preview::WillBeWidget;
 use crate::fail::{HResult, HError, ErrorLog};
 use crate::term;
 use crate::files::{File, OsStrTools};
@@ -299,7 +298,7 @@ impl ListView<Vec<Process>> {
 #[derive(PartialEq)]
 enum ProcViewWidgets {
     List(ListView<Vec<Process>>),
-    TextView(WillBeWidget<TextView>),
+    TextView(TextView),
 }
 
 impl Widget for ProcViewWidgets {
@@ -348,7 +347,7 @@ impl HBox<ProcViewWidgets> {
             _ => unreachable!()
         }
     }
-    fn get_textview(&mut self) -> &mut WillBeWidget<TextView> {
+    fn get_textview(&mut self) -> &mut TextView {
         match &mut self.widgets[1] {
             ProcViewWidgets::TextView(textview) => textview,
             _ => unreachable!()
@@ -360,8 +359,7 @@ impl ProcView {
     pub fn new(core: &WidgetCore) -> ProcView {
         let tcore = core.clone();
         let listview = ListView::new(&core, vec![]);
-        let textview = Box::new(move |_| Ok(TextView::new_blank(&tcore)));
-        let textview = WillBeWidget::new(&core, textview);
+        let textview = TextView::new_blank(&tcore);
         let mut hbox = HBox::new(&core);
         hbox.push_widget(ProcViewWidgets::List(listview));
         hbox.push_widget(ProcViewWidgets::TextView(textview));
@@ -382,7 +380,7 @@ impl ProcView {
         self.hbox.get_listview_mut()
     }
 
-    fn get_textview(&mut self) -> &mut WillBeWidget<TextView> {
+    fn get_textview(&mut self) -> &mut TextView {
         self.hbox.get_textview()
     }
 
@@ -399,13 +397,8 @@ impl ProcView {
     pub fn remove_proc(&mut self) -> HResult<()> {
         if self.get_listview_mut().content.len() == 0 { return Ok(()) }
         self.get_listview_mut().remove_proc()?;
-        self.get_textview().change_to(Box::new(move |_, core| {
-            let mut textview = TextView::new_blank(&core);
-            textview.refresh().log();
-            textview.animate_slide_up().log();
-            Ok(textview)
-        })).log();
-        Ok(())
+        self.get_textview().clear();
+        self.get_textview().set_text("")
     }
 
     fn show_output(&mut self) -> HResult<()> {
@@ -414,48 +407,45 @@ impl ProcView {
         }
         let output = self.get_listview_mut().selected_proc()?.output.lock()?.clone();
 
-        self.get_textview().change_to(Box::new(move |_, core| {
-            let mut textview = TextView::new_blank(&core);
-            textview.set_text(&output).log();
-            textview.animate_slide_up().log();
-            Ok(textview)
-        })).log();
+        self.get_textview().set_text(&output).log();
+        self.get_textview().animate_slide_up().log();
+
         self.viewing = Some(self.get_listview_mut().get_selection());
         Ok(())
     }
 
     pub fn toggle_follow(&mut self) -> HResult<()> {
-        self.get_textview().widget()?.lock()?.as_mut()?.toggle_follow();
+        self.get_textview().toggle_follow();
         Ok(())
     }
 
     pub fn scroll_up(&mut self) -> HResult<()> {
-        self.get_textview().widget()?.lock()?.as_mut()?.scroll_up();
+        self.get_textview().scroll_up();
         Ok(())
     }
 
     pub fn scroll_down(&mut self) -> HResult<()> {
-        self.get_textview().widget()?.lock()?.as_mut()?.scroll_down();
+        self.get_textview().scroll_down();
         Ok(())
     }
 
     pub fn page_up(&mut self) -> HResult<()> {
-        self.get_textview().widget()?.lock()?.as_mut()?.page_up();
+        self.get_textview().page_up();
         Ok(())
     }
 
     pub fn page_down(&mut self) -> HResult<()> {
-        self.get_textview().widget()?.lock()?.as_mut()?.page_down();
+        self.get_textview().page_down();
         Ok(())
     }
 
     pub fn scroll_top(&mut self) -> HResult<()> {
-        self.get_textview().widget()?.lock()?.as_mut()?.scroll_top();
+        self.get_textview().scroll_top();
         Ok(())
     }
 
     pub fn scroll_bottom(&mut self) -> HResult<()> {
-        self.get_textview().widget()?.lock()?.as_mut()?.scroll_bottom();
+        self.get_textview().scroll_bottom();
         Ok(())
     }
 }

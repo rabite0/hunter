@@ -1,7 +1,5 @@
 use std::sync::{Arc, Mutex};
 
-use failure::Backtrace;
-
 use crate::files::{File, Files, Kind};
 use crate::listview::ListView;
 use crate::textview::TextView;
@@ -10,9 +8,14 @@ use crate::coordinates::Coordinates;
 use crate::fail::{HResult, HError, ErrorLog};
 
 
+pub type Stale = Arc<Mutex<bool>>;
 
-type HClosure<T> = Box<Fn(Arc<Mutex<bool>>) -> Result<T, HError> + Send>;
-type HCClosure<T> = Box<Fn(Arc<Mutex<bool>>, WidgetCore) -> Result<T, HError> + Send>;
+pub type AsyncValueFn<T> = Box<Fn(Stale) -> HResult<T> + Send>;
+pub type AsyncValue<T> = Arc<Mutex<Option<HResult<T>>>>;
+pub type AsyncReadyFn<T> = Box<Fn(&mut T) -> HResult<()> + Send>;
+pub type AsyncWidgetFn<W> = Box<Fn(Stale, WidgetCore) -> HResult<W> + Send>;
+
+
 type WidgetO = Box<dyn Widget + Send>;
 
 lazy_static! {
@@ -33,49 +36,49 @@ pub fn is_stale(stale: &Arc<Mutex<bool>>) -> HResult<bool> {
     Ok(stale)
 }
 
-enum State {
-    Is,
-    Becoming,
-    Fail(HError)
+
+pub struct Async<T: Send> {
+    pub value: HResult<T>,
+    async_value: AsyncValue<T>,
+    async_closure: Option<AsyncValueFn<T>>,
+    on_ready: Arc<Mutex<Option<AsyncReadyFn<T>>>>,
+    stale: Stale
 }
 
-struct WillBe<T: Send> {
-    pub state: Arc<Mutex<State>>,
-    pub thing: Arc<Mutex<Option<T>>>,
-    on_ready: Arc<Mutex<Option<Box<Fn(Arc<Mutex<Option<T>>>) -> HResult<()> + Send>>>>,
-    stale: Arc<Mutex<bool>>
-}
+impl<T: Send + 'static> Async<T> {
+    pub fn new(closure: AsyncValueFn<T>)
+                  -> Async<T> {
+        let async_value = Async {
+            value: HError::async_not_ready(),
+            async_value: Arc::new(Mutex::new(None)),
+            async_closure: Some(closure),
+            on_ready: Arc::new(Mutex::new(None)),
+            stale: Arc::new(Mutex::new(false)) };
 
-impl<T: Send + 'static> WillBe<T> where {
-    pub fn new_become(closure: HClosure<T>)
-                  -> WillBe<T> {
-        let mut willbe = WillBe { state: Arc::new(Mutex::new(State::Becoming)),
-                                  thing: Arc::new(Mutex::new(None)),
-                                  on_ready: Arc::new(Mutex::new(None)),
-                                  stale: Arc::new(Mutex::new(false)) };
-        willbe.run(closure);
-        willbe
+        async_value
     }
 
-    fn run(&mut self, closure: HClosure<T>) {
-        let state = self.state.clone();
+    fn run(&mut self) -> HResult<()> {
+        let closure = self.async_closure.take()?;
+        let async_value = self.async_value.clone();
         let stale = self.stale.clone();
-        let thing = self.thing.clone();
         let on_ready_fn = self.on_ready.clone();
-        std::thread::spawn(move|| {
-            let got_thing = closure(stale);
-            match got_thing {
-                Ok(got_thing) => {
-                    *thing.lock().unwrap() = Some(got_thing);
-                    *state.lock().unwrap() = State::Is;
-                    match *on_ready_fn.lock().unwrap() {
-                        Some(ref on_ready) => { on_ready(thing.clone()).ok(); },
+
+        std::thread::spawn(move|| -> HResult<()> {
+            let value = closure(stale);
+            match value {
+                Ok(mut value) => {
+                    match *on_ready_fn.lock()? {
+                        Some(ref on_ready) => { on_ready(&mut value).log(); },
                         None => {}
                     }
+                    async_value.lock()?.replace(Ok(value));
                 },
-                Err(err) => *state.lock().unwrap() = State::Fail(err)
+                Err(err) => *async_value.lock()? = Some(Err(err))
             }
+            Ok(())
         });
+        Ok(())
     }
 
     pub fn set_stale(&mut self) -> HResult<()> {
@@ -87,23 +90,46 @@ impl<T: Send + 'static> WillBe<T> where {
         is_stale(&self.stale)
     }
 
-    pub fn take(&mut self) -> HResult<T> {
-        self.check()?;
-        Ok(self.thing.lock()?.take()?)
+    pub fn take_async(&mut self) -> HResult<()> {
+        if self.value.is_ok() { return Ok(()) }
+
+        let mut async_value = self.async_value.lock()?;
+        match async_value.as_ref() {
+            Some(Ok(_)) => {
+                let value = async_value.take()?;
+                self.value = value;
+            }
+            Some(Err(HError::AsyncAlreadyTakenError(..))) => HError::async_taken()?,
+            Some(Err(_)) => {
+                let value = async_value.take()?;
+                self.value = value;
+            }
+            None => HError::async_not_ready()?,
+        }
+        Ok(())
     }
 
-    pub fn check(&self) -> HResult<()> {
-        match *self.state.lock()? {
-            State::Is => Ok(()),
-            _ => Err(HError::WillBeNotReady(Backtrace::new()))
+    pub fn get(&self) -> HResult<&T> {
+        match self.value {
+            Ok(ref value) => Ok(value),
+            Err(ref err) => HError::async_error(err)
+        }
+    }
+
+    pub fn get_mut(&mut self) -> HResult<&mut T> {
+        self.take_async().ok();
+
+        match self.value {
+            Ok(ref mut value) => Ok(value),
+            Err(ref err) => HError::async_error(err)
         }
     }
 
     pub fn on_ready(&mut self,
-                    fun: Box<Fn(Arc<Mutex<Option<T>>>) -> HResult<()> + Send>)
+                    fun: AsyncReadyFn<T>)
                     -> HResult<()> {
-        if self.check().is_ok() {
-            fun(self.thing.clone())?;
+        if self.value.is_ok() {
+            fun(self.value.as_mut().unwrap())?;
         } else {
             *self.on_ready.lock()? = Some(fun);
         }
@@ -111,8 +137,8 @@ impl<T: Send + 'static> WillBe<T> where {
     }
 }
 
-impl<W: Widget + Send + 'static> PartialEq for WillBeWidget<W> {
-    fn eq(&self, other: &WillBeWidget<W>) -> bool {
+impl<W: Widget + Send + 'static> PartialEq for AsyncWidget<W> {
+    fn eq(&self, other: &AsyncWidget<W>) -> bool {
         if self.get_coordinates().unwrap() ==
             other.get_coordinates().unwrap() {
             true
@@ -122,65 +148,66 @@ impl<W: Widget + Send + 'static> PartialEq for WillBeWidget<W> {
     }
 }
 
-pub struct WillBeWidget<T: Widget + Send + 'static> {
-    willbe: WillBe<T>,
+
+pub struct AsyncWidget<W: Widget + Send + 'static> {
+    widget: Async<W>,
     core: WidgetCore
 }
 
-impl<T: Widget + Send + 'static> WillBeWidget<T> {
-    pub fn new(core: &WidgetCore, closure: HClosure<T>) -> WillBeWidget<T> {
+impl<W: Widget + Send + 'static> AsyncWidget<W> {
+    pub fn new(core: &WidgetCore, closure: AsyncValueFn<W>) -> AsyncWidget<W> {
         let sender = core.get_sender();
-        let mut willbe = WillBe::new_become(Box::new(move |stale| closure(stale)));
-        willbe.on_ready(Box::new(move |_| {
+        let mut widget = Async::new(Box::new(move |stale| closure(stale)));
+        widget.on_ready(Box::new(move |_| {
             sender.send(crate::widget::Events::WidgetReady)?;
-            Ok(()) })).ok();
+            Ok(())
+        })).log();
+        widget.run().log();
 
-        WillBeWidget {
-            willbe: willbe,
+        AsyncWidget {
+            widget: widget,
             core: core.clone()
         }
     }
-    pub fn change_to(&mut self, closure: HCClosure<T>) -> HResult<()> {
+    pub fn change_to(&mut self, closure: AsyncWidgetFn<W>) -> HResult<()> {
         self.set_stale().log();
 
         let sender = self.get_core()?.get_sender();
         let core = self.get_core()?.clone();
 
-        let mut willbe = WillBe::new_become(Box::new(move |stale| {
-            let core = core.clone();
-            closure(stale, core)
+        let mut widget = Async::new(Box::new(move |stale| {
+            closure(stale, core.clone())
         }));
-        willbe.on_ready(Box::new(move |_| {
+
+        widget.on_ready(Box::new(move |_| {
             sender.send(crate::widget::Events::WidgetReady)?;
             Ok(())
         }))?;
 
-        self.willbe = willbe;
+        widget.run().log();
+
+        self.widget = widget;
         Ok(())
     }
 
     pub fn set_stale(&mut self) -> HResult<()> {
-        self.willbe.set_stale()
+        self.widget.set_stale()
     }
 
     pub fn is_stale(&self) -> HResult<bool> {
-        self.willbe.is_stale()
+        self.widget.is_stale()
     }
 
-    pub fn widget(&self) -> HResult<Arc<Mutex<Option<T>>>> {
-        self.willbe.check()?;
-        Ok(self.willbe.thing.clone())
+    pub fn widget(&self) -> HResult<&W> {
+        self.widget.get()
+    }
+
+    pub fn widget_mut(&mut self) -> HResult<&mut W> {
+        self.widget.get_mut()
     }
 
     pub fn ready(&self) -> bool {
-        match self.willbe.check() {
-            Ok(_) => true,
-            _ => false
-        }
-    }
-
-    pub fn take(&mut self) -> HResult<T> {
-        self.willbe.take()
+        self.widget().is_ok()
     }
 }
 
@@ -195,7 +222,7 @@ impl<T: Widget + Send + 'static> WillBeWidget<T> {
     // }
 //}
 
-impl<T: Widget + Send + 'static> Widget for WillBeWidget<T> {
+impl<T: Widget + Send + 'static> Widget for AsyncWidget<T> {
     fn get_core(&self) -> HResult<&WidgetCore> {
         Ok(&self.core)
     }
@@ -205,22 +232,19 @@ impl<T: Widget + Send + 'static> Widget for WillBeWidget<T> {
 
     fn set_coordinates(&mut self, coordinates: &Coordinates) -> HResult<()> {
         self.core.coordinates = coordinates.clone();
-        if let Ok(widget) = self.widget() {
-            let mut widget = widget.lock()?;
-            let widget = widget.as_mut()?;
+        if let Ok(widget) = self.widget_mut() {
             widget.set_coordinates(&coordinates)?;
         }
         Ok(())
     }
 
     fn refresh(&mut self) -> HResult<()> {
-        let coords = self.get_coordinates()?;
-        if let Ok(widget) = self.widget() {
-            let mut widget = widget.lock()?;
-            let widget = widget.as_mut()?;
+        self.widget.take_async().log();
 
-            if widget.get_coordinates()? != coords {
-                widget.set_coordinates(self.get_coordinates()?)?;
+        let coords = self.get_coordinates()?.clone();
+        if let Ok(widget) = self.widget_mut() {
+            if widget.get_coordinates()? != &coords {
+                widget.set_coordinates(&coords)?;
                 widget.refresh()?;
             } else {
                 widget.refresh()?;
@@ -229,7 +253,7 @@ impl<T: Widget + Send + 'static> Widget for WillBeWidget<T> {
         Ok(())
     }
     fn get_drawlist(&self) -> HResult<String> {
-        if self.willbe.check().is_err() {
+        if self.widget().is_err() {
             let clear = self.get_clearlist()?;
             let (xpos, ypos) = self.get_coordinates()?.u16position();
             let pos = crate::term::goto_xy(xpos, ypos);
@@ -240,17 +264,11 @@ impl<T: Widget + Send + 'static> Widget for WillBeWidget<T> {
             return self.get_clearlist()
         }
 
-        let widget = self.widget()?;
-        let widget = widget.lock()?;
-        let widget = widget.as_ref()?;
-        widget.get_drawlist()
+        self.widget()?.get_drawlist()
     }
     fn on_key(&mut self, key: termion::event::Key) -> HResult<()> {
-        if self.willbe.check().is_err() { return Ok(()) }
-        let widget = self.widget()?;
-        let mut widget = widget.lock()?;
-        let widget = widget.as_mut()?;
-        widget.on_key(key)
+        if self.widget().is_err() { return Ok(()) }
+        self.widget_mut()?.on_key(key)
     }
 }
 
@@ -267,7 +285,7 @@ impl PartialEq for Previewer {
 }
 
 pub struct Previewer {
-    widget: WillBeWidget<Box<dyn Widget + Send>>,
+    widget: AsyncWidget<Box<dyn Widget + Send>>,
     core: WidgetCore,
     file: Option<File>,
     selection: Option<File>,
@@ -278,11 +296,10 @@ pub struct Previewer {
 impl Previewer {
     pub fn new(core: &WidgetCore) -> Previewer {
         let core_ = core.clone();
-        let willbe = WillBeWidget::new(&core, Box::new(move |_| {
-            Ok(Box::new(crate::textview::TextView::new_blank(&core_))
-               as Box<dyn Widget + Send>)
+        let widget = AsyncWidget::new(&core, Box::new(move |_| {
+            Ok(Box::new(TextView::new_blank(&core_)) as Box<dyn Widget + Send>)
         }));
-        Previewer { widget: willbe,
+        Previewer { widget: widget,
                     core: core.clone(),
                     file: None,
                     selection: None,
@@ -290,10 +307,11 @@ impl Previewer {
     }
 
     fn become_preview(&mut self,
-                      widget: HResult<WillBeWidget<WidgetO>>) {
-        let coordinates = self.get_coordinates().unwrap().clone();
-        self.widget =  widget.unwrap();
-        self.widget.set_coordinates(&coordinates).ok();
+                      widget: HResult<AsyncWidget<WidgetO>>) -> HResult<()> {
+        let coordinates = self.get_coordinates()?.clone();
+        self.widget =  widget?;
+        self.widget.set_coordinates(&coordinates)?;
+        Ok(())
     }
 
     pub fn set_stale(&mut self) -> HResult<()> {
@@ -315,7 +333,8 @@ impl Previewer {
 
         self.widget.set_stale().ok();
 
-        self.become_preview(Ok(WillBeWidget::new(&self.core, Box::new(move |stale| {
+        self.become_preview(Ok(AsyncWidget::new(&self.core,
+                                                Box::new(move |stale| {
             kill_proc().unwrap();
 
             let file = file.clone();
@@ -344,15 +363,14 @@ impl Previewer {
                 blank.animate_slide_up().log();
                 return Ok(blank)
             }
-        }))));
-        Ok(())
+        }))))
     }
 
     pub fn reload(&mut self) {
         if let Some(file) = self.file.clone() {
             self.file = None;
             let cache = self.cached_files.take();
-            self.set_file(&file, self.selection.clone(), cache);
+            self.set_file(&file, self.selection.clone(), cache).log();
         }
     }
 
@@ -403,7 +421,9 @@ impl Previewer {
         Ok(Box::new(textview))
     }
 
-    fn preview_external(file: &File, core: &WidgetCore, stale: Arc<Mutex<bool>>)
+    fn preview_external(file: &File,
+                        core: &WidgetCore,
+                        stale: Arc<Mutex<bool>>)
                         -> Result<Box<dyn Widget + Send>, HError> {
         let process =
             std::process::Command::new("scope.sh")

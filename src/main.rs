@@ -58,6 +58,7 @@ use term::ScreenExt;
 use fail::{HResult, HError};
 use file_browser::FileBrowser;
 use tabview::TabView;
+use preview::Async;
 
 
 fn main() -> HResult<()> {

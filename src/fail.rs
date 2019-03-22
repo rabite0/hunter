@@ -37,6 +37,12 @@ pub enum HError {
     NoneError(Backtrace),
     #[fail(display = "Not ready yet!")]
     WillBeNotReady(Backtrace),
+    #[fail(display = "Not ready yet!")]
+    AsyncNotReadyError(Backtrace),
+    #[fail(display = "Value has already been taken!")]
+    AsyncAlreadyTakenError(Backtrace),
+    #[fail(display = "Async Error: {}", _0)]
+    AsyncError(String),
     #[fail(display = "No widget found")]
     NoWidgetError(Backtrace),
     #[fail(display = "Path: {:?} not in this directory: {:?}", path, dir)]
@@ -72,7 +78,7 @@ pub enum HError {
     #[fail(display = "Terminal has been resized!")]
     TerminalResizedError,
     #[fail(display = "{}", _0)]
-    Log(String)
+    Log(String),
 }
 
 impl HError {
@@ -125,6 +131,18 @@ impl HError {
 
     pub fn stale<T>() -> HResult<T> {
         Err(HError::StaleError(Backtrace::new()))
+    }
+
+    pub fn async_not_ready<T>() -> HResult<T> {
+        Err(HError::AsyncNotReadyError(Backtrace::new()))
+    }
+
+    pub fn async_taken<T>() -> HResult<T> {
+        Err(HError::AsyncAlreadyTakenError(Backtrace::new()))
+    }
+
+    pub fn async_error<T>(error: &HError) -> HResult<T> {
+        Err(HError::AsyncError(format!("{}", error)))
     }
 }
 
