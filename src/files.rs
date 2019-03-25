@@ -457,41 +457,8 @@ impl Hash for File {
 
 impl Eq for File {}
 
-impl Clone for File {
-    fn clone(&self) -> Self {
-        let meta = self.meta.value.clone();
-        let meta = match meta {
-            Ok(meta) => Async::new_with_value(meta.clone()),
-            Err(_) => File::make_async_meta(&self.path, self.dirty_meta.clone())
-        };
 
-        let dirsize = if let Some(ref dirsize) = self.dirsize {
-            let dirsize = dirsize.value.clone();
-            let dirsize = match dirsize {
-                Ok(dirsize) => Async::new_with_value(dirsize),
-                Err(_) => File::make_async_dirsize(&self.path,
-                                                   self.dirty_meta.clone())
-            };
-            Some(dirsize)
-        } else { None };
-
-        File {
-            name: self.name.clone(),
-            path: self.path.clone(),
-            kind: self.kind.clone(),
-            dirsize: dirsize,
-            target: self.target.clone(),
-            color: self.color.clone(),
-            meta: meta,
-            dirty_meta: self.dirty_meta.clone(),
-            meta_processed: self.meta_processed.clone(),
-            selected: self.selected.clone(),
-            tag: self.tag.clone()
-        }
-    }
-}
-
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct File {
     pub name: String,
     pub path: PathBuf,

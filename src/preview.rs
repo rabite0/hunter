@@ -51,11 +51,12 @@ impl<T: Send + Debug> Debug for Async<T> {
 }
 
 
+#[derive(Clone)]
 pub struct Async<T: Send> {
     pub value: HResult<T>,
     async_value: AsyncValue<T>,
-    async_closure: Option<AsyncValueFn<T>>,
-    on_ready: Option<AsyncReadyFn<T>>,
+    async_closure: Arc<Mutex<Option<AsyncValueFn<T>>>>,
+    on_ready: Arc<Mutex<Option<AsyncReadyFn<T>>>>,
     stale: Stale
 }
 
@@ -65,8 +66,8 @@ impl<T: Send + 'static> Async<T> {
         let async_value = Async {
             value: HError::async_not_ready(),
             async_value: Arc::new(Mutex::new(None)),
-            async_closure: Some(closure),
-            on_ready: None,
+            async_closure: Arc::new(Mutex::new(Some(closure))),
+            on_ready: Arc::new(Mutex::new(None)),
             stale: Arc::new(Mutex::new(false)) };
 
         async_value
@@ -76,17 +77,17 @@ impl<T: Send + 'static> Async<T> {
         Async {
             value: Ok(val),
             async_value: Arc::new(Mutex::new(None)),
-            async_closure: None,
-            on_ready: None,
+            async_closure: Arc::new(Mutex::new(None)),
+            on_ready: Arc::new(Mutex::new(None)),
             stale: Arc::new(Mutex::new(false))
         }
     }
 
     pub fn run(&mut self) -> HResult<()> {
-        let closure = self.async_closure.take()?;
+        let closure = self.async_closure.lock()?.take()?;
         let async_value = self.async_value.clone();
         let stale = self.stale.clone();
-        let on_ready_fn = self.on_ready.take();
+        let on_ready_fn = self.on_ready.lock()?.take();
 
         std::thread::spawn(move|| -> HResult<()> {
             let mut value = closure(stale);
@@ -104,10 +105,10 @@ impl<T: Send + 'static> Async<T> {
     }
 
     pub fn run_pooled(&mut self, pool: &ThreadPool) -> HResult<()> {
-        let closure = self.async_closure.take()?;
+        let closure = self.async_closure.lock()?.take()?;
         let async_value = self.async_value.clone();
         let stale = self.stale.clone();
-        let on_ready_fn = self.on_ready.take();
+        let on_ready_fn = self.on_ready.lock()?.take();
 
         pool.spawn(move || {
             let mut value = closure(stale);
@@ -126,9 +127,9 @@ impl<T: Send + 'static> Async<T> {
     }
 
     pub fn wait(&mut self) -> HResult<()> {
-        let closure = self.async_closure.take()?;
+        let closure = self.async_closure.lock()?.take()?;
         let mut value = closure(self.stale.clone());
-        let on_ready_fn = self.on_ready.take();
+        let on_ready_fn = self.on_ready.lock()?.take();
 
 
         if let Ok(ref mut value) = value {
@@ -185,7 +186,7 @@ impl<T: Send + 'static> Async<T> {
 
     pub fn on_ready(&mut self,
                     fun: AsyncReadyFn<T>) {
-        self.on_ready = Some(fun);
+        *self.on_ready.lock().unwrap() = Some(fun);
     }
 }
 
