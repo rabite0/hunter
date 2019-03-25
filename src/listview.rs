@@ -28,12 +28,20 @@ impl Listable for ListView<Files> {
     }
 
     fn on_refresh(&mut self) -> HResult<()> {
-        let visible_file_num = self.selection + self.get_coordinates()?.ysize() as usize;
-        self.content.meta_upto(visible_file_num);
+        let sender = self.core.get_sender();
+
+        let visible_files = self.core.coordinates.size_u().1 + self.offset + 1;
+
+        self.content.meta_upto(visible_files, Some(sender.clone()));
 
         if self.content.is_dirty() {
-            self.core.set_dirty();
             self.content.set_clean();
+            self.core.set_dirty();
+        }
+
+        if self.content.dirty_meta.is_dirty() {
+            self.content.meta_upto(visible_files, Some(sender.clone()));
+            self.core.set_dirty();
         }
         Ok(())
     }
@@ -52,7 +60,7 @@ impl Listable for ListView<Files> {
             },
             Key::Char('S') => { self.search_file().log(); }
             Key::Alt('s') => { self.search_next().log(); }
-            Key::Char('F') => { self.filter().log(); }
+            Key::Ctrl('f') => { self.filter().log(); }
             Key::Left => self.goto_grand_parent()?,
             Key::Right => self.goto_selected()?,
             Key::Char(' ') => self.multi_select_file(),
@@ -285,7 +293,7 @@ impl ListView<Files>
     fn toggle_hidden(&mut self) {
         let file = self.clone_selected_file();
         self.content.toggle_hidden();
-        self.content.reload_files();
+        //self.content.reload_files();
         self.select_file(&file);
         self.refresh().log();
     }
@@ -438,19 +446,11 @@ impl ListView<Files>
     }
 
     fn render(&self) -> Vec<String> {
-        match self.content.get_filter() {
-            Some(filter) => self.content
-                .files
-                .iter()
-                .filter(|f| f.name.contains(&filter))
-                .map(|file| self.render_line(&file))
-                .collect(),
-            None => self.content
-                .files
-                .iter()
-                .map(|file| self.render_line(&file))
-                .collect()
-        }
+        self.content
+            .get_files()
+            .iter()
+            .map(|file| self.render_line(&file))
+            .collect()
     }
 }
 

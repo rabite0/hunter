@@ -1,5 +1,7 @@
 use std::sync::{Arc, Mutex};
 
+use rayon::ThreadPool;
+
 use crate::files::{File, Files, Kind};
 use crate::listview::ListView;
 use crate::textview::TextView;
@@ -36,12 +38,24 @@ pub fn is_stale(stale: &Arc<Mutex<bool>>) -> HResult<bool> {
     Ok(stale)
 }
 
+use std::fmt::{Debug, Formatter};
+
+impl<T: Send + Debug> Debug for Async<T> {
+    fn fmt(&self, formatter: &mut Formatter) -> Result<(), std::fmt::Error> {
+        write!(formatter,
+               "{:?}, {:?} {:?}",
+               self.value,
+               self.async_value,
+               self.stale)
+    }
+}
+
 
 pub struct Async<T: Send> {
     pub value: HResult<T>,
     async_value: AsyncValue<T>,
     async_closure: Option<AsyncValueFn<T>>,
-    on_ready: Arc<Mutex<Option<AsyncReadyFn<T>>>>,
+    on_ready: Option<AsyncReadyFn<T>>,
     stale: Stale
 }
 
@@ -52,32 +66,76 @@ impl<T: Send + 'static> Async<T> {
             value: HError::async_not_ready(),
             async_value: Arc::new(Mutex::new(None)),
             async_closure: Some(closure),
-            on_ready: Arc::new(Mutex::new(None)),
+            on_ready: None,
             stale: Arc::new(Mutex::new(false)) };
 
         async_value
     }
 
-    fn run(&mut self) -> HResult<()> {
+    pub fn new_with_value(val: T) -> Async<T> {
+        Async {
+            value: Ok(val),
+            async_value: Arc::new(Mutex::new(None)),
+            async_closure: None,
+            on_ready: None,
+            stale: Arc::new(Mutex::new(false))
+        }
+    }
+
+    pub fn run(&mut self) -> HResult<()> {
         let closure = self.async_closure.take()?;
         let async_value = self.async_value.clone();
         let stale = self.stale.clone();
-        let on_ready_fn = self.on_ready.clone();
+        let on_ready_fn = self.on_ready.take();
 
         std::thread::spawn(move|| -> HResult<()> {
-            let value = closure(stale);
-            match value {
-                Ok(mut value) => {
-                    match *on_ready_fn.lock()? {
-                        Some(ref on_ready) => { on_ready(&mut value).log(); },
-                        None => {}
-                    }
-                    async_value.lock()?.replace(Ok(value));
-                },
-                Err(err) => *async_value.lock()? = Some(Err(err))
+            let mut value = closure(stale);
+
+            if let Ok(ref mut value) = value {
+                if let Some(on_ready_fn) = on_ready_fn {
+                    on_ready_fn(value);
+                }
             }
+
+            async_value.lock()?.replace(value);
             Ok(())
         });
+        Ok(())
+    }
+
+    pub fn run_pooled(&mut self, pool: &ThreadPool) -> HResult<()> {
+        let closure = self.async_closure.take()?;
+        let async_value = self.async_value.clone();
+        let stale = self.stale.clone();
+        let on_ready_fn = self.on_ready.take();
+
+        pool.spawn(move || {
+            let mut value = closure(stale);
+
+            if let Ok(ref mut value) = value {
+                if let Some(on_ready_fn) = on_ready_fn {
+                    on_ready_fn(value);
+                }
+            }
+
+            async_value
+                .lock()
+                .map(|mut async_value| async_value.replace(value));
+        });
+        Ok(())
+    }
+
+    pub fn wait(&mut self) -> HResult<()> {
+        let closure = self.async_closure.take()?;
+        let mut value = closure(self.stale.clone());
+        let on_ready_fn = self.on_ready.take();
+
+
+        if let Ok(ref mut value) = value {
+            on_ready_fn.map(|on_ready_fn| on_ready_fn(value));
+        }
+
+        self.value = value;
         Ok(())
     }
 
@@ -91,7 +149,7 @@ impl<T: Send + 'static> Async<T> {
     }
 
     pub fn take_async(&mut self) -> HResult<()> {
-        if self.value.is_ok() { return Ok(()) }
+        if self.value.is_ok() { HError::async_taken()? }
 
         let mut async_value = self.async_value.lock()?;
         match async_value.as_ref() {
@@ -99,7 +157,7 @@ impl<T: Send + 'static> Async<T> {
                 let value = async_value.take()?;
                 self.value = value;
             }
-            Some(Err(HError::AsyncAlreadyTakenError(..))) => HError::async_taken()?,
+            Some(Err(HError::AsyncAlreadyTakenError)) => HError::async_taken()?,
             Some(Err(_)) => {
                 let value = async_value.take()?;
                 self.value = value;
@@ -126,14 +184,8 @@ impl<T: Send + 'static> Async<T> {
     }
 
     pub fn on_ready(&mut self,
-                    fun: AsyncReadyFn<T>)
-                    -> HResult<()> {
-        if self.value.is_ok() {
-            fun(self.value.as_mut().unwrap())?;
-        } else {
-            *self.on_ready.lock()? = Some(fun);
-        }
-        Ok(())
+                    fun: AsyncReadyFn<T>) {
+        self.on_ready = Some(fun);
     }
 }
 
@@ -161,7 +213,7 @@ impl<W: Widget + Send + 'static> AsyncWidget<W> {
         widget.on_ready(Box::new(move |_| {
             sender.send(crate::widget::Events::WidgetReady)?;
             Ok(())
-        })).log();
+        }));
         widget.run().log();
 
         AsyncWidget {
@@ -182,7 +234,7 @@ impl<W: Widget + Send + 'static> AsyncWidget<W> {
         widget.on_ready(Box::new(move |_| {
             sender.send(crate::widget::Events::WidgetReady)?;
             Ok(())
-        }))?;
+        }));
 
         widget.run().log();
 

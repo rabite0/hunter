@@ -1,8 +1,10 @@
 use std::cmp::{Ord, Ordering};
 use std::ops::Index;
+use std::fs::Metadata;
 use std::os::unix::fs::MetadataExt;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
+use std::sync::mpsc::Sender;
 use std::hash::{Hash, Hasher};
 use std::os::unix::ffi::{OsStringExt, OsStrExt};
 use std::ffi::{OsStr, OsString};
@@ -16,16 +18,35 @@ use users::{get_current_username,
 use chrono::TimeZone;
 use failure::Error;
 use notify::DebouncedEvent;
+use rayon::prelude::*;
+use rayon::{ThreadPool, ThreadPoolBuilder};
 
-use crate::fail::{HResult, HError};
-use crate::dirty::{DirtyBit, Dirtyable};
-
-
+use crate::fail::{HResult, HError, ErrorLog};
+use crate::dirty::{AsyncDirtyBit, DirtyBit, Dirtyable};
+use crate::preview::Async;
+use crate::widget::Events;
 
 
 lazy_static! {
     static ref COLORS: LsColors = LsColors::from_env().unwrap();
     static ref TAGS: Mutex<(bool, Vec<PathBuf>)> = Mutex::new((false, vec![]));
+}
+
+fn make_pool(sender: Option<Sender<Events>>) -> ThreadPool {
+    let sender = Arc::new(Mutex::new(sender));
+    ThreadPoolBuilder::new()
+        .num_threads(8)
+        .exit_handler(move |thread_num| {
+            if thread_num == 0 {
+                if let Ok(lock) = sender.lock() {
+                    if let Some(sender) = lock.as_ref() {
+                        sender.send(Events::WidgetReady).ok();
+                    }
+                }
+            }
+        })
+        .build()
+        .expect("Failed to create thread pool")
 }
 
 pub fn load_tags() -> HResult<()> {
@@ -53,16 +74,19 @@ pub fn tags_loaded() -> HResult<()> {
     else { HError::tags_not_loaded() }
 }
 
+
 #[derive(PartialEq, Eq, Hash, Clone, Debug)]
 pub struct Files {
     pub directory: File,
     pub files: Vec<File>,
+    pub meta_upto: Option<usize>,
     pub sort: SortBy,
     pub dirs_first: bool,
     pub reverse: bool,
     pub show_hidden: bool,
     pub filter: Option<String>,
-    pub dirty: DirtyBit
+    pub dirty: DirtyBit,
+    pub dirty_meta: AsyncDirtyBit,
 }
 
 impl Index<usize> for Files {
@@ -74,12 +98,16 @@ impl Index<usize> for Files {
 
 
 impl Dirtyable for Files {
-    fn get_bit(&self) -> &DirtyBit {
-        &self.dirty
+    fn is_dirty(&self) -> bool {
+        self.dirty.is_dirty()
     }
 
-    fn get_bit_mut(&mut self) -> &mut DirtyBit {
-        &mut self.dirty
+    fn set_dirty(&mut self) {
+        self.dirty.set_dirty();
+    }
+
+    fn set_clean(&mut self) {
+        self.dirty.set_clean();
     }
 }
 
@@ -87,6 +115,8 @@ impl Dirtyable for Files {
 impl Files {
     pub fn new_from_path(path: &Path) -> Result<Files, Error> {
         let direntries: Result<Vec<_>, _> = std::fs::read_dir(&path)?.collect();
+        let dirty = DirtyBit::new();
+        let dirty_meta = AsyncDirtyBit::new();
 
         let files: Vec<_> = direntries?
             .iter()
@@ -94,22 +124,28 @@ impl Files {
                 let name = file.file_name();
                 let name = name.to_string_lossy();
                 let path = file.path();
-                File::new(&name, path)
+                File::new(&name,
+                          path,
+                          Some(dirty_meta.clone()))
             })
             .collect();
 
         let mut files = Files {
-            directory: File::new_from_path(&path)?,
+            directory: File::new_from_path(&path, None)?,
             files: files,
+            meta_upto: None,
             sort: SortBy::Name,
             dirs_first: true,
             reverse: false,
             show_hidden: true,
             filter: None,
-            dirty: DirtyBit::new()
+            dirty: dirty,
+            dirty_meta: dirty_meta,
         };
 
         files.sort();
+
+
 
         if files.files.len() == 0 {
             files.files = vec![File::new_placeholder(&path)?];
@@ -118,8 +154,12 @@ impl Files {
         Ok(files)
     }
 
-    pub fn new_from_path_cancellable(path: &Path, stale: Arc<Mutex<bool>>) -> Result<Files, Error> {
+    pub fn new_from_path_cancellable(path: &Path,
+                                     stale: Arc<Mutex<bool>>)
+                                     -> Result<Files, Error> {
         let direntries: Result<Vec<_>, _> = std::fs::read_dir(&path)?.collect();
+        let dirty = DirtyBit::new();
+        let dirty_meta = AsyncDirtyBit::new();
 
         let files: Vec<_> = direntries?
             .iter()
@@ -130,7 +170,9 @@ impl Files {
                     let name = file.file_name();
                     let name = name.to_string_lossy();
                     let path = file.path();
-                    Some(File::new(&name, path))
+                    Some(File::new(&name,
+                                   path,
+                                   Some(dirty_meta.clone())))
                 }
             })
             .fuse()
@@ -144,14 +186,16 @@ impl Files {
         }
 
         let mut files = Files {
-            directory: File::new_from_path(&path)?,
+            directory: File::new_from_path(&path, None)?,
             files: files,
+            meta_upto: None,
             sort: SortBy::Name,
             dirs_first: true,
             reverse: false,
             show_hidden: true,
             filter: None,
-            dirty: DirtyBit::new()
+            dirty: dirty,
+            dirty_meta: dirty_meta,
         };
 
         files.sort();
@@ -163,13 +207,33 @@ impl Files {
         Ok(files)
     }
 
+    pub fn get_files(&self) -> Vec<&File> {
+        self.files
+            .iter()
+            .filter(|f| !(self.filter.is_some() &&
+                         !f.name.contains(self.filter.as_ref().unwrap())))
+            .filter(|f| !(!self.show_hidden && f.name.starts_with(".")))
+            .collect()
+    }
+
+    pub fn get_files_mut(&mut self) -> Vec<&mut File> {
+        let filter = self.filter.clone();
+        let show_hidden = self.show_hidden;
+        self.files
+            .iter_mut()
+            .filter(|f| !(filter.is_some() &&
+                         !f.name.contains(filter.as_ref().unwrap())))
+            .filter(|f| !(!show_hidden && f.name.starts_with(".")))
+            .collect()
+    }
+
     pub fn sort(&mut self) {
         match self.sort {
             SortBy::Name => self
                 .files
                 .sort_by(|a, b| alphanumeric_sort::compare_str(&a.name, &b.name)),
             SortBy::Size => {
-                self.meta_all();
+                self.meta_all_sync();
                 self.files.sort_by(|a, b| {
                     if a.meta().unwrap().size() == b.meta().unwrap().size() {
                         return alphanumeric_sort::compare_str(&b.name, &a.name);
@@ -178,7 +242,7 @@ impl Files {
                 });
             }
             SortBy::MTime => {
-                self.meta_all();
+                self.meta_all_sync();
                 self.files.sort_by(|a, b| {
                     if a.meta().unwrap().mtime() == b.meta().unwrap().mtime() {
                         return alphanumeric_sort::compare_str(&a.name, &b.name);
@@ -227,25 +291,14 @@ impl Files {
         self.show_hidden = !self.show_hidden
     }
 
-    pub fn reload_files(&mut self) {
-        let dir = self.directory.clone();
-        let files = Files::new_from_path(&dir.path()).unwrap();
-        let files = files
-            .files
-            .into_iter()
-            .skip_while(|f| f.name.starts_with(".") && !self.show_hidden )
-            .collect();
-
-        self.files = files;
-        self.set_dirty();
-    }
-
     pub fn handle_event(&mut self, event: &DebouncedEvent) -> HResult<()> {
         match event {
             DebouncedEvent::Create(path) => {
                 self.path_in_here(&path)?;
-                let file = File::new_from_path(&path)?;
+                let file = File::new_from_path(&path,
+                                               Some(self.dirty_meta.clone()))?;
                 self.files.push(file);
+                self.sort();
             },
             DebouncedEvent::Write(path) | DebouncedEvent::Chmod(path) => {
                 self.path_in_here(&path)?;
@@ -262,6 +315,7 @@ impl Files {
                 let mut file = self.find_file_with_path(&old_path)?;
                 file.name = new_path.file_name()?.to_string_lossy().to_string();
                 file.path = new_path.into();
+                file.reload_meta()?;
             },
             DebouncedEvent::Error(err, path) => {
                 dbg!(err);
@@ -287,16 +341,57 @@ impl Files {
         self.files.iter_mut().find(|file| file.path == path)
     }
 
-    pub fn meta_all(&mut self) {
-        let len = self.files.len();
-        self.meta_upto(len);
+    pub fn meta_all_sync(&mut self) -> HResult<()> {
+        for file in self.files.iter_mut() {
+            if !file.meta_processed {
+                let path = file.path.clone();
+                file.meta = Async::new(Box::new(move|_| {
+                    let meta = std::fs::metadata(&path)?;
+                    Ok(meta)
+                }));
+                file.meta.wait()?;
+            }
+        }
+        self.dirty_meta.set_dirty();
+        Ok(())
     }
 
-    pub fn meta_upto(&mut self, to: usize) {
-        for file in self.files.iter_mut().take(to) {
-            file.get_meta().ok();
-        }
+    pub fn meta_all(&mut self) {
+        let len = self.len();
+        self.meta_upto(len, None);
     }
+
+    pub fn meta_upto(&mut self, to: usize, sender: Option<Sender<Events>>) {
+        let meta_files = if self.meta_upto > Some(to) {
+            self.meta_upto.unwrap()
+        } else {
+            if to > self.len() {
+                self.len()
+            } else {
+                to
+            }
+        };
+
+        if self.meta_upto >= Some(meta_files) && !self.dirty_meta.is_dirty() { return }
+
+        self.set_dirty();
+        self.dirty_meta.set_clean();
+
+        let meta_pool = make_pool(sender.clone());
+        let dirsize_pool = make_pool(sender);
+
+        for file in self.files.iter_mut().take(meta_files) {
+            if !file.meta_processed {
+                file.take_meta(&meta_pool).ok();
+            }
+            if file.is_dir() {
+                file.take_dirsize(&dirsize_pool).ok();
+            }
+        }
+
+        self.meta_upto = Some(meta_files);
+    }
+
 
     pub fn set_filter(&mut self, filter: Option<String>) {
         self.filter = filter;
@@ -308,15 +403,7 @@ impl Files {
     }
 
     pub fn len(&self) -> usize {
-        match &self.filter {
-            None => self.files.len(),
-            Some(filter) => {
-                self.files
-                    .iter()
-                    .filter(|f| f.name.contains(filter))
-                    .count()
-            }
-        }
+        self.get_files().len()
     }
 
     pub fn get_selected(&self) -> Vec<&File> {
@@ -370,14 +457,51 @@ impl Hash for File {
 
 impl Eq for File {}
 
-#[derive(Debug, Clone)]
+impl Clone for File {
+    fn clone(&self) -> Self {
+        let meta = self.meta.value.clone();
+        let meta = match meta {
+            Ok(meta) => Async::new_with_value(meta.clone()),
+            Err(_) => File::make_async_meta(&self.path, self.dirty_meta.clone())
+        };
+
+        let dirsize = if let Some(ref dirsize) = self.dirsize {
+            let dirsize = dirsize.value.clone();
+            let dirsize = match dirsize {
+                Ok(dirsize) => Async::new_with_value(dirsize),
+                Err(_) => File::make_async_dirsize(&self.path,
+                                                   self.dirty_meta.clone())
+            };
+            Some(dirsize)
+        } else { None };
+
+        File {
+            name: self.name.clone(),
+            path: self.path.clone(),
+            kind: self.kind.clone(),
+            dirsize: dirsize,
+            target: self.target.clone(),
+            color: self.color.clone(),
+            meta: meta,
+            dirty_meta: self.dirty_meta.clone(),
+            meta_processed: self.meta_processed.clone(),
+            selected: self.selected.clone(),
+            tag: self.tag.clone()
+        }
+    }
+}
+
+#[derive(Debug)]
 pub struct File {
     pub name: String,
     pub path: PathBuf,
     pub kind: Kind,
+    pub dirsize: Option<Async<usize>>,
     pub target: Option<PathBuf>,
     pub color: Option<lscolors::Color>,
-    pub meta: Option<std::fs::Metadata>,
+    pub meta: Async<Metadata>,
+    pub dirty_meta: Option<AsyncDirtyBit>,
+    pub meta_processed: bool,
     pub selected: bool,
     pub tag: Option<bool>
     // flags: Option<String>,
@@ -387,63 +511,138 @@ impl File {
     pub fn new(
         name: &str,
         path: PathBuf,
-    ) -> File {
+        dirty_meta: Option<AsyncDirtyBit>) -> File {
         let tag = check_tag(&path).ok();
+        let meta = File::make_async_meta(&path, dirty_meta.clone());
+        let dirsize = if path.is_dir() {
+            Some(File::make_async_dirsize(&path, dirty_meta.clone()))
+        } else { None };
 
         File {
             name: name.to_string(),
             kind: if path.is_dir() { Kind::Directory } else { Kind::File },
             path: path,
+            dirsize: dirsize,
             target: None,
-            meta: None,
+            meta: meta,
+            meta_processed: false,
+            dirty_meta: dirty_meta,
             color: None,
             selected: false,
             tag: tag,
         }
     }
 
-    pub fn new_from_path(path: &Path) -> HResult<File> {
+    pub fn new_from_path(path: &Path,
+                         dirty_meta: Option<AsyncDirtyBit>) -> HResult<File> {
         let pathbuf = path.to_path_buf();
         let name = path
             .file_name()
             .map(|name| name.to_string_lossy().to_string())
             .unwrap_or("/".to_string());
 
-        Ok(File::new(&name, pathbuf))
+        Ok(File::new(&name, pathbuf, dirty_meta))
     }
 
     pub fn new_placeholder(path: &Path) -> Result<File, Error> {
-        let mut file = File::new_from_path(path)?;
+        let mut file = File::new_from_path(path, None)?;
         file.name = "<empty>".to_string();
         file.kind = Kind::Placeholder;
         Ok(file)
     }
 
-    pub fn meta(&self) -> HResult<std::fs::Metadata> {
-        match &self.meta {
-            Some(meta) => Ok(meta.clone()),
-            None => { Ok(std::fs::symlink_metadata(&self.path)?) }
+    pub fn make_async_meta(path: &PathBuf,
+                           dirty_meta: Option<AsyncDirtyBit>) -> Async<Metadata> {
+        let path = path.clone();
+
+        let mut meta = Async::new(Box::new(move |stale| {
+            if *stale.lock()? { HError::stale()? }
+            Ok(std::fs::symlink_metadata(&path).unwrap())
+        }));
+        if let Some(dirty_meta) = dirty_meta {
+            meta.on_ready(Box::new(move |_| {
+                let mut dirty_meta = dirty_meta.clone();
+                dirty_meta.set_dirty();
+
+                Ok(())
+            }));
         }
+        meta
     }
 
-    pub fn get_meta(&mut self) -> HResult<()> {
-        if let Some(_) = self.meta { return Ok(()) }
+    pub fn make_async_dirsize(path: &PathBuf,
+                              dirty_meta: Option<AsyncDirtyBit>) -> Async<usize> {
+        let path = path.clone();
 
-        let meta = std::fs::symlink_metadata(&self.path)?;
-        let color = self.get_color(&meta);
-        let target = if meta.file_type().is_symlink() {
-            self.path.read_link().ok()
-        } else { None };
+        let mut dirsize = Async::new(Box::new(move |stale| {
+            if *stale.lock()? { HError::stale()? }
+            Ok(std::fs::read_dir(&path)?.count())
+        }));
+        if let Some(dirty_meta) = dirty_meta {
+            dirsize.on_ready(Box::new(move |_| {
+                let mut dirty_meta = dirty_meta.clone();
+                dirty_meta.set_dirty();
 
-        self.meta = Some(meta);
-        self.color = color;
-        self.target = target;
+                Ok(())
+            }));
+        }
+        dirsize
+    }
+
+    pub fn meta(&self) -> HResult<&Metadata> {
+        self.meta.get()
+    }
+
+    fn take_dirsize(&mut self, pool: &ThreadPool) -> HResult<()> {
+        let dirsize = self.dirsize.as_mut()?;
+        if let Ok(_) = dirsize.value { return Ok(()) }
+
+        match dirsize.take_async() {
+            Ok(_) => {},
+            Err(HError::AsyncNotReadyError) => { dirsize.run_pooled(&*pool).ok(); },
+            Err(HError::AsyncAlreadyTakenError) => {},
+            Err(HError::NoneError) => {},
+            err @ Err(_) => { err?; }
+        }
+        Ok(())
+    }
+
+    pub fn take_meta(&mut self, pool: &ThreadPool) -> HResult<()> {
+        if self.meta_processed { return Ok(()) }
+
+        match self.meta.take_async() {
+            Ok(_) => {},
+            Err(HError::AsyncNotReadyError) => { self.meta.run_pooled(&*pool).ok(); },
+            Err(HError::AsyncAlreadyTakenError) => {},
+            Err(HError::NoneError) => {},
+            err @ Err(_) => { err?; }
+        }
+
+        if let Ok(meta) = self.meta.get() {
+            let color = self.get_color(&meta);
+            let target = if meta.file_type().is_symlink() {
+                self.path.read_link().ok()
+            } else { None };
+
+            self.color = color;
+            self.target = target;
+            self.meta_processed = true;
+
+            return Ok(())
+        }
+
         Ok(())
     }
 
     pub fn reload_meta(&mut self) -> HResult<()> {
-        self.meta = None;
-        self.get_meta()
+        self.dirty_meta.as_mut()?.set_dirty();
+        self.meta_processed = false;
+        self.meta = File::make_async_meta(&self.path, self.dirty_meta.clone());
+        if self.dirsize.is_some() {
+            self.dirsize
+                = Some(File::make_async_dirsize(&self.path, self.dirty_meta.clone()));
+        }
+        Ok(())
     }
 
     fn get_color(&self, meta: &std::fs::Metadata) -> Option<lscolors::Color> {
@@ -454,13 +653,8 @@ impl File {
     }
 
     pub fn calculate_size(&self) -> HResult<(u64, String)> {
-        if self.is_dir() {
-            let dir_iterator = std::fs::read_dir(&self.path);
-            match dir_iterator {
-                Ok(dir_iterator) => return Ok((dir_iterator.count() as u64,
-                                               "".to_string())),
-                Err(_) => return Ok((0, "".to_string()))
-            }
+        if let Some(ref dirsize) = self.dirsize {
+            return Ok((dirsize.value.clone()? as u64, "".to_string()))
         }
 
 
@@ -496,7 +690,7 @@ impl File {
 
     pub fn parent_as_file(&self) -> HResult<File> {
         let pathbuf = self.parent()?;
-        File::new_from_path(&pathbuf)
+        File::new_from_path(&pathbuf, None)
     }
 
     pub fn grand_parent(&self) -> Option<PathBuf> {
@@ -505,7 +699,7 @@ impl File {
 
     pub fn grand_parent_as_file(&self) -> HResult<File> {
         let pathbuf = self.grand_parent()?;
-        File::new_from_path(&pathbuf)
+        File::new_from_path(&pathbuf, None)
     }
 
     pub fn is_dir(&self) -> bool {
@@ -761,14 +955,10 @@ impl OsStrTools for OsStr {
         let pat = pat.as_bytes().to_vec();
         let pat_len = pat.len();
 
-        dbg!(&self);
-
         let split_string = orig_string
             .windows(pat_len)
             .enumerate()
             .fold(Vec::new(), |mut split_pos, (i, chars)| {
-                dbg!(&chars);
-                dbg!(&split_pos);
                 if chars == pat.as_slice() {
                     if split_pos.len() == 0 {
                         split_pos.push((0, i));
@@ -816,8 +1006,6 @@ impl OsStrTools for OsStr {
             return vec![OsString::from(self)];
         }
 
-        dbg!(&self);
-
         let pos = pos.unwrap();
         let string = self.as_bytes().to_vec();
         let from = from.as_bytes().to_vec();
@@ -825,9 +1013,6 @@ impl OsStrTools for OsStr {
 
         let lpart = OsString::from_vec(string[0..pos].to_vec());
         let rpart = OsString::from_vec(string[pos+fromlen..].to_vec());
-
-        dbg!(&lpart);
-        dbg!(&rpart);
 
         let mut result = vec![
             vec![lpart.trim_last_space()],

@@ -90,12 +90,14 @@ impl WidgetCore {
 }
 
 impl Dirtyable for WidgetCore {
-    fn get_bit(&self) -> &DirtyBit {
-        &self.dirty
+    fn is_dirty(&self) -> bool {
+        self.dirty.is_dirty()
     }
-
-    fn get_bit_mut(&mut self) -> &mut DirtyBit {
-        &mut self.dirty
+    fn set_dirty(&mut self) {
+        self.dirty.set_dirty();
+    }
+    fn set_clean(&mut self) {
+        self.dirty.set_clean();
     }
 }
 

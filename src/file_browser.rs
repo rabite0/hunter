@@ -194,6 +194,7 @@ impl FileBrowser {
             let mut list = ListView::new(&core_m,
                                          Files::new_from_path(&main_path)?);
             list.animate_slide_up().log();
+            list.content.meta_all();
             Ok(list)
         }));
 
@@ -216,7 +217,7 @@ impl FileBrowser {
         columns.refresh().log();
 
 
-        let cwd = File::new_from_path(&cwd).unwrap();
+        let cwd = File::new_from_path(&cwd, None).unwrap();
         let dir_events = Arc::new(Mutex::new(vec![]));
 
         let (tx_watch, rx_watch) = channel();
@@ -323,6 +324,7 @@ impl FileBrowser {
             })?;
 
             let mut list = ListView::new(&core, files);
+            list.content.meta_all();
 
             if let Some(file) = &selected_file {
                 list.select_file(file);
@@ -395,7 +397,7 @@ impl FileBrowser {
 
     pub fn goto_bookmark(&mut self) -> HResult<()> {
         let path = self.get_boomark()?;
-        let path = File::new_from_path(&PathBuf::from(path))?;
+        let path = File::new_from_path(&PathBuf::from(path), None)?;
         self.main_widget_goto(&path)?;
         Ok(())
     }
@@ -664,7 +666,7 @@ impl FileBrowser {
         match dir {
             Ok(dir) => {
                 self.columns.widgets.clear();
-                let cwd = File::new_from_path(&std::path::PathBuf::from(&dir))?;
+                let cwd = File::new_from_path(&std::path::PathBuf::from(&dir), None)?;
                 self.cwd = cwd;
                 let dir = std::path::PathBuf::from(&dir);
                 let left_dir = std::path::PathBuf::from(&dir);
@@ -752,13 +754,14 @@ impl FileBrowser {
     pub fn get_footer(&self) -> HResult<String> {
         let xsize = self.get_coordinates()?.xsize();
         let ypos = self.get_coordinates()?.position().y();
-        let file = self.selected_file()?;
+        let pos = self.main_widget()?.get_selection();
+        let file = self.main_widget()?.content.files.get(pos)?;
 
         let permissions = file.pretty_print_permissions().unwrap_or("NOPERMS".into());
         let user = file.pretty_user().unwrap_or("NOUSER".into());
         let group = file.pretty_group().unwrap_or("NOGROUP".into());
         let mtime = file.pretty_mtime().unwrap_or("NOMTIME".into());
-        let target = if let Some(target) = file.target {
+        let target = if let Some(target) = &file.target {
             "--> ".to_string() + &target.short_string()
         } else { "".to_string() };
 
