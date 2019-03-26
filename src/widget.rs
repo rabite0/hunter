@@ -11,6 +11,7 @@ use crate::minibuffer::MiniBuffer;
 use crate::term;
 use crate::term::{Screen, ScreenExt};
 use crate::dirty::{Dirtyable, DirtyBit};
+use crate::preview::Stale;
 use crate::signal_notify::{notify, Signal};
 
 use std::io::stdin;

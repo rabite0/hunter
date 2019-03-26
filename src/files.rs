@@ -3,7 +3,7 @@ use std::ops::Index;
 use std::fs::Metadata;
 use std::os::unix::fs::MetadataExt;
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, RwLock};
 use std::sync::mpsc::Sender;
 use std::hash::{Hash, Hasher};
 use std::os::unix::ffi::{OsStringExt, OsStrExt};
@@ -23,13 +23,13 @@ use rayon::{ThreadPool, ThreadPoolBuilder};
 
 use crate::fail::{HResult, HError, ErrorLog};
 use crate::dirty::{AsyncDirtyBit, DirtyBit, Dirtyable};
-use crate::preview::Async;
+use crate::preview::{Async, Stale};
 use crate::widget::Events;
 
 
 lazy_static! {
     static ref COLORS: LsColors = LsColors::from_env().unwrap();
-    static ref TAGS: Mutex<(bool, Vec<PathBuf>)> = Mutex::new((false, vec![]));
+    static ref TAGS: RwLock<(bool, Vec<PathBuf>)> = RwLock::new((false, vec![]));
 }
 
 fn make_pool(sender: Option<Sender<Events>>) -> ThreadPool {
@@ -54,7 +54,7 @@ pub fn load_tags() -> HResult<()> {
         let tag_path = crate::paths::tagfile_path()?;
         let tags = std::fs::read_to_string(tag_path)?;
         let mut tags = tags.lines().map(|f| PathBuf::from(f)).collect::<Vec<PathBuf>>();
-        let mut tag_lock = TAGS.lock()?;
+        let mut tag_lock = TAGS.write()?;
         tag_lock.0 = true;
         tag_lock.1.append(&mut tags);
         Ok(())
@@ -64,12 +64,12 @@ pub fn load_tags() -> HResult<()> {
 
 pub fn check_tag(path: &PathBuf) -> HResult<bool> {
     tags_loaded()?;
-    let tagged = TAGS.lock()?.1.contains(path);
+    let tagged = TAGS.read()?.1.contains(path);
     Ok(tagged)
 }
 
 pub fn tags_loaded() -> HResult<()> {
-    let loaded = TAGS.lock()?.0;
+    let loaded = TAGS.read()?.0;
     if loaded { Ok(()) }
     else { HError::tags_not_loaded() }
 }
@@ -155,7 +155,7 @@ impl Files {
     }
 
     pub fn new_from_path_cancellable(path: &Path,
-                                     stale: Arc<Mutex<bool>>)
+                                     stale: Stale)
                                      -> Result<Files, Error> {
         let direntries: Result<Vec<_>, _> = std::fs::read_dir(&path)?.collect();
         let dirty = DirtyBit::new();
@@ -170,9 +170,10 @@ impl Files {
                     let name = file.file_name();
                     let name = name.to_string_lossy();
                     let path = file.path();
-                    Some(File::new(&name,
-                                   path,
-                                   Some(dirty_meta.clone())))
+                    Some(File::new_with_stale(&name,
+                                              path,
+                                              Some(dirty_meta.clone()),
+                                              stale.clone()))
                 }
             })
             .fuse()
@@ -392,6 +393,11 @@ impl Files {
         self.meta_upto = Some(meta_files);
     }
 
+    pub fn meta_set_fresh(&self) -> HResult<()> {
+        self.files.get(0)?.meta.set_fresh()?;
+        Ok(())
+    }
+
 
     pub fn set_filter(&mut self, filter: Option<String>) {
         self.filter = filter;
@@ -480,9 +486,38 @@ impl File {
         path: PathBuf,
         dirty_meta: Option<AsyncDirtyBit>) -> File {
         let tag = check_tag(&path).ok();
-        let meta = File::make_async_meta(&path, dirty_meta.clone());
+        let meta = File::make_async_meta(&path, dirty_meta.clone(), None);
         let dirsize = if path.is_dir() {
-            Some(File::make_async_dirsize(&path, dirty_meta.clone()))
+            Some(File::make_async_dirsize(&path, dirty_meta.clone(), None))
+        } else { None };
+
+        File {
+            name: name.to_string(),
+            kind: if path.is_dir() { Kind::Directory } else { Kind::File },
+            path: path,
+            dirsize: dirsize,
+            target: None,
+            meta: meta,
+            meta_processed: false,
+            dirty_meta: dirty_meta,
+            color: None,
+            selected: false,
+            tag: tag,
+        }
+    }
+
+    pub fn new_with_stale(name: &str,
+                          path: PathBuf,
+                          dirty_meta: Option<AsyncDirtyBit>,
+                          stale: Stale) -> File {
+        let tag = check_tag(&path).ok();
+        let meta = File::make_async_meta(&path,
+                                         dirty_meta.clone(),
+                                         Some(stale.clone()));
+        let dirsize = if path.is_dir() {
+            Some(File::make_async_dirsize(&path,
+                                          dirty_meta.clone(),
+                                          Some(stale)))
         } else { None };
 
         File {
@@ -519,13 +554,19 @@ impl File {
     }
 
     pub fn make_async_meta(path: &PathBuf,
-                           dirty_meta: Option<AsyncDirtyBit>) -> Async<Metadata> {
+                           dirty_meta: Option<AsyncDirtyBit>,
+                           stale_preview: Option<Stale>) -> Async<Metadata> {
         let path = path.clone();
 
-        let mut meta = Async::new(Box::new(move |stale| {
-            if *stale.lock()? { HError::stale()? }
-            Ok(std::fs::symlink_metadata(&path).unwrap())
-        }));
+        let meta_closure = Box::new(move |stale: Stale| {
+            if stale.is_stale()? { HError::stale()? }
+            Ok(std::fs::symlink_metadata(&path)?)
+        });
+
+        let mut meta = match stale_preview {
+            Some(stale) => Async::new_with_stale(meta_closure, stale),
+            None => Async::new(meta_closure)
+        };
         if let Some(dirty_meta) = dirty_meta {
             meta.on_ready(Box::new(move |_| {
                 let mut dirty_meta = dirty_meta.clone();
@@ -538,13 +579,20 @@ impl File {
     }
 
     pub fn make_async_dirsize(path: &PathBuf,
-                              dirty_meta: Option<AsyncDirtyBit>) -> Async<usize> {
+                              dirty_meta: Option<AsyncDirtyBit>,
+                              stale_preview: Option<Stale>) -> Async<usize> {
         let path = path.clone();
 
-        let mut dirsize = Async::new(Box::new(move |stale| {
-            if *stale.lock()? { HError::stale()? }
+        let dirsize_closure = Box::new(move |stale: Stale| {
+            if stale.is_stale()? { HError::stale()? }
             Ok(std::fs::read_dir(&path)?.count())
-        }));
+        });
+
+        let mut dirsize = match stale_preview {
+            Some(stale) => Async::new_with_stale(dirsize_closure, stale),
+            None => Async::new(dirsize_closure)
+        };
+
         if let Some(dirty_meta) = dirty_meta {
             dirsize.on_ready(Box::new(move |_| {
                 let mut dirty_meta = dirty_meta.clone();
@@ -604,10 +652,12 @@ impl File {
     pub fn reload_meta(&mut self) -> HResult<()> {
         self.dirty_meta.as_mut()?.set_dirty();
         self.meta_processed = false;
-        self.meta = File::make_async_meta(&self.path, self.dirty_meta.clone());
+        self.meta = File::make_async_meta(&self.path,
+                                          self.dirty_meta.clone(),
+                                          None);
         if self.dirsize.is_some() {
             self.dirsize
-                = Some(File::make_async_dirsize(&self.path, self.dirty_meta.clone()));
+                = Some(File::make_async_dirsize(&self.path, self.dirty_meta.clone(), None));
         }
         Ok(())
     }
@@ -720,8 +770,8 @@ impl File {
         self.tag = Some(new_state);
 
         match new_state {
-            true => TAGS.lock()?.1.push(self.path.clone()),
-            false => { TAGS.lock()?.1.remove_item(&self.path); },
+            true => TAGS.write()?.1.push(self.path.clone()),
+            false => { TAGS.write()?.1.remove_item(&self.path); },
         }
         self.save_tags()?;
         Ok(())
@@ -730,7 +780,7 @@ impl File {
     pub fn save_tags(&self) -> HResult<()> {
         std::thread::spawn(|| -> HResult<()> {
             let tagfile_path = crate::paths::tagfile_path()?;
-            let tags = TAGS.lock()?.clone();
+            let tags = TAGS.read()?.clone();
             let tags_str = tags.1.iter().map(|p| {
                 let path = p.to_string_lossy().to_string();
                 format!("{}\n", path)

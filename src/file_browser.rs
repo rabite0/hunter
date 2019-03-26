@@ -13,6 +13,7 @@ use crate::files::{File, Files, PathBufExt};
 use crate::listview::ListView;
 use crate::hbox::HBox;
 use crate::widget::Widget;
+use crate::dirty::Dirtyable;
 use crate::tabview::{TabView, Tabbable};
 use crate::preview::{Previewer, AsyncWidget};
 use crate::fail::{HResult, HError, ErrorLog};
@@ -248,6 +249,18 @@ impl FileBrowser {
         let file = self.selected_file()?;
 
         if file.is_dir() {
+            match file.is_readable() {
+                Ok(true) => {},
+                Ok(false) => {
+                    let status =
+                        format!("{}Stop right there, cowboy! Check your permisions!",
+                                term::color_red());
+                    self.show_status(&status).log();
+                    return Ok(());
+                }
+                err @ Err(_) => err.log()
+            }
+
             self.main_widget_goto(&file).log();
         } else {
             self.core.get_sender().send(Events::InputEnabled(false))?;
@@ -293,22 +306,13 @@ impl FileBrowser {
     }
 
     pub fn main_widget_goto(&mut self, dir: &File) -> HResult<()> {
-        match dir.is_readable() {
-            Ok(true) => {},
-            Ok(false) => {
-                let status =
-                    format!("{}Stop right there, cowboy! Check your permisions!",
-                            term::color_red());
-                self.show_status(&status).log();
-                return Ok(());
-            }
-            err @ Err(_) => err.log()
-        }
+
 
         let dir = dir.clone();
         let selected_file = self.get_selection(&dir).ok().cloned();
 
         self.get_files().and_then(|files| self.cache_files(files)).log();
+        self.get_left_files().and_then(|files| self.cache_files(files)).log();
         let cached_files = self.get_cached_files(&dir).ok();
 
         self.prev_cwd = Some(self.cwd.clone());
@@ -320,11 +324,12 @@ impl FileBrowser {
             let cached_files = cached_files.clone();
 
             let files = cached_files.or_else(|| {
-                Files::new_from_path_cancellable(&path, stale).ok()
+                Files::new_from_path_cancellable(&path, stale.clone()).ok()
             })?;
 
             let mut list = ListView::new(&core, files);
-            list.content.meta_all();
+
+            list.content.meta_set_fresh().log();
 
             if let Some(file) = &selected_file {
                 list.select_file(file);
@@ -335,6 +340,8 @@ impl FileBrowser {
         if let Ok(grand_parent) = self.cwd()?.parent_as_file() {
             self.left_widget_goto(&grand_parent).log();
         } else {
+            self.left_async_widget_mut()?.clear().log();
+            self.screen()?.flush();
             self.left_async_widget_mut()?.set_stale().log();
         }
 
@@ -342,7 +349,6 @@ impl FileBrowser {
     }
 
     pub fn left_widget_goto(&mut self, dir: &File) -> HResult<()> {
-        self.get_left_files().and_then(|files| self.cache_files(files)).log();
         let cached_files = self.get_cached_files(&dir).ok();
         let dir = dir.clone();
 

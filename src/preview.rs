@@ -1,4 +1,4 @@
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, RwLock};
 
 use rayon::ThreadPool;
 
@@ -9,8 +9,6 @@ use crate::widget::{Widget, WidgetCore};
 use crate::coordinates::Coordinates;
 use crate::fail::{HResult, HError, ErrorLog};
 
-
-pub type Stale = Arc<Mutex<bool>>;
 
 pub type AsyncValueFn<T> = Box<Fn(Stale) -> HResult<T> + Send>;
 pub type AsyncValue<T> = Arc<Mutex<Option<HResult<T>>>>;
@@ -33,8 +31,30 @@ fn kill_proc() -> HResult<()> {
     Ok(())
 }
 
-pub fn is_stale(stale: &Arc<Mutex<bool>>) -> HResult<bool> {
-    let stale = *(stale.lock().unwrap());
+#[derive(Clone, Debug)]
+pub struct Stale(Arc<RwLock<bool>>);
+
+impl Stale {
+    pub fn new() -> Stale {
+        Stale(Arc::new(RwLock::new(false)))
+    }
+    pub fn is_stale(&self) -> HResult<bool> {
+        Ok(*self.0.read()?)
+    }
+    pub fn set_stale(&self) -> HResult<()> {
+        *self.0.write()? = true;
+        Ok(())
+    }
+    pub fn set_fresh(&self) -> HResult<()> {
+        *self.0.write()? = false;
+        Ok(())
+    }
+}
+
+
+
+pub fn is_stale(stale: &Stale) -> HResult<bool> {
+    let stale = stale.is_stale()?;
     Ok(stale)
 }
 
@@ -68,7 +88,20 @@ impl<T: Send + 'static> Async<T> {
             async_value: Arc::new(Mutex::new(None)),
             async_closure: Arc::new(Mutex::new(Some(closure))),
             on_ready: Arc::new(Mutex::new(None)),
-            stale: Arc::new(Mutex::new(false)) };
+            stale: Stale::new() };
+
+        async_value
+    }
+
+    pub fn new_with_stale(closure: AsyncValueFn<T>,
+                          stale: Stale)
+                  -> Async<T> {
+        let async_value = Async {
+            value: HError::async_not_ready(),
+            async_value: Arc::new(Mutex::new(None)),
+            async_closure: Arc::new(Mutex::new(Some(closure))),
+            on_ready: Arc::new(Mutex::new(None)),
+            stale: stale };
 
         async_value
     }
@@ -79,52 +112,103 @@ impl<T: Send + 'static> Async<T> {
             async_value: Arc::new(Mutex::new(None)),
             async_closure: Arc::new(Mutex::new(None)),
             on_ready: Arc::new(Mutex::new(None)),
-            stale: Arc::new(Mutex::new(false))
+            stale: Stale::new()
         }
     }
 
     pub fn run(&mut self) -> HResult<()> {
-        let closure = self.async_closure.lock()?.take()?;
+        let closure = self.async_closure.clone();
         let async_value = self.async_value.clone();
         let stale = self.stale.clone();
-        let on_ready_fn = self.on_ready.lock()?.take();
+        let on_ready_fn = self.on_ready.clone();
 
         std::thread::spawn(move|| -> HResult<()> {
-            let mut value = closure(stale);
+        let value = closure.lock().map(|closure|
+                                           closure.as_ref().map(|closure|
+                                                                closure(stale)));
 
-            if let Ok(ref mut value) = value {
-                if let Some(on_ready_fn) = on_ready_fn {
-                    on_ready_fn(value);
+            if let Ok(value) = value {
+                if let Some(value) = value {
+                    match value {
+                        Ok(mut value) => {
+                            if let Ok(mut on_ready_fn) = on_ready_fn.lock() {
+                                if let Some(on_ready_fn) = on_ready_fn.as_ref() {
+                                    on_ready_fn(&mut value).log();
+                                }
+                                on_ready_fn.take();
+                            }
+                            async_value
+                                .lock()
+                                .map(|mut async_value|
+                                     async_value.replace(Ok(value))).ok();
+                            closure.lock().map(|mut closure|
+                                               closure.take()).ok();
+                        },
+                        Err(err) => {
+                            async_value
+                                .lock()
+                                .map(|mut async_value|
+                                     async_value.replace(Err(err))).ok();
+                        }
+                    }
                 }
+            } else {
+                async_value
+                    .lock()
+                    .map(|mut async_value|
+                         async_value.replace(Err(HError::MutexError))).ok();
             }
-
-            async_value.lock()?.replace(value);
             Ok(())
         });
         Ok(())
     }
 
     pub fn run_pooled(&mut self, pool: &ThreadPool) -> HResult<()> {
-        let closure = self.async_closure.lock()?.take()?;
+        let closure = self.async_closure.clone();
         let async_value = self.async_value.clone();
         let stale = self.stale.clone();
-        let on_ready_fn = self.on_ready.lock()?.take();
+        let on_ready_fn = self.on_ready.clone();
 
         pool.spawn(move || {
-            let mut value = closure(stale);
+            let value = closure.lock().map(|closure|
+                                           closure.as_ref().map(|closure|
+                                                                closure(stale)));
 
-            if let Ok(ref mut value) = value {
-                if let Some(on_ready_fn) = on_ready_fn {
-                    on_ready_fn(value);
+            if let Ok(value) = value {
+                if let Some(value) = value {
+                    match value {
+                        Ok(mut value) => {
+                            if let Ok(mut on_ready_fn) = on_ready_fn.lock() {
+                                if let Some(on_ready_fn) = on_ready_fn.as_ref() {
+                                    on_ready_fn(&mut value).log();
+                                }
+                                on_ready_fn.take();
+                            }
+                            async_value
+                                .lock()
+                                .map(|mut async_value|
+                                     async_value.replace(Ok(value))).ok();
+                            closure.lock().map(|mut closure|
+                                               closure.take()).ok();
+                        },
+                        Err(err) => {
+                            async_value
+                                .lock()
+                                .map(|mut async_value|
+                                     async_value.replace(Err(err))).ok();
+                        }
+                    }
                 }
+            } else {
+                async_value
+                    .lock()
+                    .map(|mut async_value|
+                         async_value.replace(Err(HError::MutexError))).ok();
             }
-
-            async_value
-                .lock()
-                .map(|mut async_value| async_value.replace(value));
         });
         Ok(())
     }
+
 
     pub fn wait(&mut self) -> HResult<()> {
         let closure = self.async_closure.lock()?.take()?;
@@ -141,12 +225,21 @@ impl<T: Send + 'static> Async<T> {
     }
 
     pub fn set_stale(&mut self) -> HResult<()> {
-        *self.stale.lock()? = true;
+        self.stale.set_stale()?;
+        Ok(())
+    }
+
+    pub fn set_fresh(&self) -> HResult<()> {
+        self.stale.set_fresh()?;
         Ok(())
     }
 
     pub fn is_stale(&self) -> HResult<bool> {
-        is_stale(&self.stale)
+        self.stale.is_stale()
+    }
+
+    pub fn get_stale(&self) -> Stale {
+        self.stale.clone()
     }
 
     pub fn take_async(&mut self) -> HResult<()> {
@@ -251,6 +344,10 @@ impl<W: Widget + Send + 'static> AsyncWidget<W> {
         self.widget.is_stale()
     }
 
+    pub fn get_stale(&self) -> Stale {
+        self.widget.get_stale()
+    }
+
     pub fn widget(&self) -> HResult<&W> {
         self.widget.get()
     }
@@ -292,7 +389,7 @@ impl<T: Widget + Send + 'static> Widget for AsyncWidget<T> {
     }
 
     fn refresh(&mut self) -> HResult<()> {
-        self.widget.take_async().log();
+        self.widget.take_async().ok();
 
         let coords = self.get_coordinates()?.clone();
         if let Ok(widget) = self.widget_mut() {
@@ -342,7 +439,7 @@ pub struct Previewer {
     core: WidgetCore,
     file: Option<File>,
     selection: Option<File>,
-    cached_files: Option<Files>
+    cached_files: Option<Files>,
 }
 
 
@@ -435,7 +532,7 @@ impl Previewer {
                    selection: Option<File>,
                    cached_files: Option<Files>,
                    core: &WidgetCore,
-                   stale: Arc<Mutex<bool>>)
+                   stale: Stale)
                    -> Result<WidgetO, HError> {
         let files = cached_files.or_else(|| {
             Files::new_from_path_cancellable(&file.path,
@@ -456,7 +553,7 @@ impl Previewer {
         Ok(Box::new(file_list) as Box<dyn Widget + Send>)
     }
 
-    fn preview_text(file: &File, core: &WidgetCore, stale: Arc<Mutex<bool>>)
+    fn preview_text(file: &File, core: &WidgetCore, stale: Stale)
                     -> HResult<WidgetO> {
         let lines = core.coordinates.ysize() as usize;
         let mut textview
@@ -476,7 +573,7 @@ impl Previewer {
 
     fn preview_external(file: &File,
                         core: &WidgetCore,
-                        stale: Arc<Mutex<bool>>)
+                        stale: Stale)
                         -> Result<Box<dyn Widget + Send>, HError> {
         let process =
             std::process::Command::new("scope.sh")
