@@ -12,7 +12,7 @@ use crate::fail::{HResult, HError, ErrorLog};
 
 pub type AsyncValueFn<T> = Box<Fn(Stale) -> HResult<T> + Send>;
 pub type AsyncValue<T> = Arc<Mutex<Option<HResult<T>>>>;
-pub type AsyncReadyFn<T> = Box<Fn(&mut T) -> HResult<()> + Send>;
+pub type AsyncReadyFn = Box<Fn() -> HResult<()> + Send>;
 pub type AsyncWidgetFn<W> = Box<Fn(Stale, WidgetCore) -> HResult<W> + Send>;
 
 
@@ -76,8 +76,9 @@ pub struct Async<T: Send> {
     pub value: HResult<T>,
     async_value: AsyncValue<T>,
     async_closure: Arc<Mutex<Option<AsyncValueFn<T>>>>,
-    on_ready: Arc<Mutex<Option<AsyncReadyFn<T>>>>,
-    stale: Stale
+    on_ready: Arc<Mutex<Option<AsyncReadyFn>>>,
+    started: bool,
+    stale: Stale,
 }
 
 impl<T: Send + 'static> Async<T> {
@@ -88,6 +89,7 @@ impl<T: Send + 'static> Async<T> {
             async_value: Arc::new(Mutex::new(None)),
             async_closure: Arc::new(Mutex::new(Some(closure))),
             on_ready: Arc::new(Mutex::new(None)),
+            started: false,
             stale: Stale::new() };
 
         async_value
@@ -101,6 +103,7 @@ impl<T: Send + 'static> Async<T> {
             async_value: Arc::new(Mutex::new(None)),
             async_closure: Arc::new(Mutex::new(Some(closure))),
             on_ready: Arc::new(Mutex::new(None)),
+            started: false,
             stale: stale };
 
         async_value
@@ -112,15 +115,21 @@ impl<T: Send + 'static> Async<T> {
             async_value: Arc::new(Mutex::new(None)),
             async_closure: Arc::new(Mutex::new(None)),
             on_ready: Arc::new(Mutex::new(None)),
+            started: false,
             stale: Stale::new()
         }
     }
 
     pub fn run(&mut self) -> HResult<()> {
+        if self.started {
+            HError::async_started()?
+        }
+
         let closure = self.async_closure.clone();
         let async_value = self.async_value.clone();
         let stale = self.stale.clone();
         let on_ready_fn = self.on_ready.clone();
+        self.started = true;
 
         std::thread::spawn(move|| -> HResult<()> {
         let value = closure.lock().map(|closure|
@@ -131,16 +140,18 @@ impl<T: Send + 'static> Async<T> {
                 if let Some(value) = value {
                     match value {
                         Ok(mut value) => {
-                            if let Ok(mut on_ready_fn) = on_ready_fn.lock() {
-                                if let Some(on_ready_fn) = on_ready_fn.as_ref() {
-                                    on_ready_fn(&mut value).log();
-                                }
-                                on_ready_fn.take();
-                            }
                             async_value
                                 .lock()
                                 .map(|mut async_value|
                                      async_value.replace(Ok(value))).ok();
+
+                            if let Ok(mut on_ready_fn) = on_ready_fn.lock() {
+                                if let Some(on_ready_fn) = on_ready_fn.as_ref() {
+                                    on_ready_fn().log();
+                                }
+                                on_ready_fn.take();
+                            }
+
                             closure.lock().map(|mut closure|
                                                closure.take()).ok();
                         },
@@ -164,10 +175,15 @@ impl<T: Send + 'static> Async<T> {
     }
 
     pub fn run_pooled(&mut self, pool: &ThreadPool) -> HResult<()> {
+        if self.started {
+            HError::async_started()?
+        }
+
         let closure = self.async_closure.clone();
         let async_value = self.async_value.clone();
         let stale = self.stale.clone();
         let on_ready_fn = self.on_ready.clone();
+        self.started = true;
 
         pool.spawn(move || {
             let value = closure.lock().map(|closure|
@@ -178,16 +194,16 @@ impl<T: Send + 'static> Async<T> {
                 if let Some(value) = value {
                     match value {
                         Ok(mut value) => {
-                            if let Ok(mut on_ready_fn) = on_ready_fn.lock() {
-                                if let Some(on_ready_fn) = on_ready_fn.as_ref() {
-                                    on_ready_fn(&mut value).log();
-                                }
-                                on_ready_fn.take();
-                            }
                             async_value
                                 .lock()
                                 .map(|mut async_value|
                                      async_value.replace(Ok(value))).ok();
+                            if let Ok(mut on_ready_fn) = on_ready_fn.lock() {
+                                if let Some(on_ready_fn) = on_ready_fn.as_ref() {
+                                    on_ready_fn().log();
+                                }
+                                on_ready_fn.take();
+                            }
                             closure.lock().map(|mut closure|
                                                closure.take()).ok();
                         },
@@ -217,7 +233,7 @@ impl<T: Send + 'static> Async<T> {
 
 
         if let Ok(ref mut value) = value {
-            on_ready_fn.map(|on_ready_fn| on_ready_fn(value));
+            on_ready_fn.map(|on_ready_fn| on_ready_fn());
         }
 
         self.value = value;
@@ -240,6 +256,14 @@ impl<T: Send + 'static> Async<T> {
 
     pub fn get_stale(&self) -> Stale {
         self.stale.clone()
+    }
+
+    pub fn is_started(&self) -> bool {
+        self.started
+    }
+
+    pub fn set_unstarted(&mut self) {
+        self.started = false;
     }
 
     pub fn take_async(&mut self) -> HResult<()> {
@@ -278,7 +302,7 @@ impl<T: Send + 'static> Async<T> {
     }
 
     pub fn on_ready(&mut self,
-                    fun: AsyncReadyFn<T>) {
+                    fun: AsyncReadyFn) {
         *self.on_ready.lock().unwrap() = Some(fun);
     }
 }
@@ -304,7 +328,7 @@ impl<W: Widget + Send + 'static> AsyncWidget<W> {
     pub fn new(core: &WidgetCore, closure: AsyncValueFn<W>) -> AsyncWidget<W> {
         let sender = core.get_sender();
         let mut widget = Async::new(Box::new(move |stale| closure(stale)));
-        widget.on_ready(Box::new(move |_| {
+        widget.on_ready(Box::new(move || {
             sender.send(crate::widget::Events::WidgetReady)?;
             Ok(())
         }));
@@ -325,7 +349,7 @@ impl<W: Widget + Send + 'static> AsyncWidget<W> {
             closure(stale, core.clone())
         }));
 
-        widget.on_ready(Box::new(move |_| {
+        widget.on_ready(Box::new(move || {
             sender.send(crate::widget::Events::WidgetReady)?;
             Ok(())
         }));

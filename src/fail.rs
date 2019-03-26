@@ -43,6 +43,8 @@ pub enum HError {
     AsyncStaleError,
     #[fail(display = "Value has already been taken!")]
     AsyncAlreadyTakenError,
+    #[fail(display = "Async has already been started!")]
+    AsyncAlreadyStartedError,
     #[fail(display = "Async Error: {}", _0)]
     AsyncError(String),
     #[fail(display = "No widget found")]
@@ -147,6 +149,10 @@ impl HError {
 
     pub fn async_error<T>(error: &HError) -> HResult<T> {
         Err(HError::AsyncError(format!("{}", error)))
+    }
+
+    pub fn async_started<T>() -> HResult<T> {
+        Err(HError::AsyncAlreadyStartedError)
     }
 
     pub fn metadata_processed<T>() -> HResult<T> {

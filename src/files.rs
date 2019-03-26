@@ -379,14 +379,13 @@ impl Files {
         self.dirty_meta.set_clean();
 
         let meta_pool = make_pool(sender.clone());
-        let dirsize_pool = make_pool(sender);
 
         for file in self.files.iter_mut().take(meta_files) {
             if !file.meta_processed {
                 file.take_meta(&meta_pool).ok();
             }
-            if file.is_dir() {
-                file.take_dirsize(&dirsize_pool).ok();
+            if file.is_dir() && file.meta_processed {
+                file.take_dirsize(&meta_pool).ok();
             }
         }
 
@@ -568,7 +567,7 @@ impl File {
             None => Async::new(meta_closure)
         };
         if let Some(dirty_meta) = dirty_meta {
-            meta.on_ready(Box::new(move |_| {
+            meta.on_ready(Box::new(move || {
                 let mut dirty_meta = dirty_meta.clone();
                 dirty_meta.set_dirty();
 
@@ -594,7 +593,7 @@ impl File {
         };
 
         if let Some(dirty_meta) = dirty_meta {
-            dirsize.on_ready(Box::new(move |_| {
+            dirsize.on_ready(Box::new(move || {
                 let mut dirty_meta = dirty_meta.clone();
                 dirty_meta.set_dirty();
 
@@ -650,14 +649,15 @@ impl File {
     }
 
     pub fn reload_meta(&mut self) -> HResult<()> {
-        self.dirty_meta.as_mut()?.set_dirty();
         self.meta_processed = false;
         self.meta = File::make_async_meta(&self.path,
                                           self.dirty_meta.clone(),
                                           None);
+        self.meta.run();
         if self.dirsize.is_some() {
             self.dirsize
                 = Some(File::make_async_dirsize(&self.path, self.dirty_meta.clone(), None));
+            self.dirsize.as_mut()?.run();
         }
         Ok(())
     }
