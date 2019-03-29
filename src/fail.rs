@@ -88,7 +88,7 @@ pub enum HError {
 }
 
 impl HError {
-    pub fn log(log: String) -> HResult<()> {
+    pub fn log<T>(log: String) -> HResult<T> {
         Err(HError::Log(log))
     }
     pub fn quit() -> HResult<()> {

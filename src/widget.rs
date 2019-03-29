@@ -1,6 +1,6 @@
 use std::sync::{Arc, Mutex};
 use std::sync::mpsc::{Sender, Receiver, channel};
-use std::io::Write;
+use std::io::{Write, stdin};
 
 use termion::event::{Event, Key, MouseEvent};
 use termion::input::TermRead;
@@ -11,17 +11,16 @@ use crate::minibuffer::MiniBuffer;
 use crate::term;
 use crate::term::{Screen, ScreenExt};
 use crate::dirty::{Dirtyable, DirtyBit};
-use crate::preview::Stale;
 use crate::signal_notify::{notify, Signal};
 
-use std::io::stdin;
+
 
 #[derive(Debug)]
 pub enum Events {
     InputEvent(Event),
     WidgetReady,
     TerminalResized,
-    ExclusiveEvent(Option<Sender<Events>>),
+    ExclusiveEvent(Option<Mutex<Option<Sender<Events>>>>),
     InputEnabled(bool),
     RequestInput,
     Status(String)
@@ -52,7 +51,7 @@ pub struct WidgetCore {
     pub screen: Screen,
     pub coordinates: Coordinates,
     pub minibuffer: Arc<Mutex<Option<MiniBuffer>>>,
-    pub event_sender: Sender<Events>,
+    pub event_sender: Arc<Mutex<Sender<Events>>>,
     event_receiver: Arc<Mutex<Option<Receiver<Events>>>>,
     pub status_bar_content: Arc<Mutex<Option<String>>>,
     term_size: (usize, usize),
@@ -74,7 +73,7 @@ impl WidgetCore {
             screen: screen,
             coordinates: coords,
             minibuffer: Arc::new(Mutex::new(None)),
-            event_sender: sender,
+            event_sender: Arc::new(Mutex::new(sender)),
             event_receiver: Arc::new(Mutex::new(Some(receiver))),
             status_bar_content: status_bar_content,
             term_size: (xsize, ysize),
@@ -86,7 +85,7 @@ impl WidgetCore {
     }
 
     pub fn get_sender(&self) -> Sender<Events> {
-        self.event_sender.clone()
+        self.event_sender.lock().unwrap().clone()
     }
 }
 
@@ -241,7 +240,9 @@ pub trait Widget {
 
     fn run_widget(&mut self) -> HResult<()> {
         let (tx_event, rx_event) = channel();
-        self.get_core()?.get_sender().send(Events::ExclusiveEvent(Some(tx_event)))?;
+        self.get_core()?
+            .get_sender()
+            .send(Events::ExclusiveEvent(Some(Mutex::new(Some(tx_event)))))?;
         self.get_core()?.get_sender().send(Events::RequestInput)?;
 
         self.clear()?;
@@ -378,7 +379,7 @@ pub trait Widget {
     fn show_status(&self, status: &str) -> HResult<()> {
         let xsize = self.get_core()?.coordinates.xsize_u();
         let sized_status = term::sized_string_u(status, xsize);
-        HError::log(status.to_string()).log();
+        HError::log::<()>(status.to_string()).log();
         {
             let mut status_content = self.get_core()?.status_bar_content.lock()?;
             *status_content = Some(sized_status);
@@ -437,7 +438,10 @@ fn dispatch_events(tx_internal: Sender<Events>,
         for event in rx_event.iter() {
             match &event {
                 Events::ExclusiveEvent(tx_event) => {
-                    tx_exclusive_event = tx_event.clone();
+                    tx_exclusive_event = match tx_event {
+                        Some(locked_sender) => locked_sender.lock().unwrap().take(),
+                        None => None
+                    }
                 }
                 Events::InputEnabled(state) => {
                     input_enabled = *state;

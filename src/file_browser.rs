@@ -1,19 +1,15 @@
 use termion::event::Key;
-use notify::{INotifyWatcher, Watcher, DebouncedEvent, RecursiveMode};
 
 use std::io::Write;
 use std::sync::{Arc, Mutex};
-use std::sync::mpsc::{channel, Receiver, Sender};
-use std::time::Duration;
 use std::path::PathBuf;
-use std::collections::HashMap;
 use std::ffi::OsString;
 
 use crate::files::{File, Files, PathBufExt};
+use crate::fscache::FsCache;
 use crate::listview::ListView;
 use crate::hbox::HBox;
 use crate::widget::Widget;
-use crate::dirty::Dirtyable;
 use crate::tabview::{TabView, Tabbable};
 use crate::preview::{Previewer, AsyncWidget};
 use crate::fail::{HResult, HError, ErrorLog};
@@ -68,35 +64,37 @@ pub struct FileBrowser {
     pub columns: HBox<FileBrowserWidgets>,
     pub cwd: File,
     pub prev_cwd: Option<File>,
-    selections: HashMap<File, File>,
-    cached_files: HashMap<File, Files>,
     core: WidgetCore,
-    watcher: INotifyWatcher,
-    watches: Vec<PathBuf>,
-    dir_events: Arc<Mutex<Vec<DebouncedEvent>>>,
     proc_view: Arc<Mutex<ProcView>>,
     bookmarks: Arc<Mutex<BMPopup>>,
-    log_view: Arc<Mutex<LogView>>
+    log_view: Arc<Mutex<LogView>>,
+    fs_cache: FsCache,
 }
 
 impl Tabbable for TabView<FileBrowser> {
     fn new_tab(&mut self) -> HResult<()> {
-        let mut tab = FileBrowser::new_cored(&self.active_tab_().core)?;
+        let cur_tab = self.active_tab_();
 
-        let proc_view = self.active_tab_().proc_view.clone();
-        let bookmarks = self.active_tab_().bookmarks.clone();
-        let log_view  = self.active_tab_().log_view.clone();
+        let settings = cur_tab.fs_cache.tab_settings.read()?.clone();
+        let cache = cur_tab.fs_cache.new_client(settings).ok();
+
+        let mut tab = FileBrowser::new(&self.active_tab_().core, cache)?;
+
+        let proc_view = cur_tab.proc_view.clone();
+        let bookmarks = cur_tab.bookmarks.clone();
+        let log_view  = cur_tab.log_view.clone();
         tab.proc_view = proc_view;
         tab.bookmarks = bookmarks;
         tab.log_view  = log_view;
 
         self.push_widget(tab)?;
-        self.active += 1;
+        self.active = self.widgets.len() - 1;
         Ok(())
     }
 
     fn close_tab(&mut self) -> HResult<()> {
-        self.close_tab_()
+        self.close_tab_().log();
+        Ok(())
     }
 
     fn next_tab(&mut self) -> HResult<()> {
@@ -148,29 +146,36 @@ impl Tabbable for TabView<FileBrowser> {
             _ => { self.active_tab_mut().on_key(key) }
         }
     }
-}
 
+    fn on_refresh(&mut self) -> HResult<()> {
+        let fs_changes = self.active_tab_()
+            .fs_cache
+            .fs_changes
+            .write()?
+            .drain(..)
+            .collect::<Vec<_>>();
 
-
-
-
-fn watch_dir(rx: Receiver<DebouncedEvent>,
-             dir_events: Arc<Mutex<Vec<DebouncedEvent>>>,
-             sender: Sender<Events>) {
-    std::thread::spawn(move || {
-        for event in rx.iter() {
-            dir_events.lock().unwrap().push(event);
-            sender.send(Events::WidgetReady).unwrap();
+        for tab in &mut self.widgets {
+            for (dir, old_file, new_file) in fs_changes.iter() {
+                tab.replace_file(&dir,
+                                 old_file.as_ref(),
+                                 new_file.as_ref()).log()
+            }
         }
-    });
+        Ok(())
+    }
 }
+
+
 
 
 
 
 
 impl FileBrowser {
-    pub fn new_cored(core: &WidgetCore) -> HResult<FileBrowser> {
+    pub fn new(core: &WidgetCore, cache: Option<FsCache>) -> HResult<FileBrowser> {
+        let fs_cache = cache.unwrap_or_else(|| FsCache::new(core.get_sender()));
+
         let cwd = std::env::current_dir().unwrap();
         let mut core_m = core.clone();
         let mut core_l = core.clone();
@@ -191,18 +196,40 @@ impl FileBrowser {
                            }).last()?;
         let left_path = main_path.parent().map(|p| p.to_path_buf());
 
+        let cache = fs_cache.clone();
         let main_widget = AsyncWidget::new(&core, Box::new(move |_| {
-            let mut list = ListView::new(&core_m,
-                                         Files::new_from_path(&main_path)?);
+            let main_dir = File::new(&main_path.file_name()?
+                                     .to_string_lossy()
+                                     .to_string(),
+                                     main_path.clone(),
+                                     None);
+            let files = cache.get_files_sync(&main_dir)?;
+            let selection = cache.get_selection(&main_dir).ok();
+            let mut list = ListView::new(&core_m.clone(),
+                                         files);
+            if let Some(file) = selection {
+                list.select_file(&file);
+            }
             list.animate_slide_up().log();
             list.content.meta_all();
             Ok(list)
         }));
 
+        let cache = fs_cache.clone();
         if let Some(left_path) = left_path {
             let left_widget = AsyncWidget::new(&core, Box::new(move |_| {
+                let left_dir = File::new(&left_path.file_name()?
+                                         .to_string_lossy()
+                                         .to_string(),
+                                         left_path.clone(),
+                                         None);
+                let files = cache.get_files_sync(&left_dir)?;
+                let selection = cache.get_selection(&left_dir).ok();
                 let mut list = ListView::new(&core_l,
-                                             Files::new_from_path(&left_path)?);
+                                             files);
+                if let Some(file) = selection {
+                    list.select_file(&file);
+                }
                 list.animate_slide_up().log();
                 Ok(list)
             }));
@@ -210,7 +237,7 @@ impl FileBrowser {
             columns.push_widget(left_widget);
         }
 
-        let previewer = Previewer::new(&core_p);
+        let previewer = Previewer::new(&core_p, fs_cache.clone());
 
         columns.push_widget(FileBrowserWidgets::FileList(main_widget));
         columns.push_widget(FileBrowserWidgets::Previewer(previewer));
@@ -219,11 +246,6 @@ impl FileBrowser {
 
 
         let cwd = File::new_from_path(&cwd, None).unwrap();
-        let dir_events = Arc::new(Mutex::new(vec![]));
-
-        let (tx_watch, rx_watch) = channel();
-        let watcher = INotifyWatcher::new(tx_watch, Duration::from_secs(2)).unwrap();
-        watch_dir(rx_watch, dir_events.clone(), core.get_sender());
 
         let proc_view = ProcView::new(&core);
         let bookmarks = BMPopup::new(&core);
@@ -234,15 +256,12 @@ impl FileBrowser {
         Ok(FileBrowser { columns: columns,
                          cwd: cwd,
                          prev_cwd: None,
-                         selections: HashMap::new(),
-                         cached_files: HashMap::new(),
                          core: core.clone(),
-                         watcher: watcher,
-                         watches: vec![],
-                         dir_events: dir_events,
                          proc_view: Arc::new(Mutex::new(proc_view)),
                          bookmarks: Arc::new(Mutex::new(bookmarks)),
-                         log_view: Arc::new(Mutex::new(log_view)) })
+                         log_view: Arc::new(Mutex::new(log_view)),
+                         fs_cache: fs_cache,
+        })
     }
 
     pub fn enter_dir(&mut self) -> HResult<()> {
@@ -306,33 +325,25 @@ impl FileBrowser {
     }
 
     pub fn main_widget_goto(&mut self, dir: &File) -> HResult<()> {
-
+        self.cache_files().log();
 
         let dir = dir.clone();
-        let selected_file = self.get_selection(&dir).ok().cloned();
-
-        self.get_files().and_then(|files| self.cache_files(files)).log();
-        self.get_left_files().and_then(|files| self.cache_files(files)).log();
-        let cached_files = self.get_cached_files(&dir).ok();
+        let cache = self.fs_cache.clone();
 
         self.prev_cwd = Some(self.cwd.clone());
         self.cwd = dir.clone();
 
         let main_async_widget = self.main_async_widget_mut()?;
         main_async_widget.change_to(Box::new(move |stale, core| {
-            let path = dir.path();
-            let cached_files = cached_files.clone();
-
-            let files = cached_files.or_else(|| {
-                Files::new_from_path_cancellable(&path, stale.clone()).ok()
-            })?;
+            let (selected_file, files) = cache.get_files(&dir, stale)?;
+            let files = files.wait()?;
 
             let mut list = ListView::new(&core, files);
 
             list.content.meta_set_fresh().log();
 
-            if let Some(file) = &selected_file {
-                list.select_file(file);
+            if let Some(file) = selected_file {
+                list.select_file(&file);
             }
             Ok(list)
         })).log();
@@ -341,7 +352,7 @@ impl FileBrowser {
             self.left_widget_goto(&grand_parent).log();
         } else {
             self.left_async_widget_mut()?.clear().log();
-            self.screen()?.flush();
+            Ok(self.screen()?.flush()?).log();
             self.left_async_widget_mut()?.set_stale().log();
         }
 
@@ -349,17 +360,15 @@ impl FileBrowser {
     }
 
     pub fn left_widget_goto(&mut self, dir: &File) -> HResult<()> {
-        let cached_files = self.get_cached_files(&dir).ok();
+        let cache = self.fs_cache.clone();
         let dir = dir.clone();
 
         let left_async_widget = self.left_async_widget_mut()?;
         left_async_widget.change_to(Box::new(move |stale, core| {
-            let path = dir.path();
-            let cached_files = cached_files.clone();
+            let cached_files = cache.get_files(&dir, stale)?;
+            let (_, files) = cached_files;
 
-            let files = cached_files.or_else(|| {
-                Files::new_from_path_cancellable(&path, stale).ok()
-            })?;
+            let files = files.wait()?;
 
             let list = ListView::new(&core, files);
             Ok(list)
@@ -430,10 +439,8 @@ impl FileBrowser {
                 return Ok(());
             }
         let file = self.selected_file()?.clone();
-        let selection = self.get_selection(&file).ok().cloned();
-        let cached_files = self.get_cached_files(&file).ok();
         let preview = self.preview_widget_mut()?;
-        preview.set_file(&file, selection, cached_files).log();
+        preview.set_file(&file).log();
         Ok(())
     }
 
@@ -441,46 +448,44 @@ impl FileBrowser {
         if !self.left_async_widget_mut()?.ready() { return Ok(()) }
         if self.cwd.parent().is_none() { return Ok(()) }
 
-        let parent = self.cwd()?.parent_as_file();
+        let selection = self.cwd()?.clone();
 
-        let left_selection = self.get_selection(&parent?)?.clone();
-        self.left_widget_mut()?.select_file(&left_selection);
+        self.left_widget_mut()?.select_file(&selection);
 
         Ok(())
     }
 
-    pub fn get_selection(&self, dir: &File) -> HResult<&File> {
-        Ok(self.selections.get(dir)?)
-    }
-
-    pub fn get_files(&mut self) -> HResult<Files> {
+    pub fn get_files(&self) -> HResult<Files> {
         Ok(self.main_widget()?.content.clone())
     }
 
-    pub fn get_left_files(&mut self) -> HResult<Files> {
+    pub fn get_left_files(&self) -> HResult<Files> {
         Ok(self.left_widget()?.content.clone())
     }
 
-    pub fn cache_files(&mut self, files: Files) -> HResult<()> {
-        let dir = files.directory.clone();
-        self.cached_files.insert(dir, files);
+    pub fn cache_files(&self) -> HResult<()> {
+        if !self.fs_cache.is_cached(&self.cwd)? {
+            let files = self.get_files()?;
+            let selected_file = self.selected_file().ok();
+            self.fs_cache.put_files(files, selected_file).log();
+        } else {
+            let files = &self.main_widget()?.content;
+            let selected_file = self.selected_file().ok();
+            self.fs_cache.save_settings(&files, selected_file).log();
+        }
+
+        if !self.fs_cache.is_cached(&self.left_widget()?.content.directory)? {
+            let left_selection = self.left_widget()?.clone_selected_file();
+            let left_files = self.get_left_files()?;
+            self.fs_cache.put_files(left_files, Some(left_selection)).log();
+        } else {
+            let files = &self.left_widget()?.content;
+            let selected_file = self.left_widget()?.clone_selected_file();
+            self.fs_cache.save_settings(&files, Some(selected_file)).log();
+        }
         Ok(())
     }
 
-    pub fn get_cached_files(&mut self, dir: &File) -> HResult<Files> {
-        Ok(self.cached_files.get(dir)?.clone())
-    }
-
-    pub fn save_selection(&mut self) -> HResult<()> {
-        let cwd = self.cwd()?.clone();
-        if let Ok(main_selection) = self.selected_file() {
-            self.selections.insert(cwd.clone(), main_selection);
-        }
-        if let Ok(left_dir) = self.cwd()?.parent_as_file() {
-            self.selections.insert(left_dir, cwd);
-        }
-        Ok(())
-    }
 
     pub fn cwd(&self) -> HResult<&File> {
         Ok(&self.cwd)
@@ -492,74 +497,22 @@ impl FileBrowser {
         Ok(())
     }
 
-    pub fn left_dir(&self) -> HResult<File> {
+    pub fn left_dir(&self) -> HResult<&File> {
         let widget = self.left_widget()?;
-        let dir = widget.content.directory.clone();
+        let dir = &widget.content.directory;
         Ok(dir)
     }
 
-    fn update_watches(&mut self) -> HResult<()> {
-        if !self.left_async_widget_mut()?.ready() ||
-            !self.main_async_widget_mut()?.ready() {
-            return Ok(())
+    fn replace_file(&mut self,
+                    dir: &File,
+                    old: Option<&File>,
+                    new: Option<&File>) -> HResult<()> {
+        if &self.cwd == dir {
+            self.main_widget_mut()?.content.replace_file(old, new.cloned()).log();
         }
-        let watched_dirs = self.watches.clone();
-        let cwd = self.cwd()?.clone();
-        let left_dir = self.left_dir()?;
-        let preview_dir = self.selected_file().ok().map(|f| f.path);
-
-        for watched_dir in watched_dirs.iter() {
-            if watched_dir != &cwd.path && watched_dir != &left_dir.path &&
-                Some(watched_dir.clone()) != preview_dir {
-                self.watcher.unwatch(&watched_dir).ok();
-                self.watches.remove_item(&watched_dir);
-            }
+        if &self.left_dir()? == &dir {
+            self.left_widget_mut()?.content.replace_file(old, new.cloned()).log();
         }
-        if !watched_dirs.contains(&cwd.path) {
-            self.watcher.watch(&cwd.path, RecursiveMode::NonRecursive)?;
-            self.watches.push(cwd.path);
-        }
-        if !watched_dirs.contains(&left_dir.path) {
-            self.watcher.watch(&left_dir.path, RecursiveMode::NonRecursive)?;
-            self.watches.push(left_dir.path);
-        }
-        if let Some(preview_dir) = preview_dir {
-            if !watched_dirs.contains(&preview_dir) && preview_dir.is_dir() {
-                match self.watcher.watch(&preview_dir, RecursiveMode::NonRecursive) {
-                    Ok(_) => self.watches.push(preview_dir),
-                    Err(notify::Error::Io(ioerr)) => {
-                        if ioerr.kind() != std::io::ErrorKind::PermissionDenied {
-                            Err(ioerr)?
-                        }
-                    }
-                    err @ _ => err?
-                }
-            }
-        }
-        Ok(())
-    }
-
-    fn handle_dir_events(&mut self) -> HResult<()> {
-        let dir_events =  self.dir_events.clone();
-        for event in dir_events.lock()?.iter() {
-            let main_widget = self.main_widget_mut()?;
-            let main_result = main_widget.content.handle_event(event);
-
-            let left_widget = self.left_widget_mut()?;
-            let left_result = left_widget.content.handle_event(event);
-
-            match main_result {
-                Err(HError::WrongDirectoryError { .. }) => {
-                    match left_result {
-                        Err(HError::WrongDirectoryError { .. }) => {
-                            let preview = self.preview_widget_mut()?;
-                            preview.reload();
-                        }, _ => {}
-                    }
-                }, _ => {}
-            }
-        }
-        dir_events.lock()?.clear();
         Ok(())
     }
 
@@ -630,13 +583,6 @@ impl FileBrowser {
         };
         widget
     }
-
-    // pub fn preview_widget(&self) -> HResult<&Previewer> {
-    //     match self.columns.widgets.get(2)? {
-    //         FileBrowserWidgets::Previewer(previewer) => Ok(previewer),
-    //         _ => { return HError::wrong_widget("filelist", "previewer"); }
-    //     }
-    // }
 
     pub fn preview_widget_mut(&mut self) -> HResult<&mut Previewer> {
         match self.columns.widgets.get_mut(2)? {
@@ -843,16 +789,13 @@ impl Widget for FileBrowser {
         }
     }
     fn refresh(&mut self) -> HResult<()> {
-        //self.proc_view.lock()?.set_coordinates(self.get_coordinates()?);
         self.set_title().log();
-        self.handle_dir_events().log();
         self.columns.refresh().log();
         self.set_left_selection().log();
-        self.save_selection().log();
         self.set_cwd().log();
-        self.update_watches().log();
         if !self.columns.zoom_active { self.update_preview().log(); }
         self.columns.refresh().log();
+        self.cache_files().log();
         Ok(())
     }
 

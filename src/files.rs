@@ -18,7 +18,6 @@ use users::{get_current_username,
 use chrono::TimeZone;
 use failure::Error;
 use notify::DebouncedEvent;
-use rayon::prelude::*;
 use rayon::{ThreadPool, ThreadPoolBuilder};
 
 use crate::fail::{HResult, HError, ErrorLog};
@@ -234,7 +233,7 @@ impl Files {
                 .files
                 .sort_by(|a, b| alphanumeric_sort::compare_str(&a.name, &b.name)),
             SortBy::Size => {
-                self.meta_all_sync();
+                self.meta_all_sync().log();
                 self.files.sort_by(|a, b| {
                     if a.meta().unwrap().size() == b.meta().unwrap().size() {
                         return alphanumeric_sort::compare_str(&b.name, &a.name);
@@ -243,7 +242,7 @@ impl Files {
                 });
             }
             SortBy::MTime => {
-                self.meta_all_sync();
+                self.meta_all_sync().log();
                 self.files.sort_by(|a, b| {
                     if a.meta().unwrap().mtime() == b.meta().unwrap().mtime() {
                         return alphanumeric_sort::compare_str(&a.name, &b.name);
@@ -292,7 +291,17 @@ impl Files {
         self.show_hidden = !self.show_hidden
     }
 
-    pub fn handle_event(&mut self, event: &DebouncedEvent) -> HResult<()> {
+    pub fn replace_file(&mut self,
+                        old: Option<&File>,
+                        new: Option<File>) -> HResult<()> {
+        old.map(|old| self.files.remove_item(old));
+        new.map(|new| self.files.push(new));
+        self.sort();
+        Ok(())
+    }
+
+    pub fn handle_event(&mut self,
+                        event: &DebouncedEvent) -> HResult<()> {
         match event {
             DebouncedEvent::Create(path) => {
                 self.path_in_here(&path)?;
@@ -329,12 +338,12 @@ impl Files {
     }
 
     pub fn path_in_here(&self, path: &Path) -> HResult<bool> {
-        let dir = self.directory.path();
+        let dir = &self.directory.path;
         let path = if path.is_dir() { path } else { path.parent().unwrap() };
         if dir == path {
             Ok(true)
         } else {
-            HError::wrong_directory(path.into(), dir)?
+            HError::wrong_directory(path.into(), dir.to_path_buf())?
         }
     }
 
@@ -345,15 +354,10 @@ impl Files {
     pub fn meta_all_sync(&mut self) -> HResult<()> {
         for file in self.files.iter_mut() {
             if !file.meta_processed {
-                let path = file.path.clone();
-                file.meta = Async::new(Box::new(move|_| {
-                    let meta = std::fs::metadata(&path)?;
-                    Ok(meta)
-                }));
-                file.meta.wait()?;
+                file.meta_sync().log();
             }
         }
-        self.dirty_meta.set_dirty();
+        self.set_dirty();
         Ok(())
     }
 
@@ -476,7 +480,6 @@ pub struct File {
     pub meta_processed: bool,
     pub selected: bool,
     pub tag: Option<bool>
-    // flags: Option<String>,
 }
 
 impl File {
@@ -550,6 +553,14 @@ impl File {
         file.name = "<empty>".to_string();
         file.kind = Kind::Placeholder;
         Ok(file)
+    }
+
+    pub fn meta_sync(&mut self) -> HResult<()> {
+        let stale = self.meta.get_stale();
+        let meta = std::fs::metadata(&self.path)?;
+        self.meta = Async::new_with_value(meta);
+        self.meta.put_stale(stale);
+        self.process_meta()
     }
 
     pub fn make_async_meta(path: &PathBuf,
@@ -632,6 +643,12 @@ impl File {
             err @ Err(_) => { err?; }
         }
 
+        self.process_meta()?;
+
+        Ok(())
+    }
+
+    pub fn process_meta(&mut self) -> HResult<()> {
         if let Ok(meta) = self.meta.get() {
             let color = self.get_color(&meta);
             let target = if meta.file_type().is_symlink() {
@@ -641,10 +658,7 @@ impl File {
             self.color = color;
             self.target = target;
             self.meta_processed = true;
-
-            return Ok(())
         }
-
         Ok(())
     }
 
@@ -653,11 +667,12 @@ impl File {
         self.meta = File::make_async_meta(&self.path,
                                           self.dirty_meta.clone(),
                                           None);
-        self.meta.run();
+        self.meta.run().log();
+
         if self.dirsize.is_some() {
             self.dirsize
                 = Some(File::make_async_dirsize(&self.path, self.dirty_meta.clone(), None));
-            self.dirsize.as_mut()?.run();
+            self.dirsize.as_mut()?.run().log();
         }
         Ok(())
     }
@@ -872,7 +887,6 @@ impl File {
 
     pub fn pretty_mtime(&self) -> Option<String> {
         if self.meta().is_err() { return None }
-        //let time = chrono::DateTime::from_timestamp(self.mtime, 0);
         let time: chrono::DateTime<chrono::Local>
             = chrono::Local.timestamp(self.meta().unwrap().mtime(), 0);
         Some(time.format("%F %R").to_string())
@@ -930,7 +944,6 @@ impl PathBufExt for PathBuf {
         if let Some(name) = self.file_name() {
             let mut name = name.as_bytes().to_vec();
             let mut quote = "\"".as_bytes().to_vec();
-            //let mut quote_after = "\"".as_bytes().to_vec();
             let mut quoted = vec![];
             quoted.append(&mut quote.clone());
             quoted.append(&mut name);
@@ -988,7 +1001,6 @@ impl OsStrTools for OsStr {
                 split_pos
             }).iter()
             .map(|(start, end)| {
-                //let orig_string = orig_string.clone();
                 OsString::from_vec(orig_string[*start..*end]
                                    .to_vec()).replace(&OsString::from_vec(pat.clone()),
                                                       &OsString::from(""))

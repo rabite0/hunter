@@ -1,6 +1,7 @@
 #![feature(vec_remove_item)]
 #![feature(trivial_bounds)]
 #![feature(try_trait)]
+#![feature(fnbox)]
 
 extern crate termion;
 extern crate unicode_width;
@@ -46,6 +47,9 @@ mod bookmarks;
 mod paths;
 mod foldview;
 mod dirty;
+mod fscache;
+
+
 
 
 
@@ -84,7 +88,7 @@ fn main() -> HResult<()> {
 fn run(mut core: WidgetCore) -> HResult<()> {
     core.screen.clear()?;
 
-    let filebrowser = FileBrowser::new_cored(&core)?;
+    let filebrowser = FileBrowser::new(&core, None)?;
     let mut tabview = TabView::new(&core);
     tabview.push_widget(filebrowser)?;
 

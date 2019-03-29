@@ -1,9 +1,8 @@
 use termion::event::Key;
 
-use crate::widget::{Widget, WidgetCore};
+use crate::widget::{Widget, WidgetCore, Events};
 use crate::fail::{HResult, ErrorLog};
 use crate::coordinates::Coordinates;
-use crate::dirty::Dirtyable;
 
 pub trait Tabbable {
     fn new_tab(&mut self) -> HResult<()>;
@@ -26,6 +25,7 @@ pub trait Tabbable {
             _ => self.on_key_sub(key)
         }
     }
+    fn on_refresh(&mut self) -> HResult<()> { Ok(()) }
 }
 
 
@@ -137,7 +137,8 @@ impl<T> Widget for TabView<T> where T: Widget, TabView<T>: Tabbable {
             }
         }).collect::<String>();
 
-        let nums_pos = xsize - nums_length as u16;
+
+        let nums_pos = xsize.saturating_sub(nums_length as u16);
 
         Ok(format!("{}{}{}{}",
                 header,
@@ -152,6 +153,7 @@ impl<T> Widget for TabView<T> where T: Widget, TabView<T>: Tabbable {
     }
 
     fn refresh(&mut self) -> HResult<()> {
+        Tabbable::on_refresh(self).log();
         self.active_tab_mut().refresh()
     }
 
