@@ -174,6 +174,7 @@ impl Tabbable for TabView<FileBrowser> {
 
 impl FileBrowser {
     pub fn new(core: &WidgetCore, cache: Option<FsCache>) -> HResult<FileBrowser> {
+        let startup = cache.is_none();
         let fs_cache = cache.unwrap_or_else(|| FsCache::new(core.get_sender()));
 
         let cwd = std::env::current_dir().unwrap();
@@ -210,7 +211,13 @@ impl FileBrowser {
             if let Some(file) = selection {
                 list.select_file(&file);
             }
-            list.animate_slide_up().log();
+
+            list.refresh().log();
+
+            if startup {
+                list.animate_slide_up().log();
+            }
+
             list.content.meta_all();
             Ok(list)
         }));
@@ -230,7 +237,13 @@ impl FileBrowser {
                 if let Some(file) = selection {
                     list.select_file(&file);
                 }
-                list.animate_slide_up().log();
+
+                list.refresh().log();
+
+                if startup {
+                    list.animate_slide_up().log();
+                }
+
                 Ok(list)
             }));
             let left_widget = FileBrowserWidgets::FileList(left_widget);
@@ -341,6 +354,7 @@ impl FileBrowser {
             let mut list = ListView::new(&core, files);
 
             list.content.meta_set_fresh().log();
+            list.content.meta_all();
 
             if let Some(file) = selected_file {
                 list.select_file(&file);
@@ -351,9 +365,9 @@ impl FileBrowser {
         if let Ok(grand_parent) = self.cwd()?.parent_as_file() {
             self.left_widget_goto(&grand_parent).log();
         } else {
-            self.left_async_widget_mut()?.clear().log();
-            Ok(self.screen()?.flush()?).log();
-            self.left_async_widget_mut()?.set_stale().log();
+            self.left_async_widget_mut()?.change_to(Box::new(move |_,_| {
+                HError::stale()?
+            })).log();
         }
 
         Ok(())
@@ -455,34 +469,26 @@ impl FileBrowser {
         Ok(())
     }
 
-    pub fn get_files(&self) -> HResult<Files> {
-        Ok(self.main_widget()?.content.clone())
+    pub fn get_files(&self) -> HResult<&Files> {
+        Ok(&self.main_widget()?.content)
     }
 
-    pub fn get_left_files(&self) -> HResult<Files> {
-        Ok(self.left_widget()?.content.clone())
+    pub fn get_left_files(&self) -> HResult<&Files> {
+        Ok(&self.left_widget()?.content)
     }
 
-    pub fn cache_files(&self) -> HResult<()> {
-        if !self.fs_cache.is_cached(&self.cwd)? {
-            let files = self.get_files()?;
-            let selected_file = self.selected_file().ok();
-            self.fs_cache.put_files(files, selected_file).log();
-        } else {
-            let files = &self.main_widget()?.content;
-            let selected_file = self.selected_file().ok();
-            self.fs_cache.save_settings(&files, selected_file).log();
-        }
+    pub fn cache_files(&mut self) -> HResult<()> {
+        let files = self.get_files()?;
+        let selected_file = self.selected_file().ok();
+        self.fs_cache.put_files(files, selected_file).log();
+        self.main_widget_mut()?.content.meta_updated = false;
 
-        if !self.fs_cache.is_cached(&self.left_widget()?.content.directory)? {
-            let left_selection = self.left_widget()?.clone_selected_file();
-            let left_files = self.get_left_files()?;
-            self.fs_cache.put_files(left_files, Some(left_selection)).log();
-        } else {
-            let files = &self.left_widget()?.content;
-            let selected_file = self.left_widget()?.clone_selected_file();
-            self.fs_cache.save_settings(&files, Some(selected_file)).log();
-        }
+
+        let left_selection = self.left_widget()?.clone_selected_file();
+        let left_files = self.get_left_files()?;
+        self.fs_cache.put_files(left_files, Some(left_selection)).log();
+        self.left_widget_mut()?.content.meta_updated = false;
+
         Ok(())
     }
 
@@ -729,17 +735,23 @@ impl FileBrowser {
         let count_xpos = xsize - file_count.len() as u16;
         let count_ypos = ypos + self.get_coordinates()?.ysize();
 
-        let status = format!("{} {}:{} {}{} {}{}{} {}{}",
+        let status = format!("{} {}:{} {}{} {}{}",
                              permissions,
                              user,
                              group,
                              crate::term::header_color(),
                              mtime,
                              crate::term::color_yellow(),
-                             target,
+                             target
+        );
+        let status = crate::term::sized_string_u(&status, (xsize-1) as usize);
+
+        let status = format!("{}{}{}{}",
+                             status,
                              crate::term::header_color(),
                              crate::term::goto_xy(count_xpos, count_ypos),
                              file_count);
+
         Ok(status)
     }
 }
@@ -783,8 +795,9 @@ impl Widget for FileBrowser {
         Ok(sized_path)
     }
     fn render_footer(&self) -> HResult<String> {
+        let xsize = term::xsize_u();
         match self.get_core()?.status_bar_content.lock()?.as_mut().take() {
-            Some(status) => Ok(status.clone()),
+            Some(status) => Ok(term::sized_string_u(&status, xsize)),
             _ => { self.get_footer() },
         }
     }

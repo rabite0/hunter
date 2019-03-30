@@ -79,6 +79,7 @@ pub struct Files {
     pub directory: File,
     pub files: Vec<File>,
     pub meta_upto: Option<usize>,
+    pub meta_updated: bool,
     pub sort: SortBy,
     pub dirs_first: bool,
     pub reverse: bool,
@@ -133,6 +134,7 @@ impl Files {
             directory: File::new_from_path(&path, None)?,
             files: files,
             meta_upto: None,
+            meta_updated: false,
             sort: SortBy::Name,
             dirs_first: true,
             reverse: false,
@@ -189,6 +191,7 @@ impl Files {
             directory: File::new_from_path(&path, None)?,
             files: files,
             meta_upto: None,
+            meta_updated: false,
             sort: SortBy::Name,
             dirs_first: true,
             reverse: false,
@@ -358,6 +361,7 @@ impl Files {
             }
         }
         self.set_dirty();
+        self.meta_updated = true;
         Ok(())
     }
 
@@ -386,10 +390,10 @@ impl Files {
 
         for file in self.files.iter_mut().take(meta_files) {
             if !file.meta_processed {
-                file.take_meta(&meta_pool).ok();
+                file.take_meta(&meta_pool, &mut self.meta_updated).ok();
             }
-            if file.is_dir() && file.meta_processed {
-                file.take_dirsize(&meta_pool).ok();
+            if file.is_dir() {
+                file.take_dirsize(&meta_pool, &mut self.meta_updated).ok();
             }
         }
 
@@ -618,12 +622,14 @@ impl File {
         self.meta.get()
     }
 
-    fn take_dirsize(&mut self, pool: &ThreadPool) -> HResult<()> {
+    fn take_dirsize(&mut self,
+                    pool: &ThreadPool,
+                    meta_updated: &mut bool) -> HResult<()> {
         let dirsize = self.dirsize.as_mut()?;
         if let Ok(_) = dirsize.value { return Ok(()) }
 
         match dirsize.take_async() {
-            Ok(_) => {},
+            Ok(_) => { *meta_updated = true; },
             Err(HError::AsyncNotReadyError) => { dirsize.run_pooled(&*pool).ok(); },
             Err(HError::AsyncAlreadyTakenError) => {},
             Err(HError::NoneError) => {},
@@ -632,11 +638,13 @@ impl File {
         Ok(())
     }
 
-    pub fn take_meta(&mut self, pool: &ThreadPool) -> HResult<()> {
+    pub fn take_meta(&mut self,
+                     pool: &ThreadPool,
+                     meta_updated: &mut bool) -> HResult<()> {
         if self.meta_processed { return Ok(()) }
 
         match self.meta.take_async() {
-            Ok(_) => {},
+            Ok(_) => { *meta_updated = true; },
             Err(HError::AsyncNotReadyError) => { self.meta.run_pooled(&*pool).ok(); },
             Err(HError::AsyncAlreadyTakenError) => {},
             Err(HError::NoneError) => {},

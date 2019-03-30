@@ -8,7 +8,6 @@ use std::path::PathBuf;
 
 use crate::preview::{Async, Stale};
 use crate::files::{Files, File, SortBy};
-use crate::dirty::*;
 use crate::widget::Events;
 use crate::fail::{HResult, HError, ErrorLog};
 
@@ -115,7 +114,6 @@ impl FsCache {
         } else {
             self.add_watch(&dir).log();
             let dir = dir.clone();
-            let cache = self.files.clone();
             let files = Async::new(Box::new(move |_| {
                 let files = Files::new_from_path_cancellable(&dir.path, stale)?;
                 Ok(files)
@@ -125,7 +123,7 @@ impl FsCache {
     }
 
     pub fn get_files_sync(&self, dir: &File) -> HResult<Files> {
-        let mut files = self.get_files(&dir, Stale::new())?.1;
+        let files = self.get_files(&dir, Stale::new())?.1;
         files.wait()
     }
 
@@ -140,7 +138,7 @@ impl FsCache {
         Ok(())
     }
 
-    pub fn put_files(&self, files: Files, selection: Option<File>) -> HResult<()> {
+    pub fn put_files(&self, files: &Files, selection: Option<File>) -> HResult<()> {
         let dir = files.directory.clone();
 
         let tab_settings = FsCache::extract_tab_settings(&files, selection);
@@ -149,8 +147,14 @@ impl FsCache {
 
         let mut file_cache = self.files.write()?;
 
-        if !file_cache.contains_key(&files.directory) {
-            file_cache.insert(dir, files);
+        if file_cache.contains_key(&files.directory) {
+            if files.meta_updated {
+                let mut files = files.clone();
+                files.meta_updated = false;
+                file_cache.insert(dir, files);
+            }
+        } else {
+            file_cache.insert(dir, files.clone());
         }
 
         Ok(())

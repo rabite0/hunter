@@ -551,7 +551,7 @@ impl Previewer {
 
         if is_stale(&stale)? { return Previewer::preview_failed(&file) }
 
-        let output = process.wait_with_output()?;
+        let output = dbg!(process.wait_with_output())?;
 
         if is_stale(&stale)? { return Previewer::preview_failed(&file) }
         {
@@ -559,10 +559,9 @@ impl Previewer {
             *pid_ = None;
         }
 
-        let status = output.status.code()
-            .ok_or(HError::preview_failed(file)?);
+        let status = output.status.code()?;
 
-        if status == Ok(0) || status == Ok(5) && !is_stale(&stale)? {
+        if !is_stale(&stale)? {
             let output = std::str::from_utf8(&output.stdout)
                 .unwrap()
                 .to_string();

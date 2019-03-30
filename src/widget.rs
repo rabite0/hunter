@@ -164,7 +164,7 @@ pub trait Widget {
     }
 
     fn bad(&mut self, event: Event) -> HResult<()> {
-        self.show_status(&format!("Stop the nasty stuff!! {:?} does nothing!", event))
+        self.show_status(&format!("Stop it!! {:?} does nothing!", event))
     }
 
     fn get_header_drawlist(&mut self) -> HResult<String> {
@@ -356,33 +356,29 @@ pub trait Widget {
     }
 
     fn draw_status(&self) -> HResult<()> {
-        let xsize = term::xsize() as u16;
+        let xsize = term::xsize_u();
         let status = match self.get_core()?.status_bar_content.lock()?.as_ref() {
             Some(status) => status.to_string(),
             None => "".to_string(),
         };
+        let sized_status = term::sized_string_u(&status, xsize);
 
         self.write_to_screen(
             &format!(
-                "{}{}{:xsize$}{}{}",
+                "{}{}{}",
                 term::move_bottom(),
                 term::status_bg(),
-                " ",
-                term::move_bottom(),
-                status,
-                xsize = xsize as usize
+                sized_status
             )).log();
 
         Ok(())
     }
 
     fn show_status(&self, status: &str) -> HResult<()> {
-        let xsize = self.get_core()?.coordinates.xsize_u();
-        let sized_status = term::sized_string_u(status, xsize);
         HError::log::<()>(status.to_string()).log();
         {
             let mut status_content = self.get_core()?.status_bar_content.lock()?;
-            *status_content = Some(sized_status);
+            *status_content = Some(status.to_string());
         }
         self.draw_status()?;
         Ok(())

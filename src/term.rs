@@ -15,7 +15,8 @@ pub type TermMode = AlternateScreen<MouseTerminal<RawTerminal<BufWriter<Stdout>>
 #[derive(Clone)]
 pub struct Screen {
     screen: Arc<Mutex<Option<TermMode>>>,
-    size: Arc<RwLock<Option<(usize, usize)>>>
+    size: Arc<RwLock<Option<(usize, usize)>>>,
+    terminal: String
 }
 
 impl Screen {
@@ -23,11 +24,13 @@ impl Screen {
         let screen = BufWriter::new(std::io::stdout()).into_raw_mode()?;
         let mut screen = MouseTerminal::from(screen);
         let mut screen = AlternateScreen::from(screen);
+        let terminal = std::env::var("TERM").unwrap_or("xterm".into());
 
         screen.cursor_hide()?;
         Ok(Screen {
             screen: Arc::new(Mutex::new(Some(screen))),
-            size: Arc::new(RwLock::new(None))
+            size: Arc::new(RwLock::new(None)),
+            terminal: terminal
         })
     }
 
@@ -57,6 +60,16 @@ impl Screen {
 
     pub fn take_size(&self) -> HResult<(usize, usize)> {
         Ok(self.size.write()?.take()?)
+    }
+
+    pub fn set_title(&mut self, title: &str) -> HResult<()> {
+        if !self.terminal.starts_with("rxvt") {
+            write!(self, "\x1b]2;hunter: {}", title)?;
+        }
+        if self.terminal.starts_with("tmux") {
+            write!(self, "\x1bkhunter: {}\x1b\\", title)?;
+        }
+        Ok(())
     }
 }
 
@@ -112,11 +125,6 @@ pub trait ScreenExt: Write {
         let (_, ysize) = termion::terminal_size()?;
         Ok((ysize - 1) as usize)
     }
-    fn set_title(&mut self, title: &str) -> HResult<()> {
-        write!(self, "\x1b]2;hunter: {}", title)?;
-        write!(self, "\x1bkhunter: {}\x1b\\", title)?;
-        Ok(())
-    }
     fn to_main_screen(&mut self) -> HResult<()> {
         write!(self, "{}", termion::screen::ToMainScreen)?;
         self.flush()?;
@@ -130,6 +138,11 @@ impl ScreenExt for TermMode {}
 pub fn xsize() -> u16 {
     let (xsize, _) = termion::terminal_size().unwrap();
     xsize
+}
+
+pub fn xsize_u() -> usize {
+    let (xsize, _) = termion::terminal_size().unwrap();
+    xsize as usize - 1
 }
 
 pub fn ysize() -> u16 {
@@ -194,6 +207,7 @@ pub fn sized_string_u(string: &str, xsize: usize) -> String {
     let padded = format!("{:padding$}", sized, padding=xsize + ansi_len + 1);
     padded
 }
+
 
 // Do these as constants
 
