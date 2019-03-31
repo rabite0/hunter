@@ -54,8 +54,16 @@ impl<T> HBox<T> where T: Widget + PartialEq {
         widget
     }
 
+    pub fn remove_widget(&mut self, index: usize) -> T {
+        self.widgets.remove(index)
+    }
+
     pub fn prepend_widget(&mut self, widget: T) {
         self.widgets.insert(0, widget);
+    }
+
+    pub fn insert_widget(&mut self, index: usize, widget: T) {
+        self.widgets.insert(index, widget);
     }
 
     pub fn toggle_zoom(&mut self) -> HResult<()> {

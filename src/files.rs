@@ -10,7 +10,7 @@ use std::os::unix::ffi::{OsStringExt, OsStrExt};
 use std::ffi::{OsStr, OsString};
 
 use lscolors::LsColors;
-use mime_detective;
+use tree_magic;
 use users::{get_current_username,
             get_current_groupname,
             get_user_by_uid,
@@ -717,10 +717,12 @@ impl File {
         Ok((size, unit))
     }
 
-    pub fn get_mime(&self) -> Option<String> {
-        let detective = mime_detective::MimeDetective::new().ok()?;
-        let mime = detective.detect_filepath(&self.path).ok()?;
-        Some(mime.type_().as_str().to_string())
+    // pub fn get_mime(&self) -> String {
+    //     tree_magic::from_filepath(&self.path)
+    // }
+
+    pub fn is_text(&self) -> bool {
+         tree_magic::match_filepath("text/plain", &self.path)
     }
 
 

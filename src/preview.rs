@@ -434,6 +434,10 @@ impl Previewer {
         self.widget.set_stale()
     }
 
+    pub fn get_file(&self) -> Option<&File> {
+        self.file.as_ref()
+    }
+
     pub fn set_file(&mut self,
                     file: &File) -> HResult<()> {
         if Some(file) == self.file.as_ref() && !self.widget.is_stale()? { return Ok(()) }
@@ -458,7 +462,7 @@ impl Previewer {
                 return preview;
             }
 
-            if file.get_mime() == Some("text".to_string()) {
+            if file.is_text() {
                 return Previewer::preview_text(&file, &core, stale)
             }
 
