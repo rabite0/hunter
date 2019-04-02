@@ -51,13 +51,32 @@ fn make_pool(sender: Option<Sender<Events>>) -> ThreadPool {
 pub fn load_tags() -> HResult<()> {
     std::thread::spawn(|| -> HResult<()> {
         let tag_path = crate::paths::tagfile_path()?;
+
+        if !tag_path.exists() {
+            import_tags().log();
+        }
+
         let tags = std::fs::read_to_string(tag_path)?;
-        let mut tags = tags.lines().map(|f| PathBuf::from(f)).collect::<Vec<PathBuf>>();
+        let mut tags = tags.lines()
+            .map(|f|
+                 PathBuf::from(f))
+            .collect::<Vec<PathBuf>>();
         let mut tag_lock = TAGS.write()?;
         tag_lock.0 = true;
         tag_lock.1.append(&mut tags);
         Ok(())
     });
+    Ok(())
+}
+
+pub fn import_tags() -> HResult<()> {
+    let mut ranger_tags = crate::paths::ranger_path()?;
+    ranger_tags.push("tagged");
+
+    if ranger_tags.exists() {
+        let tag_path = crate::paths::tagfile_path()?;
+        std::fs::copy(ranger_tags, tag_path)?;
+    }
     Ok(())
 }
 
