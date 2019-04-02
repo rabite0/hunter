@@ -795,36 +795,12 @@ impl FileBrowser {
     }
 
     pub fn turbo_cd(&mut self) -> HResult<()> {
-        let dir = self.minibuffer("cd");
+        let dir = self.minibuffer("cd")?;
 
-        match dir {
-            Ok(dir) => {
-                self.columns.widgets.clear();
-                let cwd = File::new_from_path(&std::path::PathBuf::from(&dir), None)?;
-                self.cwd = cwd;
-                let dir = std::path::PathBuf::from(&dir);
-                let left_dir = std::path::PathBuf::from(&dir);
-                let mcore = self.main_widget()?.get_core()?.clone();
-                let lcore = self.left_widget()?.get_core()?.clone();;
+        let path = std::path::PathBuf::from(&dir);
+        let dir = File::new_from_path(&path.canonicalize()?, None)?;
+        self.main_widget_goto(&dir)?;
 
-                let middle = AsyncWidget::new(&self.core, Box::new(move |_| {
-                    let files = Files::new_from_path(&dir.clone())?;
-                    let listview = ListView::new(&mcore, files);
-                    Ok(listview)
-                }));
-                let middle = FileBrowserWidgets::FileList(middle);
-
-                let left = AsyncWidget::new(&self.core, Box::new(move |_| {
-                    let files = Files::new_from_path(&left_dir.parent()?)?;
-                    let listview = ListView::new(&lcore, files);
-                    Ok(listview)
-                }));
-                let left = FileBrowserWidgets::FileList(left);
-                self.columns.push_widget(left);
-                self.columns.push_widget(middle);
-            },
-            Err(_) => {}
-        }
         Ok(())
     }
 
