@@ -517,15 +517,26 @@ impl FileBrowser {
             None => &self.cwd
         }.path.to_string_lossy().to_string();
 
+        self.bookmarks.lock()?.set_coordinates(&self.core.coordinates).log();
+
         loop {
             let bookmark =  self.bookmarks.lock()?.pick(cwd.to_string());
 
             if let Err(HError::TerminalResizedError) = bookmark {
-                    self.core.screen.clear().log();
-                    self.resize().log();
-                    self.refresh().log();
-                    self.draw().log();
-                    continue;
+                self.core.screen.clear().log();
+                self.resize().log();
+                self.refresh().log();
+                self.draw().log();
+                continue;
+            }
+
+            if let Err(HError::WidgetResizedError) = bookmark {
+                let coords = &self.core.coordinates;
+                self.bookmarks.lock()?.set_coordinates(&coords).log();
+                self.core.screen.clear().log();
+                self.refresh().log();
+                self.draw().log();
+                continue;
             }
             return bookmark;
         }
@@ -540,6 +551,8 @@ impl FileBrowser {
 
     pub fn add_bookmark(&mut self) -> HResult<()> {
         let cwd = self.cwd.path.to_string_lossy().to_string();
+        let coords = &self.core.coordinates;
+        self.bookmarks.lock()?.set_coordinates(&coords).log();
         self.bookmarks.lock()?.add(&cwd)?;
         Ok(())
     }

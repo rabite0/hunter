@@ -9,6 +9,12 @@ pub fn home_path() -> HResult<PathBuf> {
     Ok(home)
 }
 
+pub fn ranger_path() -> HResult<PathBuf> {
+    let mut ranger_path = dirs_2::config_dir()?;
+    ranger_path.push("ranger/");
+    Ok(ranger_path)
+}
+
 pub fn hunter_path() -> HResult<PathBuf> {
     let mut hunter_path = dirs_2::config_dir()?;
     hunter_path.push("hunter/");

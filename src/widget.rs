@@ -256,6 +256,7 @@ pub trait Widget {
                         err @ Err(HError::PopupFinnished) |
                         err @ Err(HError::Quit) |
                         err @ Err(HError::MiniBufferCancelledInput) => err?,
+                        err @ Err(HError::WidgetResizedError) => err?,
                         err @ Err(_) => err.log(),
                         Ok(_) => {}
                     }

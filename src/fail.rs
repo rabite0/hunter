@@ -81,6 +81,8 @@ pub enum HError {
     WidgetUndefinedKeyError{key: Key},
     #[fail(display = "Terminal has been resized!")]
     TerminalResizedError,
+    #[fail(display = "Widget has been resized!")]
+    WidgetResizedError,
     #[fail(display = "{}", _0)]
     Log(String),
     #[fail(display = "Metadata already processed")]
@@ -135,6 +137,10 @@ impl HError {
 
     pub fn terminal_resized<T>() -> HResult<T> {
         Err(HError::TerminalResizedError)
+    }
+
+    pub fn widget_resized<T>() -> HResult<T> {
+        Err(HError::WidgetResizedError)
     }
 
     pub fn stale<T>() -> HResult<T> {

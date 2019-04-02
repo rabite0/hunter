@@ -30,27 +30,41 @@ impl Bookmarks {
     }
     pub fn load(&mut self) -> HResult<()> {
         let bm_file = crate::paths::bookmark_path()?;
+
+        if !bm_file.exists() {
+            self.import().log();
+        }
+
         let bm_content = std::fs::read_to_string(bm_file)?;
-
-
-        let keys = bm_content.lines().step_by(2).map(|k| k);
-        let paths = bm_content.lines().skip(1).step_by(2).map(|p| p);
-
-        let mapping = keys.zip(paths).fold(HashMap::new(), |mut mapping, (key, path)| {
-            if let Some(key) = key.chars().next() {
-                let path = path.to_string();
-                mapping.insert(key, path);
+        let mapping = bm_content.lines()
+            .fold(HashMap::new(), |mut bm, line| {
+            let parts = line.splitn(2, ":").collect::<Vec<&str>>();
+            if parts.len() == 2 {
+                if let Some(key) = parts[0].chars().next() {
+                    let path = parts[1].to_string();
+                    bm.insert(key, path);
+                }
             }
-            mapping
+            bm
         });
 
         self.mapping = mapping;
         Ok(())
     }
+    pub fn import(&self) -> HResult<()> {
+        let mut ranger_bm_path = crate::paths::ranger_path()?;
+        ranger_bm_path.push("bookmarks");
+
+        if ranger_bm_path.exists() {
+            let bm_file = crate::paths::bookmark_path()?;
+            std::fs::copy(ranger_bm_path, bm_file)?;
+        }
+        Ok(())
+    }
     pub fn save(&self) -> HResult<()> {
         let bm_file = crate::paths::bookmark_path()?;
         let bookmarks = self.mapping.iter().map(|(key, path)| {
-            format!("{}\n{}\n", key, path)
+            format!("{}:{}\n", key, path)
         }).collect::<String>();
 
         std::fs::write(bm_file, bookmarks)?;
@@ -86,6 +100,7 @@ impl BMPopup {
             Ok(_) => {},
             Err(HError::PopupFinnished) => {},
             err @ Err(HError::TerminalResizedError) => err?,
+            err @ Err(HError::WidgetResizedError) => err?,
             err @ Err(_) => err?,
         }
         self.clear()?;
@@ -102,6 +117,10 @@ impl BMPopup {
         self.popup()?;
         self.clear()?;
         Ok(())
+    }
+
+    fn resize(&mut self) -> HResult<()> {
+        HError::terminal_resized()?
     }
 
     pub fn render_line(&self, n: u16, key: &char, path: &str) -> String {
@@ -134,13 +153,13 @@ impl Widget for BMPopup {
         HError::terminal_resized()
     }
 
-    fn set_coordinates(&mut self, coordinates: &Coordinates) -> HResult<()> {
-        let (xsize, ysize) = coordinates.size_u();
+    fn set_coordinates(&mut self, _: &Coordinates) -> HResult<()> {
+        let (xsize, ysize) = crate::term::size()?;
         let len = self.bookmarks.mapping.len();
         let ysize = ysize.saturating_sub( len + 1 );
 
         self.core.coordinates.set_size_u(xsize.saturating_sub(1), len);
-        self.core.coordinates.set_position_u(1, ysize+2);
+        self.core.coordinates.set_position_u(1, ysize);
 
         Ok(())
     }
@@ -176,6 +195,7 @@ impl Widget for BMPopup {
                     let path = self.bookmark_path.take()?;
                     self.bookmarks.add(key, &path)?;
                     self.add_mode = false;
+                    self.bookmarks.save().log();
                     return HError::popup_finnished();
                 }
                 if let Ok(path) = self.bookmarks.get(key) {
@@ -185,6 +205,8 @@ impl Widget for BMPopup {
             }
             Key::Alt(key) => {
                 self.bookmarks.mapping.remove(&key);
+                self.bookmarks.save().log();
+                return HError::widget_resized();
             }
             _ => {}
         }
