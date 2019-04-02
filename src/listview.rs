@@ -60,6 +60,7 @@ impl Listable for ListView<Files> {
             },
             Key::Char('S') => { self.search_file().log(); }
             Key::Alt('s') => { self.search_next().log(); }
+            Key::Alt('S') => { self.search_prev().log(); }
             Key::Ctrl('f') => { self.filter().log(); }
             Key::Left => self.goto_grand_parent()?,
             Key::Right => self.goto_selected()?,
@@ -362,6 +363,40 @@ impl ListView<Files>
                     false
                 }
             }).clone();
+
+        if let Some(file) = file {
+            let file = file.clone();
+            self.select_file(&file);
+        } else {
+            self.show_status("Reached last search result!").log();
+        }
+        Ok(())
+    }
+
+    fn search_prev(&mut self) -> HResult<()> {
+        if self.searching.is_none() {
+            self.show_status("No search pattern set!").log();
+        }
+        let prev_search = self.searching.clone()?;
+
+
+        self.reverse_sort();
+
+        let selection = self.get_selection();
+
+        let file = self.content
+            .files
+            .iter()
+            .skip(selection+1)
+            .find(|file| {
+                if file.name.to_lowercase().contains(&prev_search) {
+                    true
+                } else {
+                    false
+                }
+            }).cloned();
+
+        self.reverse_sort();
 
         if let Some(file) = file {
             let file = file.clone();
