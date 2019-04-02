@@ -54,8 +54,15 @@ impl Screen {
         Ok(())
     }
 
-    pub fn is_resized(&self) -> HResult<(usize, usize)> {
-        Ok(self.size.read()?.clone()?)
+    pub fn is_resized(&self) -> HResult<bool> {
+        Ok(self.size.read()?.is_some())
+    }
+
+    pub fn get_size(&self) -> HResult<(usize, usize)> {
+        match self.size.read()?.clone() {
+            Some((xsize, ysize)) => Ok((xsize, ysize)),
+            None => Ok((self.xsize()?, self.ysize()?))
+        }
     }
 
     pub fn take_size(&self) -> HResult<(usize, usize)> {

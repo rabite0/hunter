@@ -66,6 +66,11 @@ impl<T> HBox<T> where T: Widget + PartialEq {
         self.widgets.insert(index, widget);
     }
 
+    pub fn replace_widget(&mut self, index: usize, mut widget: T) -> T {
+        std::mem::swap(&mut self.widgets[index], &mut widget);
+        widget
+    }
+
     pub fn toggle_zoom(&mut self) -> HResult<()> {
         self.clear().log();
         self.zoom_active = !self.zoom_active;

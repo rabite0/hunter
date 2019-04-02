@@ -114,15 +114,17 @@ impl FsCache {
         } else {
             self.add_watch(&dir).log();
             let dir = dir.clone();
+            let selection = self.get_selection(&dir).ok();
             let files = Async::new(Box::new(move |_| {
                 let files = Files::new_from_path_cancellable(&dir.path, stale)?;
                 Ok(files)
             }));
-            Ok((None, files))
+            Ok((selection, files))
         }
     }
 
     pub fn get_files_sync(&self, dir: &File) -> HResult<Files> {
+        self.add_watch(&dir).log();
         let files = self.get_files(&dir, Stale::new())?.1;
         files.wait()
     }
@@ -145,17 +147,17 @@ impl FsCache {
 
         self.tab_settings.write()?.insert(dir.clone(), tab_settings);
 
-        let mut file_cache = self.files.write()?;
+        // let mut file_cache = self.files.write()?;
 
-        if file_cache.contains_key(&files.directory) {
-            if files.meta_updated {
-                let mut files = files.clone();
-                files.meta_updated = false;
-                file_cache.insert(dir, files);
-            }
-        } else {
-            file_cache.insert(dir, files.clone());
-        }
+        // if file_cache.contains_key(&files.directory) {
+        //     if files.meta_updated {
+        //         let mut files = files.clone();
+        //         files.meta_updated = false;
+        //         file_cache.insert(dir, files);
+        //     }
+        // } else {
+        //     file_cache.insert(dir, files.clone());
+        // }
 
         Ok(())
     }
@@ -164,8 +166,23 @@ impl FsCache {
         Ok(self.files.read()?.contains_key(dir))
     }
 
+    pub fn watch_only(&self, open_dirs: HashSet<File>) -> HResult<()> {
+        let removable = self.watched_dirs
+            .read()?
+            .difference(&open_dirs)
+            .map(|dir| dir.clone())
+            .collect::<Vec<File>>();
+
+        for watch in removable {
+            self.remove_watch(&watch).log();
+        }
+
+        Ok(())
+    }
+
     fn add_watch(&self, dir: &File) -> HResult<()> {
         if !self.watched_dirs.read()?.contains(&dir) {
+            self.watched_dirs.write()?.insert(dir.clone());
             self.watcher.write()?.watch(&dir.path, RecursiveMode::NonRecursive)?
         }
         Ok(())
@@ -245,32 +262,49 @@ fn watch_fs(rx_fs_events: Receiver<DebouncedEvent>,
     });
 }
 
-fn apply_event(fs_cache: &Arc<RwLock<HashMap<File, Files>>>,
+fn apply_event(_fs_cache: &Arc<RwLock<HashMap<File, Files>>>,
                fs_changes: &Arc<RwLock<Vec<(File, Option<File>, Option<File>)>>>,
                event: DebouncedEvent)
                -> HResult<()> {
     let path = &event.get_source_path()?;
 
-    for dir in fs_cache.write()?.values_mut() {
-        if dir.path_in_here(&path).unwrap_or(false) {
-            let old_file = dir.find_file_with_path(&path).cloned();
-            let dirty_meta = old_file
-                .as_ref()
-                .map(|f| f.dirty_meta.clone())
-                .unwrap_or(None);
-            let mut new_file = match event {
-                DebouncedEvent::Remove(_) => None,
-                _ => Some(File::new_from_path(&path, dirty_meta)?)
-            };
+    let dirpath = path.parent()
+        .map(|path| path.to_path_buf())
+        .unwrap_or_else(|| PathBuf::from("/"));
+    let dir = File::new_from_path(&dirpath, None)?;
 
-            new_file.as_mut().map(|file| file.meta_sync());
-            dir.replace_file(old_file.as_ref(), new_file.clone()).log();
+    let old_file = File::new_from_path(&path, None)?;
+    let mut new_file = match event {
+        DebouncedEvent::Remove(_) => None,
+        _ => Some(File::new_from_path(&path, None)?)
+    };
 
-            fs_changes.write()?.push((dir.directory.clone(),
-                                      old_file,
-                                      new_file));
-        }
-    }
+    new_file.as_mut().map(|file| file.meta_sync());
+
+    fs_changes.write()?.push((dir,
+                              Some(old_file),
+                              new_file));
+
+    // for dir in fs_cache.write()?.values_mut() {
+    //     if dir.path_in_here(&path).unwrap_or(false) {
+    //         let old_file = dir.find_file_with_path(&path).cloned();
+    //         let dirty_meta = old_file
+    //             .as_ref()
+    //             .map(|f| f.dirty_meta.clone())
+    //             .unwrap_or(None);
+    //         let mut new_file = match event {
+    //             DebouncedEvent::Remove(_) => None,
+    //             _ => Some(File::new_from_path(&path, dirty_meta)?)
+    //         };
+
+    //         new_file.as_mut().map(|file| file.meta_sync());
+    //         dir.replace_file(old_file.as_ref(), new_file.clone()).log();
+
+    //         fs_changes.write()?.push((dir.directory.clone(),
+    //                                   old_file,
+    //                                   new_file));
+    //     }
+    // }
     Ok(())
 }
 

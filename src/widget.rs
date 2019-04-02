@@ -348,7 +348,9 @@ pub trait Widget {
                 _ => {}
             }
             self.resize().log();
-            self.screen()?.take_size().ok();
+            if self.screen()?.is_resized()? {
+                self.screen()?.take_size().ok();
+            }
             self.refresh().ok();
             self.draw().ok();
         }
@@ -408,7 +410,8 @@ pub trait Widget {
     }
 
     fn resize(&mut self) -> HResult<()> {
-        if let Ok((xsize, ysize)) = self.screen()?.is_resized() {
+        if let Ok(true) = self.screen()?.is_resized() {
+            let (xsize, ysize) = self.screen()?.get_size()?;
             let mut coords = self.get_core()?.coordinates.clone();
             coords.set_size_u(xsize, ysize-2);
             self.set_coordinates(&coords)?;

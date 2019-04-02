@@ -84,7 +84,9 @@ pub enum HError {
     #[fail(display = "{}", _0)]
     Log(String),
     #[fail(display = "Metadata already processed")]
-    MetadataProcessedError
+    MetadataProcessedError,
+    #[fail(display = "No files to take from widget")]
+    WidgetNoFilesError,
 }
 
 impl HError {
@@ -157,6 +159,10 @@ impl HError {
 
     pub fn metadata_processed<T>() -> HResult<T> {
         Err(HError::MetadataProcessedError)
+    }
+
+    pub fn no_files<T>() -> HResult<T> {
+        Err(HError::WidgetNoFilesError)
     }
 }
 

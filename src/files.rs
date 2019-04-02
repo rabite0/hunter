@@ -464,7 +464,6 @@ impl Hash for File {
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.name.hash(state);
         self.path.hash(state);
-        self.selected.hash(state);
     }
 }
 

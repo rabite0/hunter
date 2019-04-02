@@ -3,7 +3,8 @@ use std::boxed::FnBox;
 
 use rayon::ThreadPool;
 
-use crate::files::{File, Kind};
+use crate::files::{File, Files, Kind};
+use crate::fscache::FsCache;
 use crate::listview::ListView;
 use crate::textview::TextView;
 use crate::widget::{Widget, WidgetCore};
@@ -131,7 +132,9 @@ impl<T: Send + 'static> Async<T> {
         let value_fn = async_fn.lock()?.take()?;
         let value = value_fn.call_box((stale.clone(),));
         async_value.lock()?.replace(value);
-        on_ready_fn.lock()?.take()?.call_box(()).log();
+        on_ready_fn.lock()?
+            .take()
+            .map(|on_ready| on_ready.call_box(()).log());
         Ok(())
     }
 
@@ -331,6 +334,10 @@ impl<W: Widget + Send + 'static> AsyncWidget<W> {
         self.widget.get_mut()
     }
 
+    pub fn take_widget(self) -> HResult<W> {
+        Ok(self.widget.value?)
+    }
+
     pub fn ready(&self) -> bool {
         self.widget().is_ok()
     }
@@ -400,10 +407,16 @@ impl PartialEq for Previewer {
     }
 }
 
-use crate::fscache::FsCache;
+#[derive(PartialEq)]
+enum PreviewWidget {
+    FileList(ListView<Files>),
+    TextView(TextView)
+}
+
+
 
 pub struct Previewer {
-    widget: AsyncWidget<Box<dyn Widget + Send>>,
+    widget: AsyncWidget<PreviewWidget>,
     core: WidgetCore,
     file: Option<File>,
     pub cache: FsCache,
@@ -414,7 +427,9 @@ impl Previewer {
     pub fn new(core: &WidgetCore, cache: FsCache) -> Previewer {
         let core_ = core.clone();
         let widget = AsyncWidget::new(&core, Box::new(move |_| {
-            Ok(Box::new(TextView::new_blank(&core_)) as Box<dyn Widget + Send>)
+            let blank = TextView::new_blank(&core_);
+            let blank = PreviewWidget::TextView(blank);
+            Ok(blank)
         }));
         Previewer { widget: widget,
                     core: core.clone(),
@@ -423,7 +438,7 @@ impl Previewer {
     }
 
     fn become_preview(&mut self,
-                      widget: HResult<AsyncWidget<WidgetO>>) -> HResult<()> {
+                      widget: HResult<AsyncWidget<PreviewWidget>>) -> HResult<()> {
         let coordinates = self.get_coordinates()?.clone();
         self.widget =  widget?;
         self.widget.set_coordinates(&coordinates)?;
@@ -436,6 +451,57 @@ impl Previewer {
 
     pub fn get_file(&self) -> Option<&File> {
         self.file.as_ref()
+    }
+
+    pub fn take_files(&mut self) -> HResult<Files> {
+        let core = self.core.clone();
+        let mut widget = AsyncWidget::new(&core.clone(), Box::new(move |_| {
+            let widget = TextView::new_blank(&core);
+            let widget = PreviewWidget::TextView(widget);
+            Ok(widget)
+        }));
+        std::mem::swap(&mut self.widget, &mut widget);
+
+        match widget.take_widget() {
+            Ok(PreviewWidget::FileList(file_list)) => {
+                let files = file_list.content;
+                Ok(files)
+            }
+            _ => HError::no_files()?
+        }
+    }
+
+    pub fn replace_file(&mut self, dir: &File,
+                        old: Option<&File>,
+                        new: Option<&File>) -> HResult<()> {
+        if self.file.as_ref() != Some(dir) { return Ok(()) }
+        self.widget.widget_mut().map(|widget| {
+            match widget {
+                PreviewWidget::FileList(filelist) => {
+                    filelist.content.replace_file(old, new.cloned()).map(|_| {
+                        filelist.refresh().ok();
+                    }).ok();
+
+                }
+                _ => {}
+            }
+        })
+    }
+
+    pub fn put_preview_files(&mut self, files: Files) {
+        let core = self.core.clone();
+        let dir = files.directory.clone();
+        let cache = self.cache.clone();
+        self.file = Some(dir);
+
+        self.widget = AsyncWidget::new(&self.core, Box::new(move |_| {
+            let selected_file = cache.get_selection(&files.directory);
+            let mut filelist = ListView::new(&core, files);
+
+            selected_file.map(|file| filelist.select_file(&file));
+
+            Ok(PreviewWidget::FileList(filelist))
+        }));
     }
 
     pub fn set_file(&mut self,
@@ -469,11 +535,11 @@ impl Previewer {
             let preview = Previewer::preview_external(&file, &core, stale);
             if preview.is_ok() { return preview; }
             else {
-                let mut blank = Box::new(TextView::new_blank(&core));
+                let mut blank = TextView::new_blank(&core);
                 blank.set_coordinates(&coordinates).log();
                 blank.refresh().log();
                 blank.animate_slide_up().log();
-                return Ok(blank)
+                return Ok(PreviewWidget::TextView(blank))
             }
         }))))
     }
@@ -485,7 +551,9 @@ impl Previewer {
         }
     }
 
-    fn preview_failed(file: &File) -> HResult<WidgetO> {
+
+
+    fn preview_failed(file: &File) -> HResult<PreviewWidget> {
         HError::preview_failed(file)
     }
 
@@ -493,7 +561,7 @@ impl Previewer {
                    cache: FsCache,
                    core: &WidgetCore,
                    stale: Stale)
-                   -> Result<WidgetO, HError> {
+                   -> HResult<PreviewWidget> {
         let (selection, cached_files) = cache.get_files(&file, stale.clone())?;
 
         let files = cached_files.wait()?;
@@ -510,11 +578,11 @@ impl Previewer {
         file_list.refresh()?;
         if is_stale(&stale)? { return Previewer::preview_failed(&file) }
         file_list.animate_slide_up()?;
-        Ok(Box::new(file_list) as Box<dyn Widget + Send>)
+        Ok(PreviewWidget::FileList(file_list))
     }
 
     fn preview_text(file: &File, core: &WidgetCore, stale: Stale)
-                    -> HResult<WidgetO> {
+                    -> HResult<PreviewWidget> {
         let lines = core.coordinates.ysize() as usize;
         let mut textview
             = TextView::new_from_file_limit_lines(&core,
@@ -528,13 +596,13 @@ impl Previewer {
         if is_stale(&stale)? { return Previewer::preview_failed(&file) }
 
         textview.animate_slide_up()?;
-        Ok(Box::new(textview))
+        Ok(PreviewWidget::TextView(textview))
     }
 
     fn preview_external(file: &File,
                         core: &WidgetCore,
                         stale: Stale)
-                        -> Result<Box<dyn Widget + Send>, HError> {
+                        -> HResult<PreviewWidget> {
         let process =
             std::process::Command::new("scope.sh")
             .arg(&file.path)
@@ -577,7 +645,7 @@ impl Previewer {
             textview.set_coordinates(&core.coordinates).log();
             textview.refresh().log();
             textview.animate_slide_up().log();
-            return Ok(Box::new(textview))
+            return Ok(PreviewWidget::TextView(textview))
         }
         HError::preview_failed(file)
     }
@@ -607,7 +675,38 @@ impl Widget for Previewer {
     }
 }
 
-
+impl Widget for PreviewWidget {
+    fn get_core(&self) -> HResult<&WidgetCore> {
+        match self {
+            PreviewWidget::FileList(widget) => widget.get_core(),
+            PreviewWidget::TextView(widget) => widget.get_core()
+        }
+    }
+    fn get_core_mut(&mut self) -> HResult<&mut WidgetCore> {
+        match self {
+            PreviewWidget::FileList(widget) => widget.get_core_mut(),
+            PreviewWidget::TextView(widget) => widget.get_core_mut()
+        }
+    }
+    fn set_coordinates(&mut self, coordinates: &Coordinates) -> HResult<()> {
+        match self {
+            PreviewWidget::FileList(widget) => widget.set_coordinates(coordinates),
+            PreviewWidget::TextView(widget) => widget.set_coordinates(coordinates),
+        }
+    }
+    fn refresh(&mut self) -> HResult<()> {
+        match self {
+            PreviewWidget::FileList(widget) => widget.refresh(),
+            PreviewWidget::TextView(widget) => widget.refresh()
+        }
+    }
+    fn get_drawlist(&self) -> HResult<String> {
+        match self {
+            PreviewWidget::FileList(widget) => widget.get_drawlist(),
+            PreviewWidget::TextView(widget) => widget.get_drawlist()
+        }
+    }
+}
 
 
 impl<T> Widget for Box<T> where T: Widget + ?Sized {
