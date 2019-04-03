@@ -11,6 +11,7 @@ use crate::minibuffer::MiniBuffer;
 use crate::term;
 use crate::term::{Screen, ScreenExt};
 use crate::dirty::{Dirtyable, DirtyBit};
+use crate::preview::Stale;
 use crate::signal_notify::{notify, Signal};
 
 
@@ -264,6 +265,7 @@ pub trait Widget {
                 }
                 Events::WidgetReady => {
                     self.refresh().log();
+                    self.draw().log();
                 }
                 Events::Status(status) => {
                     self.show_status(&status).log();
@@ -289,7 +291,7 @@ pub trait Widget {
         self.write_to_screen(&clearlist)
     }
 
-    fn animate_slide_up(&mut self) -> HResult<()> {
+    fn animate_slide_up(&mut self, animator: Option<Stale>) -> HResult<()> {
         let coords = self.get_coordinates()?.clone();
         let xpos = coords.position().x();
         let ypos = coords.position().y();
@@ -298,20 +300,33 @@ pub trait Widget {
         let clear = self.get_clearlist()?;
         let pause = std::time::Duration::from_millis(5);
 
+        if let Some(ref animator) = animator {
+            if animator.is_stale()? {
+                return Ok(())
+            }
+        }
+
         self.write_to_screen(&clear).log();
 
         for i in (0..10).rev() {
-            let coords = Coordinates { size: Size((xsize,ysize-i)),
+            if let Some(ref animator) = animator {
+                if animator.is_stale()? {
+                    self.set_coordinates(&coords).log();
+                    return Ok(())
+                }
+            }
+            let ani_coords = Coordinates { size: Size((xsize,ysize-i)),
                                        position: Position
                                            ((xpos,
                                              ypos+i))
             };
-            self.set_coordinates(&coords).log();
+            self.set_coordinates(&ani_coords).log();
             let buffer = self.get_drawlist()?;
             self.write_to_screen(&buffer).log();
 
             std::thread::sleep(pause);
         }
+
         Ok(())
     }
 

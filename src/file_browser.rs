@@ -244,7 +244,7 @@ impl FileBrowser {
             list.refresh().log();
 
             if startup {
-                list.animate_slide_up().log();
+                list.animate_slide_up(None).log();
             }
 
             list.content.meta_all();
@@ -275,7 +275,7 @@ impl FileBrowser {
                 list.refresh().log();
 
                 if startup {
-                    list.animate_slide_up().log();
+                    list.animate_slide_up(None).log();
                 }
 
                 Ok(list)
@@ -787,6 +787,7 @@ impl FileBrowser {
     }
 
     pub fn toggle_colums(&mut self) {
+        self.preview_widget().map(|preview| preview.cancel_animation()).log();
         self.columns.toggle_zoom().log();
     }
 
@@ -849,6 +850,7 @@ impl FileBrowser {
     pub fn run_subshell(&mut self) -> HResult<()> {
         self.core.get_sender().send(Events::InputEnabled(false))?;
 
+        self.preview_widget().map(|preview| preview.cancel_animation()).log();
         self.core.screen.cursor_show().log();
         self.core.screen.drop_screen();
 
@@ -871,6 +873,18 @@ impl FileBrowser {
 
 
 
+        Ok(())
+    }
+
+    pub fn show_procview(&mut self) -> HResult<()> {
+        self.preview_widget().map(|preview| preview.cancel_animation()).log();
+        self.proc_view.lock()?.popup()?;
+        Ok(())
+    }
+
+    pub fn show_log(&mut self) -> HResult<()> {
+        self.preview_widget().map(|preview| preview.cancel_animation()).log();
+        self.log_view.lock()?.popup()?;
         Ok(())
     }
 
@@ -991,8 +1005,8 @@ impl Widget for FileBrowser {
             Key::Char('-') => { self.goto_prev_cwd()?; },
             Key::Char('`') => { self.goto_bookmark()?; },
             Key::Char('m') => { self.add_bookmark()?; },
-            Key::Char('w') => { self.proc_view.lock()?.popup()?; },
-            Key::Char('l') => self.log_view.lock()?.popup()?,
+            Key::Char('w') => { self.show_procview()?; },
+            Key::Char('l') => self.show_log()?,
             Key::Char('z') => self.run_subshell()?,
             Key::Char('c') => self.toggle_colums(),
             _ => { self.main_widget_mut()?.on_key(key)?; },

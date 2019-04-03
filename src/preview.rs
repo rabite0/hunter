@@ -420,6 +420,7 @@ pub struct Previewer {
     core: WidgetCore,
     file: Option<File>,
     pub cache: FsCache,
+    animator: Stale
 }
 
 
@@ -434,7 +435,8 @@ impl Previewer {
         Previewer { widget: widget,
                     core: core.clone(),
                     file: None,
-                    cache: cache }
+                    cache: cache,
+                    animator: Stale::new()}
     }
 
     fn become_preview(&mut self,
@@ -451,6 +453,10 @@ impl Previewer {
 
     pub fn get_file(&self) -> Option<&File> {
         self.file.as_ref()
+    }
+
+    pub fn cancel_animation(&self) -> HResult<()> {
+        self.animator.set_stale()
     }
 
     pub fn take_files(&mut self) -> HResult<Files> {
@@ -513,8 +519,10 @@ impl Previewer {
         let file = file.clone();
         let core = self.core.clone();
         let cache = self.cache.clone();
+        let animator = self.animator.clone();
 
         self.widget.set_stale().ok();
+        self.animator.set_fresh().log();
 
         self.become_preview(Ok(AsyncWidget::new(&self.core,
                                                 Box::new(move |stale: Stale| {
@@ -524,21 +532,28 @@ impl Previewer {
                 let preview = Previewer::preview_dir(&file,
                                                      cache,
                                                      &core,
-                                                     stale);
+                                                     stale,
+                                                     animator);
                 return preview;
             }
 
             if file.is_text() {
-                return Previewer::preview_text(&file, &core, stale)
+                return Previewer::preview_text(&file,
+                                               &core,
+                                               stale,
+                                               animator);
             }
 
-            let preview = Previewer::preview_external(&file, &core, stale);
+            let preview = Previewer::preview_external(&file,
+                                                      &core,
+                                                      stale,
+                                                      animator.clone());
             if preview.is_ok() { return preview; }
             else {
                 let mut blank = TextView::new_blank(&core);
                 blank.set_coordinates(&coordinates).log();
                 blank.refresh().log();
-                blank.animate_slide_up().log();
+                blank.animate_slide_up(Some(animator)).log();
                 return Ok(PreviewWidget::TextView(blank))
             }
         }))))
@@ -560,7 +575,8 @@ impl Previewer {
     fn preview_dir(file: &File,
                    cache: FsCache,
                    core: &WidgetCore,
-                   stale: Stale)
+                   stale: Stale,
+                   animator: Stale)
                    -> HResult<PreviewWidget> {
         let (selection, cached_files) = cache.get_files(&file, stale.clone())?;
 
@@ -577,11 +593,14 @@ impl Previewer {
         file_list.set_coordinates(&core.coordinates)?;
         file_list.refresh()?;
         if is_stale(&stale)? { return Previewer::preview_failed(&file) }
-        file_list.animate_slide_up()?;
+        file_list.animate_slide_up(Some(animator))?;
         Ok(PreviewWidget::FileList(file_list))
     }
 
-    fn preview_text(file: &File, core: &WidgetCore, stale: Stale)
+    fn preview_text(file: &File,
+                    core: &WidgetCore,
+                    stale: Stale,
+                    animator: Stale)
                     -> HResult<PreviewWidget> {
         let lines = core.coordinates.ysize() as usize;
         let mut textview
@@ -595,13 +614,14 @@ impl Previewer {
 
         if is_stale(&stale)? { return Previewer::preview_failed(&file) }
 
-        textview.animate_slide_up()?;
+        textview.animate_slide_up(Some(animator))?;
         Ok(PreviewWidget::TextView(textview))
     }
 
     fn preview_external(file: &File,
                         core: &WidgetCore,
-                        stale: Stale)
+                        stale: Stale,
+                        animator: Stale)
                         -> HResult<PreviewWidget> {
         let process =
             std::process::Command::new("scope.sh")
@@ -644,7 +664,7 @@ impl Previewer {
                 offset: 0};
             textview.set_coordinates(&core.coordinates).log();
             textview.refresh().log();
-            textview.animate_slide_up().log();
+            textview.animate_slide_up(Some(animator)).log();
             return Ok(PreviewWidget::TextView(textview))
         }
         HError::preview_failed(file)
