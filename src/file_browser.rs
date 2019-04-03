@@ -803,13 +803,19 @@ impl FileBrowser {
         let cwd = self.cwd()?.clone().path;
         let selected_file = self.selected_file()?;
         let selected_file = selected_file.path.to_string_lossy();
+        let selected_files = self.selected_files()?;
+
+        let selected_files = selected_files.iter().map(|f| {
+            format!("\"{}\" ", &f.path.to_string_lossy())
+        }).collect::<String>();
 
         let mut filepath = dirs_2::home_dir()?;
         filepath.push(".hunter_cwd");
 
-        let output = format!("HUNTER_CWD=\"{}\"\nF=\"{}\"",
+        let output = format!("HUNTER_CWD=\"{}\"\nF=\"{}\"\nMF=({})\n",
                              cwd.to_str()?,
-                             selected_file);
+                             selected_file,
+                             selected_files);
 
         let mut file = std::fs::File::create(filepath)?;
         file.write(output.as_bytes())?;
