@@ -49,8 +49,7 @@ mod paths;
 mod foldview;
 mod dirty;
 mod fscache;
-
-
+mod config;
 
 
 

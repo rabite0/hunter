@@ -14,6 +14,7 @@ pub trait Listable {
     fn render(&self) -> Vec<String>;
     fn render_header(&self) -> HResult<String> { Ok("".to_string()) }
     fn render_footer(&self) -> HResult<String> { Ok("".to_string()) }
+    fn on_new(&mut self) -> HResult<()> { Ok(()) }
     fn on_refresh(&mut self) -> HResult<()> { Ok(()) }
     fn on_key(&mut self, _key: Key) -> HResult<()> { Ok(()) }
 }
@@ -25,6 +26,12 @@ impl Listable for ListView<Files> {
 
     fn render(&self)-> Vec<String> {
         self.render()
+    }
+
+    fn on_new(&mut self) -> HResult<()> {
+        let show_hidden = self.config().show_hidden();
+        self.content.show_hidden = show_hidden;
+        Ok(())
     }
 
     fn on_refresh(&mut self) -> HResult<()> {
@@ -97,7 +104,7 @@ where
     ListView<T>: Listable
 {
     pub fn new(core: &WidgetCore, content: T) -> ListView<T> {
-        let view = ListView::<T> {
+        let mut view = ListView::<T> {
             content: content,
             lines: 0,
             selection: 0,
@@ -107,6 +114,7 @@ where
             seeking: false,
             searching: None
         };
+        view.on_new().log();
         view
     }
 
@@ -161,19 +169,18 @@ impl ListView<Files>
 {
     pub fn selected_file(&self) -> &File {
         let selection = self.selection;
-        let file = &self.content[selection];
+        let file = &self.content.get_files()[selection];
         file
     }
 
     pub fn selected_file_mut(&mut self) -> &mut File {
         let selection = self.selection;
-        let file = &mut self.content.files[selection];
-        file
+        let mut file = self.content.get_file_mut(selection);
+        file.unwrap()
     }
 
     pub fn clone_selected_file(&self) -> File {
-        let selection = self.selection;
-        let file = self.content[selection].clone();
+        let file = self.selected_file().clone();
         file
     }
 
@@ -211,9 +218,9 @@ impl ListView<Files>
     pub fn select_file(&mut self, file: &File) {
         let pos = self
             .content
-            .files
+            .get_files()
             .iter()
-            .position(|item| item == file)
+            .position(|item| item == &file)
             .unwrap_or(0);
         self.set_selection(pos);
     }
@@ -291,10 +298,9 @@ impl ListView<Files>
         self.refresh().log();
     }
 
-    fn toggle_hidden(&mut self) {
+    pub fn toggle_hidden(&mut self) {
         let file = self.clone_selected_file();
         self.content.toggle_hidden();
-        //self.content.reload_files();
         self.select_file(&file);
         self.refresh().log();
     }

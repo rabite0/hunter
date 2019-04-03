@@ -89,6 +89,8 @@ pub enum HError {
     MetadataProcessedError,
     #[fail(display = "No files to take from widget")]
     WidgetNoFilesError,
+    #[fail(display = "Invalid line in settings file: {}", _0)]
+    ConfigLineError(String),
 }
 
 impl HError {
@@ -145,6 +147,10 @@ impl HError {
 
     pub fn stale<T>() -> HResult<T> {
         Err(HError::StaleError)
+    }
+
+    pub fn config_error<T>(line: String) -> HResult<T> {
+        Err(HError::ConfigLineError(line))
     }
 
     pub fn async_not_ready<T>() -> HResult<T> {

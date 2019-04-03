@@ -10,6 +10,7 @@ use crate::textview::TextView;
 use crate::widget::{Widget, WidgetCore};
 use crate::coordinates::Coordinates;
 use crate::fail::{HResult, HError, ErrorLog};
+use crate::dirty::Dirtyable;
 
 
 pub type AsyncValueFn<T> = Box<dyn FnBox(Stale) -> HResult<T> + Send + Sync>;
@@ -680,6 +681,15 @@ impl Widget for Previewer {
     }
     fn get_core_mut(&mut self) -> HResult<&mut WidgetCore> {
         Ok(&mut self.core)
+    }
+
+    fn config_loaded(&mut self) -> HResult<()> {
+        let show_hidden = self.config().show_hidden();
+        if let PreviewWidget::FileList(filelist) = self.widget.widget_mut()? {
+            filelist.content.show_hidden = show_hidden;
+            filelist.content.dirty_meta.set_dirty();
+        }
+        Ok(())
     }
 
     fn set_coordinates(&mut self, coordinates: &Coordinates) -> HResult<()> {

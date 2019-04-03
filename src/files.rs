@@ -229,6 +229,19 @@ impl Files {
         Ok(files)
     }
 
+    pub fn get_file_mut(&mut self, index: usize) -> Option<&mut File> {
+        let filter = self.filter.clone();
+        let show_hidden = self.show_hidden;
+
+        let file = self.files
+            .iter_mut()
+            .filter(|f| !(filter.is_some() &&
+                         !f.name.contains(filter.as_ref().unwrap())))
+            .filter(|f| !(!show_hidden && f.name.starts_with(".")))
+            .nth(index);
+        file
+    }
+
     pub fn get_files(&self) -> Vec<&File> {
         self.files
             .iter()
@@ -406,8 +419,12 @@ impl Files {
         self.dirty_meta.set_clean();
 
         let meta_pool = make_pool(sender.clone());
+        let show_hidden = self.show_hidden;
 
-        for file in self.files.iter_mut().take(meta_files) {
+        for file in self.files
+            .iter_mut()
+            .filter(|f| !(!show_hidden && f.name.starts_with(".")))
+            .take(meta_files) {
             if !file.meta_processed {
                 file.take_meta(&meta_pool, &mut self.meta_updated).ok();
             }

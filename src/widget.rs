@@ -1,4 +1,4 @@
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, RwLock};
 use std::sync::mpsc::{Sender, Receiver, channel};
 use std::io::{Write, stdin};
 
@@ -13,6 +13,8 @@ use crate::term::{Screen, ScreenExt};
 use crate::dirty::{Dirtyable, DirtyBit};
 use crate::preview::Stale;
 use crate::signal_notify::{notify, Signal};
+use crate::config::Config;
+use crate::preview::Async;
 
 
 
@@ -24,7 +26,8 @@ pub enum Events {
     ExclusiveEvent(Option<Mutex<Option<Sender<Events>>>>),
     InputEnabled(bool),
     RequestInput,
-    Status(String)
+    Status(String),
+    ConfigLoaded,
 }
 
 impl PartialEq for WidgetCore {
@@ -56,7 +59,8 @@ pub struct WidgetCore {
     event_receiver: Arc<Mutex<Option<Receiver<Events>>>>,
     pub status_bar_content: Arc<Mutex<Option<String>>>,
     term_size: (usize, usize),
-    dirty: DirtyBit
+    dirty: DirtyBit,
+    pub config: Arc<RwLock<Async<Config>>>
 }
 
 impl WidgetCore {
@@ -70,6 +74,14 @@ impl WidgetCore {
         let (sender, receiver) = channel();
         let status_bar_content = Arc::new(Mutex::new(None));
 
+        let mut config = Async::new(Box::new(|_| Config::load()));
+        let confsender = Arc::new(Mutex::new(sender.clone()));
+        config.on_ready(Box::new(move || {
+            confsender.lock()?.send(Events::ConfigLoaded).ok();
+            Ok(())
+        }));
+        config.run().log();
+
         let core = WidgetCore {
             screen: screen,
             coordinates: coords,
@@ -78,7 +90,8 @@ impl WidgetCore {
             event_receiver: Arc::new(Mutex::new(Some(receiver))),
             status_bar_content: status_bar_content,
             term_size: (xsize, ysize),
-            dirty: DirtyBit::new() };
+            dirty: DirtyBit::new(),
+            config: Arc::new(RwLock::new(config)) };
 
         let minibuffer = MiniBuffer::new(&core);
         *core.minibuffer.lock().unwrap() = Some(minibuffer);
@@ -130,6 +143,7 @@ pub trait Widget {
     fn refresh(&mut self) -> HResult<()>;
     fn get_drawlist(&self) -> HResult<String>;
     fn after_draw(&self) -> HResult<()> { Ok(()) }
+    fn config_loaded(&mut self) -> HResult<()> { Ok(()) }
 
 
 
@@ -277,6 +291,9 @@ pub trait Widget {
                         _ => {}
                     }
                 }
+                Events::ConfigLoaded => {
+                    self.get_core_mut()?.config.write()?.take_async().log();
+                }
                 _ => {}
             }
             self.refresh().log();
@@ -291,7 +308,19 @@ pub trait Widget {
         self.write_to_screen(&clearlist)
     }
 
+    fn config(&self) -> Config {
+        self.get_core()
+            .unwrap()
+            .config.read().unwrap().get()
+            .map(|config| config.clone())
+            .unwrap_or(Config::new())
+    }
+
     fn animate_slide_up(&mut self, animator: Option<Stale>) -> HResult<()> {
+        if !self.config().animate() { return Ok(()); }
+
+        self.config();
+
         let coords = self.get_coordinates()?.clone();
         let xpos = coords.position().x();
         let ypos = coords.position().y();
@@ -360,6 +389,10 @@ pub trait Widget {
                 }
                 Events::TerminalResized => {
                     self.screen()?.clear().log();
+                }
+                Events::ConfigLoaded => {
+                    self.get_core_mut()?.config.write()?.take_async().log();
+                    self.config_loaded();
                 }
                 _ => {}
             }

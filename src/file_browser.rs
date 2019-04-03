@@ -22,6 +22,7 @@ use crate::term;
 use crate::term::ScreenExt;
 use crate::foldview::LogView;
 use crate::coordinates::Coordinates;
+use crate::dirty::Dirtyable;
 
 #[derive(PartialEq)]
 pub enum FileBrowserWidgets {
@@ -186,6 +187,20 @@ impl Tabbable for TabView<FileBrowser> {
             });
 
         self.active_tab_mut_().fs_cache.watch_only(open_dirs).log();
+        Ok(())
+    }
+
+    fn on_config_loaded(&mut self) -> HResult<()> {
+        let show_hidden = self.config().show_hidden();
+        for tab in self.widgets.iter_mut() {
+            tab.left_widget_mut().map(|w| {
+                w.content.show_hidden = show_hidden;
+                w.content.dirty_meta.set_dirty();
+                w.refresh().log();
+            }).ok();
+            tab.main_widget_mut().map(|w| w.content.show_hidden = show_hidden).ok();
+            tab.preview_widget_mut().map(|w| w.config_loaded()).ok();
+        }
         Ok(())
     }
 }

@@ -26,6 +26,9 @@ pub trait Tabbable {
         }
     }
     fn on_refresh(&mut self) -> HResult<()> { Ok(()) }
+    fn on_config_loaded(&mut self) -> HResult<()> { Ok(()) }
+
+
 }
 
 
@@ -106,6 +109,10 @@ impl<T> Widget for TabView<T> where T: Widget, TabView<T>: Tabbable {
     }
     fn get_core_mut(&mut self) -> HResult<&mut WidgetCore> {
         Ok(&mut self.core)
+    }
+
+    fn config_loaded(&mut self) -> HResult<()> {
+        self.on_config_loaded()
     }
 
     fn set_coordinates(&mut self, coordinates: &Coordinates) -> HResult<()> {
