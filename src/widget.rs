@@ -392,7 +392,7 @@ pub trait Widget {
                 }
                 Events::ConfigLoaded => {
                     self.get_core_mut()?.config.write()?.take_async().log();
-                    self.config_loaded();
+                    self.config_loaded().log();
                 }
                 _ => {}
             }

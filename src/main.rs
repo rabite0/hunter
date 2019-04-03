@@ -21,6 +21,7 @@ extern crate notify;
 extern crate parse_ansi;
 extern crate signal_notify;
 extern crate tree_magic;
+extern crate systemstat;
 
 use failure::Fail;
 
@@ -50,7 +51,7 @@ mod foldview;
 mod dirty;
 mod fscache;
 mod config;
-
+mod stats;
 
 
 

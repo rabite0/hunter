@@ -1,7 +1,7 @@
 use termion::event::Key;
 
 use std::io::Write;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, RwLock};
 use std::path::PathBuf;
 use std::ffi::OsString;
 use std::collections::HashSet;
@@ -23,6 +23,7 @@ use crate::term::ScreenExt;
 use crate::foldview::LogView;
 use crate::coordinates::Coordinates;
 use crate::dirty::Dirtyable;
+use crate::stats::{FsStat, FsExt};
 
 #[derive(PartialEq)]
 pub enum FileBrowserWidgets {
@@ -78,6 +79,7 @@ pub struct FileBrowser {
     bookmarks: Arc<Mutex<BMPopup>>,
     log_view: Arc<Mutex<LogView>>,
     fs_cache: FsCache,
+    fs_stat: Arc<RwLock<FsStat>>
 }
 
 impl Tabbable for TabView<FileBrowser> {
@@ -95,6 +97,7 @@ impl Tabbable for TabView<FileBrowser> {
         tab.proc_view = proc_view;
         tab.bookmarks = bookmarks;
         tab.log_view  = log_view;
+        tab.fs_stat = cur_tab.fs_stat.clone();
 
         self.push_widget(tab)?;
         self.active = self.widgets.len() - 1;
@@ -187,10 +190,14 @@ impl Tabbable for TabView<FileBrowser> {
             });
 
         self.active_tab_mut_().fs_cache.watch_only(open_dirs).log();
+        self.active_tab_mut_().fs_stat.write()?.refresh().log();
         Ok(())
     }
 
     fn on_config_loaded(&mut self) -> HResult<()> {
+        // hack: wait a bit for widget readyness...
+        std::thread::sleep_ms(100);
+
         let show_hidden = self.config().show_hidden();
         for tab in self.widgets.iter_mut() {
             tab.left_widget_mut().map(|w| {
@@ -198,7 +205,14 @@ impl Tabbable for TabView<FileBrowser> {
                 w.content.dirty_meta.set_dirty();
                 w.refresh().log();
             }).ok();
-            tab.main_widget_mut().map(|w| w.content.show_hidden = show_hidden).ok();
+
+            tab.main_widget_mut().map(|w| {
+                w.content.show_hidden = show_hidden;
+                w.content.dirty_meta.set_dirty();
+                w.content.sort();
+                w.refresh().log();
+            }).ok();
+
             tab.preview_widget_mut().map(|w| w.config_loaded()).ok();
         }
         Ok(())
@@ -256,6 +270,8 @@ impl FileBrowser {
                 list.select_file(&file);
             }
 
+            list.content.meta_all();
+            list.content.dirty_meta.set_dirty();
             list.refresh().log();
 
             if startup {
@@ -320,6 +336,7 @@ impl FileBrowser {
         let proc_view = ProcView::new(&core);
         let bookmarks = BMPopup::new(&core);
         let log_view = LogView::new(&core, vec![]);
+        let fs_stat = FsStat::new().unwrap();
 
 
 
@@ -331,6 +348,7 @@ impl FileBrowser {
                          bookmarks: Arc::new(Mutex::new(bookmarks)),
                          log_view: Arc::new(Mutex::new(log_view)),
                          fs_cache: fs_cache,
+                         fs_stat: Arc::new(RwLock::new(fs_stat))
         })
     }
 
@@ -636,31 +654,6 @@ impl FileBrowser {
         HError::no_files()
     }
 
-    // pub fn take_preview_files(&mut self) -> HResult<Files> {
-    //     let widget = self.columns.remove_widget(2);
-    //     if let Filxx
-    // }
-
-    // pub fn take_files_from_widget(&self,
-    //                               widget: FileBrowserWidgets) -> HResult<Files> {
-    //     match widget {
-    //         FileBrowserWidgets::FileList(file_list) => {
-    //             match file_list.take_widget() {
-    //                 Ok(widget) => {
-    //                     let files = widget.content;
-    //                     Ok(files)
-    //                 }
-    //                 _ => HError::no_files()
-    //             }
-    //         }
-    //         FileBrowserWidgets::Previewer(previewer) => {
-    //             let files = previewer.take_files()?;
-    //             Ok(files)
-    //         }
-    //         _ => HError::no_files()
-    //     }
-    // }
-
     pub fn get_files(&self) -> HResult<&Files> {
         Ok(&self.main_widget()?.content)
     }
@@ -676,12 +669,12 @@ impl FileBrowser {
         self.main_widget_mut()?.content.meta_updated = false;
 
 
-        if self.cwd.parent().is_some() {
-            let left_selection = self.left_widget()?.clone_selected_file();
-            let left_files = self.get_left_files()?;
-            self.fs_cache.put_files(left_files, Some(left_selection)).log();
-            self.left_widget_mut()?.content.meta_updated = false;
-        }
+        // if self.cwd.parent().is_some() {
+        //     let left_selection = self.left_widget()?.clone_selected_file();
+        //     let left_files = self.get_left_files()?;
+        //     self.fs_cache.put_files(left_files, Some(left_selection)).log();
+        //     self.left_widget_mut()?.content.meta_updated = false;
+        // }
 
         Ok(())
     }
@@ -929,6 +922,18 @@ impl FileBrowser {
         let count_xpos = xsize - file_count.len() as u16;
         let count_ypos = ypos + self.get_coordinates()?.ysize();
 
+        let fs = self.fs_stat.read()?.find_fs(&file.path)?.clone();
+
+        let dev = fs.get_dev();
+        let free_space = fs.get_free();
+        let total_space = fs.get_total();
+        let space = format!("{}: {} / {}",
+                            dev,
+                            free_space,
+                            total_space);
+
+        let space_xpos = count_xpos - space.len() as u16 - 5; // - 3;
+
         let status = format!("{} {}:{} {}{} {}{}",
                              permissions,
                              user,
@@ -940,10 +945,13 @@ impl FileBrowser {
         );
         let status = crate::term::sized_string_u(&status, (xsize-1) as usize);
 
-        let status = format!("{}{}{}{}",
+        let status = format!("{}{}{}{}{}{} | {}",
                              status,
                              crate::term::header_color(),
-                             crate::term::goto_xy(count_xpos, count_ypos),
+                             crate::term::goto_xy(space_xpos, count_ypos),
+                             crate::term::color_orange(),
+                             space,
+                             crate::term::header_color(),
                              file_count);
 
         Ok(status)
@@ -972,9 +980,13 @@ impl Widget for FileBrowser {
         let file = self.selected_file()?;
         let name = &file.name;
 
-        let color = if file.is_dir() || file.color.is_none() {
-            crate::term::highlight_color() } else {
-            crate::term::from_lscolor(file.color.as_ref().unwrap()) };
+        let color = if file.is_dir() {
+            crate::term::highlight_color() }
+        else if file.color.is_none() {
+            crate::term::normal_color()
+        } else {
+            crate::term::from_lscolor(file.color.as_ref().unwrap())
+        };
 
         let path = self.cwd.short_string();
 

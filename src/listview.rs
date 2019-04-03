@@ -65,6 +65,8 @@ impl Listable for ListView<Files> {
                 self.move_down();
                 self.refresh()?;
             },
+            Key::Char('<') => self.move_top(),
+            Key::Char('>') => self.move_bottom(),
             Key::Char('S') => { self.search_file().log(); }
             Key::Alt('s') => { self.search_next().log(); }
             Key::Alt('S') => { self.search_prev().log(); }
@@ -72,6 +74,7 @@ impl Listable for ListView<Files> {
             Key::Left => self.goto_grand_parent()?,
             Key::Right => self.goto_selected()?,
             Key::Char(' ') => self.multi_select_file(),
+            Key::Char('v') => self.invert_selection(),
             Key::Char('t') => self.toggle_tag()?,
             Key::Char('h') => self.toggle_hidden(),
             Key::Char('r') => self.reverse_sort(),
@@ -146,6 +149,15 @@ where
         self.seeking = false;
     }
 
+    pub fn move_top(&mut self) {
+        self.set_selection(0);
+    }
+
+    pub fn move_bottom(&mut self) {
+        let lines = self.lines;
+        self.set_selection(lines - 1);
+    }
+
     pub fn get_selection(&self) -> usize {
         self.selection
     }
@@ -154,8 +166,7 @@ where
         let ysize = self.get_coordinates().unwrap().ysize() as usize;
         let mut offset = 0;
 
-        while position + 2
-            >= ysize + offset {
+        while position >= ysize + offset {
             offset += 1
         }
 
@@ -175,7 +186,7 @@ impl ListView<Files>
 
     pub fn selected_file_mut(&mut self) -> &mut File {
         let selection = self.selection;
-        let mut file = self.content.get_file_mut(selection);
+        let file = self.content.get_file_mut(selection);
         file.unwrap()
     }
 
@@ -323,6 +334,14 @@ impl ListView<Files>
         self.buffer[selection] = line;
 
         self.move_down();
+    }
+
+    pub fn invert_selection(&mut self) {
+        for file in self.content.get_files_mut() {
+            file.toggle_selection();
+        }
+        self.content.set_dirty();
+        self.refresh().log();
     }
 
     fn toggle_tag(&mut self) -> HResult<()> {

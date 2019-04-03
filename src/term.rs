@@ -249,16 +249,44 @@ pub fn color_green() -> String {
     format!("{}", termion::color::Fg(termion::color::Green))
 }
 
+pub fn color_light_green() -> String {
+    format!("{}", termion::color::Fg(termion::color::LightGreen))
+}
+
+pub fn color_cyan() -> String {
+    format!("{}", termion::color::Fg(termion::color::Cyan))
+}
+
+pub fn color_light_yellow() -> String {
+    format!("{}", termion::color::Fg(termion::color::LightYellow))
+}
+
+pub fn color_orange() -> String {
+    let color = termion::color::Fg(termion::color::AnsiValue::rgb(5 as u8 ,
+                                                                  4 as u8,
+                                                                  0 as u8));
+    format!("{}", color)
+}
+
+
 pub fn from_lscolor(color: &lscolors::Color) -> String {
     match color {
-        lscolors::Color::Black => format!("{}", termion::color::Fg(termion::color::Black)),
-        lscolors::Color::Red => format!("{}", termion::color::Fg(termion::color::Red)),
-        lscolors::Color::Green => format!("{}", termion::color::Fg(termion::color::Green)),
-        lscolors::Color::Yellow => format!("{}", termion::color::Fg(termion::color::Yellow)),
-        lscolors::Color::Blue => format!("{}", termion::color::Fg(termion::color::Blue)),
-        lscolors::Color::Magenta => format!("{}", termion::color::Fg(termion::color::Magenta)),
-        lscolors::Color::Cyan => format!("{}", termion::color::Fg(termion::color::Cyan)),
-        lscolors::Color::White => format!("{}", termion::color::Fg(termion::color::White)),
+        lscolors::Color::Black
+            => format!("{}", termion::color::Fg(termion::color::Black)),
+        lscolors::Color::Red
+            => format!("{}", termion::color::Fg(termion::color::Red)),
+        lscolors::Color::Green
+            => format!("{}", termion::color::Fg(termion::color::Green)),
+        lscolors::Color::Yellow
+            => format!("{}", termion::color::Fg(termion::color::Yellow)),
+        lscolors::Color::Blue
+            => format!("{}", termion::color::Fg(termion::color::Blue)),
+        lscolors::Color::Magenta
+            => format!("{}", termion::color::Fg(termion::color::Magenta)),
+        lscolors::Color::Cyan
+            => format!("{}", termion::color::Fg(termion::color::Cyan)),
+        lscolors::Color::White
+            => format!("{}", termion::color::Fg(termion::color::White)),
         _ => format!("{}", normal_color()),
     }
 }

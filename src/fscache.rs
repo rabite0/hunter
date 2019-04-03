@@ -115,8 +115,10 @@ impl FsCache {
             self.add_watch(&dir).log();
             let dir = dir.clone();
             let selection = self.get_selection(&dir).ok();
+            let cache = self.clone();
             let files = Async::new(Box::new(move |_| {
-                let files = Files::new_from_path_cancellable(&dir.path, stale)?;
+                let mut files = Files::new_from_path_cancellable(&dir.path, stale)?;
+                FsCache::apply_settingss(&cache, &mut files).ok();
                 Ok(files)
             }));
             Ok((selection, files))
@@ -126,7 +128,9 @@ impl FsCache {
     pub fn get_files_sync(&self, dir: &File) -> HResult<Files> {
         self.add_watch(&dir).log();
         let files = self.get_files(&dir, Stale::new())?.1;
-        files.wait()
+        let mut files = files.wait()?;
+        FsCache::apply_settingss(&self, &mut files).ok();
+        Ok(files)
     }
 
     pub fn get_selection(&self, dir: &File) -> HResult<File> {
@@ -231,6 +235,36 @@ impl FsCache {
 
         Ok((selection, files))
     }
+
+
+    pub fn apply_settingss(cache: &FsCache,
+                       files: &mut Files)
+                       -> HResult<()> {
+        let dir = &files.directory;
+        let tab_settings = cache.tab_settings.read()?.get(&dir).cloned();
+        if tab_settings.is_none() { return Ok(()) }
+        let tab_settings = tab_settings?;
+
+        files.sort = tab_settings.dir_settings.sort;
+        files.dirs_first = tab_settings.dir_settings.dirs_first;
+        files.reverse = tab_settings.dir_settings.reverse;
+        files.show_hidden = tab_settings.dir_settings.show_hidden;
+        files.filter = tab_settings.dir_settings.filter.clone();
+
+        if tab_settings.multi_selections.len() > 0 {
+            for file in &mut files.files {
+                for selected_files in &tab_settings.multi_selections {
+                    if file.path == selected_files.path {
+                        file.selected = true;
+                    }
+                }
+            }
+        }
+
+        files.sort();
+        Ok(())
+    }
+
 
     fn extract_tab_settings(files: &Files, selection: Option<File>) -> TabSettings {
         TabSettings {

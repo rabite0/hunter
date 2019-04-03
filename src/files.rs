@@ -329,8 +329,21 @@ impl Files {
     pub fn replace_file(&mut self,
                         old: Option<&File>,
                         new: Option<File>) -> HResult<()> {
+        let (tag, selected) = if let Some(old) = old {
+            if let Some(old) = self.find_file_with_path(&old.path) {
+                (old.tag, old.selected)
+            } else {
+                (None, false)
+            }
+        } else {
+            (None, false)
+        };
         old.map(|old| self.files.remove_item(old));
-        new.map(|new| self.files.push(new));
+        new.map(|mut new| {
+            new.tag = tag;
+            new.selected = selected;
+            self.files.push(new);
+        });
         self.sort();
         Ok(())
     }
@@ -913,7 +926,7 @@ impl File {
             if file_user.name() == cur_user {
                 crate::term::color_green()
             } else {
-                crate::term::color_yellow()  };
+                crate::term::color_red()  };
         Some(format!("{}{}", color, file_user.name().to_string_lossy()))
     }
 
@@ -926,7 +939,7 @@ impl File {
             if file_group.name() == cur_group {
                 crate::term::color_green()
             } else {
-                crate::term::color_yellow()  };
+                crate::term::color_red()  };
         Some(format!("{}{}", color, file_group.name().to_string_lossy()))
     }
 
