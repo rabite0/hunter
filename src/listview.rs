@@ -14,6 +14,7 @@ pub trait Listable {
     fn render(&self) -> Vec<String>;
     fn render_header(&self) -> HResult<String> { Ok("".to_string()) }
     fn render_footer(&self) -> HResult<String> { Ok("".to_string()) }
+    fn on_new(&mut self) -> HResult<()> { Ok(()) }
     fn on_refresh(&mut self) -> HResult<()> { Ok(()) }
     fn on_key(&mut self, _key: Key) -> HResult<()> { Ok(()) }
 }
@@ -27,13 +28,27 @@ impl Listable for ListView<Files> {
         self.render()
     }
 
+    fn on_new(&mut self) -> HResult<()> {
+        let show_hidden = self.config().show_hidden();
+        self.content.show_hidden = show_hidden;
+        Ok(())
+    }
+
     fn on_refresh(&mut self) -> HResult<()> {
-        let visible_file_num = self.selection + self.get_coordinates()?.ysize() as usize;
-        self.content.meta_upto(visible_file_num);
+        let sender = self.core.get_sender();
+
+        let visible_files = self.core.coordinates.size_u().1 + self.offset + 1;
+
+        self.content.meta_upto(visible_files, Some(sender.clone()));
 
         if self.content.is_dirty() {
-            self.core.set_dirty();
             self.content.set_clean();
+            self.core.set_dirty();
+        }
+
+        if self.content.dirty_meta.is_dirty() {
+            self.content.meta_upto(visible_files, Some(sender.clone()));
+            self.core.set_dirty();
         }
         Ok(())
     }
@@ -50,12 +65,16 @@ impl Listable for ListView<Files> {
                 self.move_down();
                 self.refresh()?;
             },
+            Key::Char('<') => self.move_top(),
+            Key::Char('>') => self.move_bottom(),
             Key::Char('S') => { self.search_file().log(); }
             Key::Alt('s') => { self.search_next().log(); }
-            Key::Char('F') => { self.filter().log(); }
+            Key::Alt('S') => { self.search_prev().log(); }
+            Key::Ctrl('f') => { self.filter().log(); }
             Key::Left => self.goto_grand_parent()?,
             Key::Right => self.goto_selected()?,
             Key::Char(' ') => self.multi_select_file(),
+            Key::Char('v') => self.invert_selection(),
             Key::Char('t') => self.toggle_tag()?,
             Key::Char('h') => self.toggle_hidden(),
             Key::Char('r') => self.reverse_sort(),
@@ -88,7 +107,7 @@ where
     ListView<T>: Listable
 {
     pub fn new(core: &WidgetCore, content: T) -> ListView<T> {
-        let view = ListView::<T> {
+        let mut view = ListView::<T> {
             content: content,
             lines: 0,
             selection: 0,
@@ -98,6 +117,7 @@ where
             seeking: false,
             searching: None
         };
+        view.on_new().log();
         view
     }
 
@@ -129,6 +149,15 @@ where
         self.seeking = false;
     }
 
+    pub fn move_top(&mut self) {
+        self.set_selection(0);
+    }
+
+    pub fn move_bottom(&mut self) {
+        let lines = self.lines;
+        self.set_selection(lines - 1);
+    }
+
     pub fn get_selection(&self) -> usize {
         self.selection
     }
@@ -137,8 +166,7 @@ where
         let ysize = self.get_coordinates().unwrap().ysize() as usize;
         let mut offset = 0;
 
-        while position + 2
-            >= ysize + offset {
+        while position >= ysize + offset {
             offset += 1
         }
 
@@ -152,19 +180,18 @@ impl ListView<Files>
 {
     pub fn selected_file(&self) -> &File {
         let selection = self.selection;
-        let file = &self.content[selection];
+        let file = &self.content.get_files()[selection];
         file
     }
 
     pub fn selected_file_mut(&mut self) -> &mut File {
         let selection = self.selection;
-        let file = &mut self.content.files[selection];
-        file
+        let file = self.content.get_file_mut(selection);
+        file.unwrap()
     }
 
     pub fn clone_selected_file(&self) -> File {
-        let selection = self.selection;
-        let file = self.content[selection].clone();
+        let file = self.selected_file().clone();
         file
     }
 
@@ -202,9 +229,9 @@ impl ListView<Files>
     pub fn select_file(&mut self, file: &File) {
         let pos = self
             .content
-            .files
+            .get_files()
             .iter()
-            .position(|item| item == file)
+            .position(|item| item == &file)
             .unwrap_or(0);
         self.set_selection(pos);
     }
@@ -282,10 +309,9 @@ impl ListView<Files>
         self.refresh().log();
     }
 
-    fn toggle_hidden(&mut self) {
+    pub fn toggle_hidden(&mut self) {
         let file = self.clone_selected_file();
         self.content.toggle_hidden();
-        self.content.reload_files();
         self.select_file(&file);
         self.refresh().log();
     }
@@ -308,6 +334,14 @@ impl ListView<Files>
         self.buffer[selection] = line;
 
         self.move_down();
+    }
+
+    pub fn invert_selection(&mut self) {
+        for file in self.content.get_files_mut() {
+            file.toggle_selection();
+        }
+        self.content.set_dirty();
+        self.refresh().log();
     }
 
     fn toggle_tag(&mut self) -> HResult<()> {
@@ -354,6 +388,40 @@ impl ListView<Files>
                     false
                 }
             }).clone();
+
+        if let Some(file) = file {
+            let file = file.clone();
+            self.select_file(&file);
+        } else {
+            self.show_status("Reached last search result!").log();
+        }
+        Ok(())
+    }
+
+    fn search_prev(&mut self) -> HResult<()> {
+        if self.searching.is_none() {
+            self.show_status("No search pattern set!").log();
+        }
+        let prev_search = self.searching.clone()?;
+
+
+        self.reverse_sort();
+
+        let selection = self.get_selection();
+
+        let file = self.content
+            .files
+            .iter()
+            .skip(selection+1)
+            .find(|file| {
+                if file.name.to_lowercase().contains(&prev_search) {
+                    true
+                } else {
+                    false
+                }
+            }).cloned();
+
+        self.reverse_sort();
 
         if let Some(file) = file {
             let file = file.clone();
@@ -438,19 +506,11 @@ impl ListView<Files>
     }
 
     fn render(&self) -> Vec<String> {
-        match self.content.get_filter() {
-            Some(filter) => self.content
-                .files
-                .iter()
-                .filter(|f| f.name.contains(&filter))
-                .map(|file| self.render_line(&file))
-                .collect(),
-            None => self.content
-                .files
-                .iter()
-                .map(|file| self.render_line(&file))
-                .collect()
-        }
+        self.content
+            .get_files()
+            .iter()
+            .map(|file| self.render_line(&file))
+            .collect()
     }
 }
 

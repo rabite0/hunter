@@ -1,18 +1,25 @@
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, RwLock};
+use std::boxed::FnBox;
 
-use failure::Backtrace;
+use rayon::ThreadPool;
 
 use crate::files::{File, Files, Kind};
+use crate::fscache::FsCache;
 use crate::listview::ListView;
 use crate::textview::TextView;
 use crate::widget::{Widget, WidgetCore};
 use crate::coordinates::Coordinates;
 use crate::fail::{HResult, HError, ErrorLog};
+use crate::dirty::Dirtyable;
 
 
+pub type AsyncValueFn<T> = Box<dyn FnBox(Stale) -> HResult<T> + Send + Sync>;
+pub type AsyncValue<T> = Arc<Mutex<Option<HResult<T>>>>;
+pub type AsyncReadyFn = Box<dyn FnBox() -> HResult<()> + Send + Sync>;
+pub type AsyncWidgetFn<W> = Box<dyn FnBox(Stale, WidgetCore)
+                                          -> HResult<W> + Send + Sync>;
 
-type HClosure<T> = Box<Fn(Arc<Mutex<bool>>) -> Result<T, HError> + Send>;
-type HCClosure<T> = Box<Fn(Arc<Mutex<bool>>, WidgetCore) -> Result<T, HError> + Send>;
+
 type WidgetO = Box<dyn Widget + Send>;
 
 lazy_static! {
@@ -28,91 +35,234 @@ fn kill_proc() -> HResult<()> {
     Ok(())
 }
 
-pub fn is_stale(stale: &Arc<Mutex<bool>>) -> HResult<bool> {
-    let stale = *(stale.lock().unwrap());
+#[derive(Clone, Debug)]
+pub struct Stale(Arc<RwLock<bool>>);
+
+impl Stale {
+    pub fn new() -> Stale {
+        Stale(Arc::new(RwLock::new(false)))
+    }
+    pub fn is_stale(&self) -> HResult<bool> {
+        Ok(*self.0.read()?)
+    }
+    pub fn set_stale(&self) -> HResult<()> {
+        *self.0.write()? = true;
+        Ok(())
+    }
+    pub fn set_fresh(&self) -> HResult<()> {
+        *self.0.write()? = false;
+        Ok(())
+    }
+}
+
+
+
+pub fn is_stale(stale: &Stale) -> HResult<bool> {
+    let stale = stale.is_stale()?;
     Ok(stale)
 }
 
-enum State {
-    Is,
-    Becoming,
-    Fail(HError)
+use std::fmt::{Debug, Formatter};
+
+impl<T: Send + Debug> Debug for Async<T> {
+    fn fmt(&self, formatter: &mut Formatter) -> Result<(), std::fmt::Error> {
+        write!(formatter,
+               "{:?}, {:?} {:?}",
+               self.value,
+               self.async_value,
+               self.stale)
+    }
 }
 
-struct WillBe<T: Send> {
-    pub state: Arc<Mutex<State>>,
-    pub thing: Arc<Mutex<Option<T>>>,
-    on_ready: Arc<Mutex<Option<Box<Fn(Arc<Mutex<Option<T>>>) -> HResult<()> + Send>>>>,
-    stale: Arc<Mutex<bool>>
+
+#[derive(Clone)]
+pub struct Async<T: Send> {
+    pub value: HResult<T>,
+    async_value: AsyncValue<T>,
+    async_closure: Arc<Mutex<Option<AsyncValueFn<T>>>>,
+    on_ready: Arc<Mutex<Option<AsyncReadyFn>>>,
+    started: bool,
+    stale: Stale,
 }
 
-impl<T: Send + 'static> WillBe<T> where {
-    pub fn new_become(closure: HClosure<T>)
-                  -> WillBe<T> {
-        let mut willbe = WillBe { state: Arc::new(Mutex::new(State::Becoming)),
-                                  thing: Arc::new(Mutex::new(None)),
-                                  on_ready: Arc::new(Mutex::new(None)),
-                                  stale: Arc::new(Mutex::new(false)) };
-        willbe.run(closure);
-        willbe
+
+
+impl<T: Send + 'static> Async<T> {
+    pub fn new(closure: AsyncValueFn<T>)
+                  -> Async<T> {
+        let async_value = Async {
+            value: HError::async_not_ready(),
+            async_value: Arc::new(Mutex::new(None)),
+            async_closure: Arc::new(Mutex::new(Some(closure))),
+            on_ready: Arc::new(Mutex::new(None)),
+            started: false,
+            stale: Stale::new() };
+
+        async_value
     }
 
-    fn run(&mut self, closure: HClosure<T>) {
-        let state = self.state.clone();
+    pub fn new_with_stale(closure: AsyncValueFn<T>,
+                          stale: Stale)
+                  -> Async<T> {
+        let async_value = Async {
+            value: HError::async_not_ready(),
+            async_value: Arc::new(Mutex::new(None)),
+            async_closure: Arc::new(Mutex::new(Some(closure))),
+            on_ready: Arc::new(Mutex::new(None)),
+            started: false,
+            stale: stale };
+
+        async_value
+    }
+
+    pub fn new_with_value(val: T) -> Async<T> {
+        Async {
+            value: Ok(val),
+            async_value: Arc::new(Mutex::new(None)),
+            async_closure: Arc::new(Mutex::new(None)),
+            on_ready: Arc::new(Mutex::new(None)),
+            started: false,
+            stale: Stale::new()
+        }
+    }
+
+    pub fn run_async(async_fn: Arc<Mutex<Option<AsyncValueFn<T>>>>,
+                     async_value: AsyncValue<T>,
+                     on_ready_fn: Arc<Mutex<Option<AsyncReadyFn>>>,
+                     stale: Stale) -> HResult<()> {
+        let value_fn = async_fn.lock()?.take()?;
+        let value = value_fn.call_box((stale.clone(),));
+        async_value.lock()?.replace(value);
+        on_ready_fn.lock()?
+            .take()
+            .map(|on_ready| on_ready.call_box(()).log());
+        Ok(())
+    }
+
+    pub fn run(&mut self) -> HResult<()> {
+        if self.started {
+            HError::async_started()?
+        }
+
+        let closure = self.async_closure.clone();
+        let async_value = self.async_value.clone();
         let stale = self.stale.clone();
-        let thing = self.thing.clone();
         let on_ready_fn = self.on_ready.clone();
-        std::thread::spawn(move|| {
-            let got_thing = closure(stale);
-            match got_thing {
-                Ok(got_thing) => {
-                    *thing.lock().unwrap() = Some(got_thing);
-                    *state.lock().unwrap() = State::Is;
-                    match *on_ready_fn.lock().unwrap() {
-                        Some(ref on_ready) => { on_ready(thing.clone()).ok(); },
-                        None => {}
-                    }
-                },
-                Err(err) => *state.lock().unwrap() = State::Fail(err)
-            }
+        self.started = true;
+
+        std::thread::spawn(move || {
+            Async::run_async(closure,
+                             async_value,
+                             on_ready_fn,
+                             stale).log();
         });
+        Ok(())
+    }
+
+    pub fn run_pooled(&mut self, pool: &ThreadPool) -> HResult<()> {
+        if self.started {
+            HError::async_started()?
+        }
+
+        let closure = self.async_closure.clone();
+        let async_value = self.async_value.clone();
+        let stale = self.stale.clone();
+        let on_ready_fn = self.on_ready.clone();
+        self.started = true;
+
+        pool.spawn(move || {
+            Async::run_async(closure,
+                             async_value,
+                             on_ready_fn,
+                             stale).log();
+        });
+
+        Ok(())
+    }
+
+
+    pub fn wait(self) -> HResult<T> {
+        Async::run_async(self.async_closure,
+                         self.async_value.clone(),
+                         self.on_ready,
+                         self.stale).log();
+        let value = self.async_value.lock()?.take()?;
+        value
     }
 
     pub fn set_stale(&mut self) -> HResult<()> {
-        *self.stale.lock()? = true;
+        self.stale.set_stale()?;
+        Ok(())
+    }
+
+    pub fn set_fresh(&self) -> HResult<()> {
+        self.stale.set_fresh()?;
         Ok(())
     }
 
     pub fn is_stale(&self) -> HResult<bool> {
-        is_stale(&self.stale)
+        self.stale.is_stale()
     }
 
-    pub fn take(&mut self) -> HResult<T> {
-        self.check()?;
-        Ok(self.thing.lock()?.take()?)
+    pub fn get_stale(&self) -> Stale {
+        self.stale.clone()
     }
 
-    pub fn check(&self) -> HResult<()> {
-        match *self.state.lock()? {
-            State::Is => Ok(()),
-            _ => Err(HError::WillBeNotReady(Backtrace::new()))
+    pub fn put_stale(&mut self, stale: Stale) {
+        self.stale = stale;
+    }
+
+    pub fn is_started(&self) -> bool {
+        self.started
+    }
+
+    pub fn set_unstarted(&mut self) {
+        self.started = false;
+    }
+
+    pub fn take_async(&mut self) -> HResult<()> {
+        if self.value.is_ok() { HError::async_taken()? }
+
+        let mut async_value = self.async_value.lock()?;
+        match async_value.as_ref() {
+            Some(Ok(_)) => {
+                let value = async_value.take()?;
+                self.value = value;
+            }
+            Some(Err(HError::AsyncAlreadyTakenError)) => HError::async_taken()?,
+            Some(Err(_)) => {
+                let value = async_value.take()?;
+                self.value = value;
+            }
+            None => HError::async_not_ready()?,
+        }
+        Ok(())
+    }
+
+    pub fn get(&self) -> HResult<&T> {
+        match self.value {
+            Ok(ref value) => Ok(value),
+            Err(ref err) => HError::async_error(err)
+        }
+    }
+
+    pub fn get_mut(&mut self) -> HResult<&mut T> {
+        self.take_async().ok();
+
+        match self.value {
+            Ok(ref mut value) => Ok(value),
+            Err(ref err) => HError::async_error(err)
         }
     }
 
     pub fn on_ready(&mut self,
-                    fun: Box<Fn(Arc<Mutex<Option<T>>>) -> HResult<()> + Send>)
-                    -> HResult<()> {
-        if self.check().is_ok() {
-            fun(self.thing.clone())?;
-        } else {
-            *self.on_ready.lock()? = Some(fun);
-        }
-        Ok(())
+                    fun: AsyncReadyFn) {
+        *self.on_ready.lock().unwrap() = Some(fun);
     }
 }
 
-impl<W: Widget + Send + 'static> PartialEq for WillBeWidget<W> {
-    fn eq(&self, other: &WillBeWidget<W>) -> bool {
+impl<W: Widget + Send + 'static> PartialEq for AsyncWidget<W> {
+    fn eq(&self, other: &AsyncWidget<W>) -> bool {
         if self.get_coordinates().unwrap() ==
             other.get_coordinates().unwrap() {
             true
@@ -122,80 +272,81 @@ impl<W: Widget + Send + 'static> PartialEq for WillBeWidget<W> {
     }
 }
 
-pub struct WillBeWidget<T: Widget + Send + 'static> {
-    willbe: WillBe<T>,
+
+pub struct AsyncWidget<W: Widget + Send + 'static> {
+    widget: Async<W>,
     core: WidgetCore
 }
 
-impl<T: Widget + Send + 'static> WillBeWidget<T> {
-    pub fn new(core: &WidgetCore, closure: HClosure<T>) -> WillBeWidget<T> {
-        let sender = core.get_sender();
-        let mut willbe = WillBe::new_become(Box::new(move |stale| closure(stale)));
-        willbe.on_ready(Box::new(move |_| {
-            sender.send(crate::widget::Events::WidgetReady)?;
-            Ok(()) })).ok();
+impl<W: Widget + Send + 'static> AsyncWidget<W> {
+    pub fn new(core: &WidgetCore, closure: AsyncValueFn<W>) -> AsyncWidget<W> {
+        let sender = Mutex::new(core.get_sender());
+        let mut widget = Async::new(Box::new(move |stale|
+                                             closure.call_box((stale,))));
+        widget.on_ready(Box::new(move || {
+            sender.lock()?.send(crate::widget::Events::WidgetReady)?;
+            Ok(())
+        }));
+        widget.run().log();
 
-        WillBeWidget {
-            willbe: willbe,
+        AsyncWidget {
+            widget: widget,
             core: core.clone()
         }
     }
-    pub fn change_to(&mut self, closure: HCClosure<T>) -> HResult<()> {
+    pub fn change_to(&mut self, closure: AsyncWidgetFn<W>) -> HResult<()> {
         self.set_stale().log();
 
-        let sender = self.get_core()?.get_sender();
+        let sender = Mutex::new(self.get_core()?.get_sender());
         let core = self.get_core()?.clone();
 
-        let mut willbe = WillBe::new_become(Box::new(move |stale| {
-            let core = core.clone();
-            closure(stale, core)
+        let mut widget = Async::new(Box::new(move |stale| {
+            closure.call_box((stale, core.clone(),))
         }));
-        willbe.on_ready(Box::new(move |_| {
-            sender.send(crate::widget::Events::WidgetReady)?;
-            Ok(())
-        }))?;
 
-        self.willbe = willbe;
+        widget.on_ready(Box::new(move || {
+            sender.lock()?.send(crate::widget::Events::WidgetReady)?;
+            Ok(())
+        }));
+
+        widget.run().log();
+
+        self.widget = widget;
         Ok(())
     }
 
     pub fn set_stale(&mut self) -> HResult<()> {
-        self.willbe.set_stale()
+        self.widget.set_stale()
     }
 
     pub fn is_stale(&self) -> HResult<bool> {
-        self.willbe.is_stale()
+        self.widget.is_stale()
     }
 
-    pub fn widget(&self) -> HResult<Arc<Mutex<Option<T>>>> {
-        self.willbe.check()?;
-        Ok(self.willbe.thing.clone())
+    pub fn get_stale(&self) -> Stale {
+        self.widget.get_stale()
+    }
+
+    pub fn widget(&self) -> HResult<&W> {
+        self.widget.get()
+    }
+
+    pub fn widget_mut(&mut self) -> HResult<&mut W> {
+        self.widget.get_mut()
+    }
+
+    pub fn take_widget(self) -> HResult<W> {
+        Ok(self.widget.value?)
     }
 
     pub fn ready(&self) -> bool {
-        match self.willbe.check() {
-            Ok(_) => true,
-            _ => false
-        }
-    }
-
-    pub fn take(&mut self) -> HResult<T> {
-        self.willbe.take()
+        self.widget().is_ok()
     }
 }
 
-// impl<T: Widget + Send> WillBeWidget<T> {
-//     fn is_widget(&self) -> bool {
-//         self.willbe.check().is_ok()
-//     }
-    // fn take_widget(self) {
-    //     if self.is_widget() {
-    //         let widget = self.willbe.take();
-    //     }
-    // }
-//}
 
-impl<T: Widget + Send + 'static> Widget for WillBeWidget<T> {
+
+impl<T: Widget + Send + 'static> Widget for AsyncWidget<T> {
     fn get_core(&self) -> HResult<&WidgetCore> {
         Ok(&self.core)
     }
@@ -205,22 +356,19 @@ impl<T: Widget + Send + 'static> Widget for WillBeWidget<T> {
 
     fn set_coordinates(&mut self, coordinates: &Coordinates) -> HResult<()> {
         self.core.coordinates = coordinates.clone();
-        if let Ok(widget) = self.widget() {
-            let mut widget = widget.lock()?;
-            let widget = widget.as_mut()?;
+        if let Ok(widget) = self.widget_mut() {
             widget.set_coordinates(&coordinates)?;
         }
         Ok(())
     }
 
     fn refresh(&mut self) -> HResult<()> {
-        let coords = self.get_coordinates()?;
-        if let Ok(widget) = self.widget() {
-            let mut widget = widget.lock()?;
-            let widget = widget.as_mut()?;
+        self.widget.take_async().ok();
 
-            if widget.get_coordinates()? != coords {
-                widget.set_coordinates(self.get_coordinates()?)?;
+        let coords = self.get_coordinates()?.clone();
+        if let Ok(widget) = self.widget_mut() {
+            if widget.get_coordinates()? != &coords {
+                widget.set_coordinates(&coords)?;
                 widget.refresh()?;
             } else {
                 widget.refresh()?;
@@ -229,7 +377,7 @@ impl<T: Widget + Send + 'static> Widget for WillBeWidget<T> {
         Ok(())
     }
     fn get_drawlist(&self) -> HResult<String> {
-        if self.willbe.check().is_err() {
+        if self.widget().is_err() {
             let clear = self.get_clearlist()?;
             let (xpos, ypos) = self.get_coordinates()?.u16position();
             let pos = crate::term::goto_xy(xpos, ypos);
@@ -240,17 +388,11 @@ impl<T: Widget + Send + 'static> Widget for WillBeWidget<T> {
             return self.get_clearlist()
         }
 
-        let widget = self.widget()?;
-        let widget = widget.lock()?;
-        let widget = widget.as_ref()?;
-        widget.get_drawlist()
+        self.widget()?.get_drawlist()
     }
     fn on_key(&mut self, key: termion::event::Key) -> HResult<()> {
-        if self.willbe.check().is_err() { return Ok(()) }
-        let widget = self.widget()?;
-        let mut widget = widget.lock()?;
-        let widget = widget.as_mut()?;
-        widget.on_key(key)
+        if self.widget().is_err() { return Ok(()) }
+        self.widget_mut()?.on_key(key)
     }
 }
 
@@ -266,110 +408,181 @@ impl PartialEq for Previewer {
     }
 }
 
+#[derive(PartialEq)]
+enum PreviewWidget {
+    FileList(ListView<Files>),
+    TextView(TextView)
+}
+
+
+
 pub struct Previewer {
-    widget: WillBeWidget<Box<dyn Widget + Send>>,
+    widget: AsyncWidget<PreviewWidget>,
     core: WidgetCore,
     file: Option<File>,
-    selection: Option<File>,
-    cached_files: Option<Files>
+    pub cache: FsCache,
+    animator: Stale
 }
 
 
 impl Previewer {
-    pub fn new(core: &WidgetCore) -> Previewer {
+    pub fn new(core: &WidgetCore, cache: FsCache) -> Previewer {
         let core_ = core.clone();
-        let willbe = WillBeWidget::new(&core, Box::new(move |_| {
-            Ok(Box::new(crate::textview::TextView::new_blank(&core_))
-               as Box<dyn Widget + Send>)
+        let widget = AsyncWidget::new(&core, Box::new(move |_| {
+            let blank = TextView::new_blank(&core_);
+            let blank = PreviewWidget::TextView(blank);
+            Ok(blank)
         }));
-        Previewer { widget: willbe,
+        Previewer { widget: widget,
                     core: core.clone(),
                     file: None,
-                    selection: None,
-                    cached_files: None }
+                    cache: cache,
+                    animator: Stale::new()}
     }
 
     fn become_preview(&mut self,
-                      widget: HResult<WillBeWidget<WidgetO>>) {
-        let coordinates = self.get_coordinates().unwrap().clone();
-        self.widget =  widget.unwrap();
-        self.widget.set_coordinates(&coordinates).ok();
+                      widget: HResult<AsyncWidget<PreviewWidget>>) -> HResult<()> {
+        let coordinates = self.get_coordinates()?.clone();
+        self.widget =  widget?;
+        self.widget.set_coordinates(&coordinates)?;
+        Ok(())
     }
 
     pub fn set_stale(&mut self) -> HResult<()> {
         self.widget.set_stale()
     }
 
+    pub fn get_file(&self) -> Option<&File> {
+        self.file.as_ref()
+    }
+
+    pub fn cancel_animation(&self) -> HResult<()> {
+        self.animator.set_stale()
+    }
+
+    pub fn take_files(&mut self) -> HResult<Files> {
+        let core = self.core.clone();
+        let mut widget = AsyncWidget::new(&core.clone(), Box::new(move |_| {
+            let widget = TextView::new_blank(&core);
+            let widget = PreviewWidget::TextView(widget);
+            Ok(widget)
+        }));
+        std::mem::swap(&mut self.widget, &mut widget);
+
+        match widget.take_widget() {
+            Ok(PreviewWidget::FileList(file_list)) => {
+                let files = file_list.content;
+                Ok(files)
+            }
+            _ => HError::no_files()?
+        }
+    }
+
+    pub fn replace_file(&mut self, dir: &File,
+                        old: Option<&File>,
+                        new: Option<&File>) -> HResult<()> {
+        if self.file.as_ref() != Some(dir) { return Ok(()) }
+        self.widget.widget_mut().map(|widget| {
+            match widget {
+                PreviewWidget::FileList(filelist) => {
+                    filelist.content.replace_file(old, new.cloned()).map(|_| {
+                        filelist.refresh().ok();
+                    }).ok();
+
+                }
+                _ => {}
+            }
+        })
+    }
+
+    pub fn put_preview_files(&mut self, files: Files) {
+        let core = self.core.clone();
+        let dir = files.directory.clone();
+        let cache = self.cache.clone();
+        self.file = Some(dir);
+
+        self.widget = AsyncWidget::new(&self.core, Box::new(move |_| {
+            let selected_file = cache.get_selection(&files.directory);
+            let mut filelist = ListView::new(&core, files);
+
+            selected_file.map(|file| filelist.select_file(&file)).log();
+
+            Ok(PreviewWidget::FileList(filelist))
+        }));
+    }
+
     pub fn set_file(&mut self,
-                    file: &File,
-                    selection: Option<File>,
-                    cached_files: Option<Files>) -> HResult<()> {
+                    file: &File) -> HResult<()> {
         if Some(file) == self.file.as_ref() && !self.widget.is_stale()? { return Ok(()) }
         self.file = Some(file.clone());
-        self.selection = selection.clone();
-        self.cached_files = cached_files.clone();
 
         let coordinates = self.get_coordinates().unwrap().clone();
         let file = file.clone();
         let core = self.core.clone();
+        let cache = self.cache.clone();
+        let animator = self.animator.clone();
 
         self.widget.set_stale().ok();
+        self.animator.set_fresh().log();
 
-        self.become_preview(Ok(WillBeWidget::new(&self.core, Box::new(move |stale| {
+        self.become_preview(Ok(AsyncWidget::new(&self.core,
+                                                Box::new(move |stale: Stale| {
             kill_proc().unwrap();
-
-            let file = file.clone();
-            let selection = selection.clone();
-            let cached_files = cached_files.clone();
 
             if file.kind == Kind::Directory  {
                 let preview = Previewer::preview_dir(&file,
-                                                     selection,
-                                                     cached_files,
+                                                     cache,
                                                      &core,
-                                                     stale.clone());
+                                                     stale,
+                                                     animator);
                 return preview;
             }
 
-            if file.get_mime() == Some("text".to_string()) {
-                return Previewer::preview_text(&file, &core, stale.clone())
+            if file.is_text() {
+                return Previewer::preview_text(&file,
+                                               &core,
+                                               stale,
+                                               animator);
             }
 
-            let preview = Previewer::preview_external(&file, &core, stale.clone());
+            let preview = Previewer::preview_external(&file,
+                                                      &core,
+                                                      stale,
+                                                      animator.clone());
             if preview.is_ok() { return preview; }
             else {
-                let mut blank = Box::new(TextView::new_blank(&core));
+                let mut blank = TextView::new_blank(&core);
                 blank.set_coordinates(&coordinates).log();
                 blank.refresh().log();
-                blank.animate_slide_up().log();
-                return Ok(blank)
+                blank.animate_slide_up(Some(animator)).log();
+                return Ok(PreviewWidget::TextView(blank))
             }
-        }))));
-        Ok(())
+        }))))
     }
 
     pub fn reload(&mut self) {
         if let Some(file) = self.file.clone() {
             self.file = None;
-            let cache = self.cached_files.take();
-            self.set_file(&file, self.selection.clone(), cache);
+            self.set_file(&file).log();
         }
     }
 
-    fn preview_failed(file: &File) -> HResult<WidgetO> {
+
+
+    fn preview_failed(file: &File) -> HResult<PreviewWidget> {
         HError::preview_failed(file)
     }
 
     fn preview_dir(file: &File,
-                   selection: Option<File>,
-                   cached_files: Option<Files>,
+                   cache: FsCache,
                    core: &WidgetCore,
-                   stale: Arc<Mutex<bool>>)
-                   -> Result<WidgetO, HError> {
-        let files = cached_files.or_else(|| {
-            Files::new_from_path_cancellable(&file.path,
-                                             stale.clone()).ok()
-        })?;
+                   stale: Stale,
+                   animator: Stale)
+                   -> HResult<PreviewWidget> {
+        let (selection, cached_files) = cache.get_files(&file, stale.clone())?;
+
+        let files = cached_files.wait()?;
+
         let len = files.len();
 
         if len == 0 || is_stale(&stale)? { return Previewer::preview_failed(&file) }
@@ -381,12 +594,15 @@ impl Previewer {
         file_list.set_coordinates(&core.coordinates)?;
         file_list.refresh()?;
         if is_stale(&stale)? { return Previewer::preview_failed(&file) }
-        file_list.animate_slide_up()?;
-        Ok(Box::new(file_list) as Box<dyn Widget + Send>)
+        file_list.animate_slide_up(Some(animator))?;
+        Ok(PreviewWidget::FileList(file_list))
     }
 
-    fn preview_text(file: &File, core: &WidgetCore, stale: Arc<Mutex<bool>>)
-                    -> HResult<WidgetO> {
+    fn preview_text(file: &File,
+                    core: &WidgetCore,
+                    stale: Stale,
+                    animator: Stale)
+                    -> HResult<PreviewWidget> {
         let lines = core.coordinates.ysize() as usize;
         let mut textview
             = TextView::new_from_file_limit_lines(&core,
@@ -399,12 +615,15 @@ impl Previewer {
 
         if is_stale(&stale)? { return Previewer::preview_failed(&file) }
 
-        textview.animate_slide_up()?;
-        Ok(Box::new(textview))
+        textview.animate_slide_up(Some(animator))?;
+        Ok(PreviewWidget::TextView(textview))
     }
 
-    fn preview_external(file: &File, core: &WidgetCore, stale: Arc<Mutex<bool>>)
-                        -> Result<Box<dyn Widget + Send>, HError> {
+    fn preview_external(file: &File,
+                        core: &WidgetCore,
+                        stale: Stale,
+                        animator: Stale)
+                        -> HResult<PreviewWidget> {
         let process =
             std::process::Command::new("scope.sh")
             .arg(&file.path)
@@ -433,10 +652,9 @@ impl Previewer {
             *pid_ = None;
         }
 
-        let status = output.status.code()
-            .ok_or(HError::preview_failed(file)?);
+        //let status = output.status.code()?;
 
-        if status == Ok(0) || status == Ok(5) && !is_stale(&stale)? {
+        if !is_stale(&stale)? {
             let output = std::str::from_utf8(&output.stdout)
                 .unwrap()
                 .to_string();
@@ -447,8 +665,8 @@ impl Previewer {
                 offset: 0};
             textview.set_coordinates(&core.coordinates).log();
             textview.refresh().log();
-            textview.animate_slide_up().log();
-            return Ok(Box::new(textview))
+            textview.animate_slide_up(Some(animator)).log();
+            return Ok(PreviewWidget::TextView(textview))
         }
         HError::preview_failed(file)
     }
@@ -465,6 +683,15 @@ impl Widget for Previewer {
         Ok(&mut self.core)
     }
 
+    fn config_loaded(&mut self) -> HResult<()> {
+        let show_hidden = self.config().show_hidden();
+        if let PreviewWidget::FileList(filelist) = self.widget.widget_mut()? {
+            filelist.content.show_hidden = show_hidden;
+            filelist.content.dirty_meta.set_dirty();
+        }
+        Ok(())
+    }
+
     fn set_coordinates(&mut self, coordinates: &Coordinates) -> HResult<()> {
         self.core.coordinates = coordinates.clone();
         self.widget.set_coordinates(&coordinates)
@@ -478,158 +705,38 @@ impl Widget for Previewer {
     }
 }
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-// #[derive(PartialEq)]
-// pub struct AsyncPreviewer {
-//     pub file: Option<File>,
-//     pub buffer: String,
-//     pub coordinates: Coordinates,
-//     pub async_plug: AsyncPlug2<Box<dyn Widget + Send + 'static>>
-// }
-
-// impl AsyncPreviewer {
-//     pub fn new() -> AsyncPreviewer {
-//         let closure = Box::new(|| {
-//             Box::new(crate::textview::TextView {
-//                     lines: vec![],
-//                     buffer: "".to_string(),
-//                     coordinates: Coordinates::new()
-//             }) as Box<dyn Widget + Send + 'static>
-//         });
-
-//         AsyncPreviewer {
-//             file: None,
-//             buffer: String::new(),
-//             coordinates: Coordinates::new(),
-//             async_plug: AsyncPlug2::new_from_closure(closure),
-//         }
-//     }
-//     pub fn set_file(&mut self, file: &File) {
-//         let coordinates = self.coordinates.clone();
-//         let file = file.clone();
-//         let redraw = crate::term::reset() + &self.get_redraw_empty_list(0);
-//         //let pids = PIDS.clone();
-//         //kill_procs();
-
-//         self.async_plug.replace_widget(Box::new(move || {
-//             kill_procs();
-//             let mut bufout = std::io::BufWriter::new(std::io::stdout());
-//             match &file.kind {
-//                 Kind::Directory => match Files::new_from_path(&file.path) {
-//                     Ok(files) => {
-//                         //if !is_current(&file) { return }
-//                         let len = files.len();
-//                         //if len == 0 { return };
-//                         let mut file_list = ListView::new(files);
-//                         file_list.set_coordinates(&coordinates);
-//                         file_list.refresh();
-//                         //if !is_current(&file) { return }
-//                         file_list.animate_slide_up();
-//                         return Box::new(file_list)
-
-//                     }
-//                     Err(err) => {
-//                         write!(bufout, "{}", redraw).unwrap();
-//                         let textview = crate::textview::TextView {
-//                             lines: vec![],
-//                             buffer: "".to_string(),
-//                             coordinates: Coordinates::new(),
-//                         };
-//                         return Box::new(textview)
-//                     },
-//                 }
-//                 _ => {
-//                     if file.get_mime() == Some("text".to_string()) {
-//                         let lines = coordinates.ysize() as usize;
-//                         let mut textview
-//                             = TextView::new_from_file_limit_lines(&file,
-//                                                                   lines);
-//                         //if !is_current(&file) { return }
-//                         textview.set_coordinates(&coordinates);
-//                         textview.refresh();
-//                         //if !is_current(&file) { return }
-//                         textview.animate_slide_up();
-//                         return Box::new(textview)
-//                     } else {
-//                         let process =
-//                             std::process::Command::new("scope.sh")
-//                             .arg(&file.name)
-//                             .arg("10".to_string())
-//                             .arg("10".to_string())
-//                             .arg("".to_string())
-//                             .arg("false".to_string())
-//                             .stdin(std::process::Stdio::null())
-//                             .stdout(std::process::Stdio::piped())
-//                             .stderr(std::process::Stdio::null())
-//                             .spawn().unwrap();
-
-//                         let pid = process.id();
-//                         PIDS.lock().unwrap().push(pid);
-
-//                         //if !is_current(&file) { return }
-
-//                         let output = process.wait_with_output();
-//                         match output {
-//                             Ok(output) => {
-//                                 let status = output.status.code();
-//                                 match status {
-//                                     Some(status) => {
-//                                         if status == 0 || status == 5 && is_current(&file) {
-//                                             let output = std::str::from_utf8(&output.stdout)
-//                                                 .unwrap()
-//                                                 .to_string();
-//                                             let mut textview = TextView {
-//                                                 lines: output.lines().map(|s| s.to_string()).collect(),
-//                                                 buffer: String::new(),
-//                                                 coordinates: Coordinates::new() };
-//                                             textview.set_coordinates(&coordinates);
-//                                             textview.refresh();
-//                                             textview.animate_slide_up();
-//                                             return Box::new(textview)
-//                                         }
-//                                     }, None => {}
-//                                 }
-//                             }, Err(_) => {}
-//                         }
-
-//                         write!(bufout, "{}", redraw).unwrap();
-//                         //std::io::stdout().flush().unwrap();
-//                         let textview = crate::textview::TextView {
-//                             lines: vec![],
-//                             buffer: "".to_string(),
-//                             coordinates: Coordinates::new(),
-//                         };
-//                         return Box::new(textview)
-//                     }
-//                 }
-//             }}))
-//     }
-// }
-
-
-
+impl Widget for PreviewWidget {
+    fn get_core(&self) -> HResult<&WidgetCore> {
+        match self {
+            PreviewWidget::FileList(widget) => widget.get_core(),
+            PreviewWidget::TextView(widget) => widget.get_core()
+        }
+    }
+    fn get_core_mut(&mut self) -> HResult<&mut WidgetCore> {
+        match self {
+            PreviewWidget::FileList(widget) => widget.get_core_mut(),
+            PreviewWidget::TextView(widget) => widget.get_core_mut()
+        }
+    }
+    fn set_coordinates(&mut self, coordinates: &Coordinates) -> HResult<()> {
+        match self {
+            PreviewWidget::FileList(widget) => widget.set_coordinates(coordinates),
+            PreviewWidget::TextView(widget) => widget.set_coordinates(coordinates),
+        }
+    }
+    fn refresh(&mut self) -> HResult<()> {
+        match self {
+            PreviewWidget::FileList(widget) => widget.refresh(),
+            PreviewWidget::TextView(widget) => widget.refresh()
+        }
+    }
+    fn get_drawlist(&self) -> HResult<String> {
+        match self {
+            PreviewWidget::FileList(widget) => widget.get_drawlist(),
+            PreviewWidget::TextView(widget) => widget.get_drawlist()
+        }
+    }
+}
 
 
 impl<T> Widget for Box<T> where T: Widget + ?Sized {

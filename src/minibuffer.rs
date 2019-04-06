@@ -57,7 +57,7 @@ impl History {
         let hpath = crate::paths::history_path()?;
 
         let history = self.history.iter().map(|(htype, hlines)| {
-            hlines.iter().map(|hline| format!("{}: {}\n", htype, hline))
+            hlines.iter().map(|hline| format!("{}:{}\n", htype, hline))
                 .collect::<String>()
         }).collect::<String>();
 

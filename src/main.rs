@@ -1,6 +1,8 @@
 #![feature(vec_remove_item)]
 #![feature(trivial_bounds)]
 #![feature(try_trait)]
+#![feature(fnbox)]
+#![allow(dead_code)]
 
 extern crate termion;
 extern crate unicode_width;
@@ -19,14 +21,12 @@ extern crate libc;
 extern crate notify;
 extern crate parse_ansi;
 extern crate signal_notify;
+extern crate tree_magic;
+extern crate systemstat;
 
 use failure::Fail;
 
-use termion::input::MouseTerminal;
-use termion::raw::IntoRawMode;
-use termion::screen::AlternateScreen;
-
-use std::io::{stdout, Write};
+use std::io::Write;
 
 mod coordinates;
 mod file_browser;
@@ -46,7 +46,9 @@ mod bookmarks;
 mod paths;
 mod foldview;
 mod dirty;
-
+mod fscache;
+mod config;
+mod stats;
 
 
 
@@ -83,7 +85,7 @@ fn main() -> HResult<()> {
 fn run(mut core: WidgetCore) -> HResult<()> {
     core.screen.clear()?;
 
-    let filebrowser = FileBrowser::new_cored(&core)?;
+    let filebrowser = FileBrowser::new(&core, None)?;
     let mut tabview = TabView::new(&core);
     tabview.push_widget(filebrowser)?;
 

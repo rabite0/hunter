@@ -4,7 +4,7 @@ use std::process::Child;
 use std::os::unix::process::{CommandExt, ExitStatusExt};
 use std::io::{BufRead, BufReader};
 use std::ffi::OsString;
-use std::os::unix::ffi::{OsStringExt, OsStrExt};
+use std::os::unix::ffi::OsStringExt;
 
 use termion::event::Key;
 use unicode_width::UnicodeWidthStr;
@@ -13,9 +13,9 @@ use crate::listview::{Listable, ListView};
 use crate::textview::TextView;
 use crate::widget::{Widget, Events, WidgetCore};
 use crate::coordinates::Coordinates;
+use crate::preview::{AsyncWidget, Stale};
 use crate::dirty::Dirtyable;
 use crate::hbox::HBox;
-use crate::preview::WillBeWidget;
 use crate::fail::{HResult, HError, ErrorLog};
 use crate::term;
 use crate::files::{File, OsStrTools};
@@ -299,7 +299,7 @@ impl ListView<Vec<Process>> {
 #[derive(PartialEq)]
 enum ProcViewWidgets {
     List(ListView<Vec<Process>>),
-    TextView(WillBeWidget<TextView>),
+    TextView(AsyncWidget<TextView>),
 }
 
 impl Widget for ProcViewWidgets {
@@ -332,7 +332,8 @@ impl Widget for ProcViewWidgets {
 pub struct ProcView {
     core: WidgetCore,
     hbox: HBox<ProcViewWidgets>,
-    viewing: Option<usize>
+    viewing: Option<usize>,
+    animator: Stale
 }
 
 impl HBox<ProcViewWidgets> {
@@ -348,7 +349,7 @@ impl HBox<ProcViewWidgets> {
             _ => unreachable!()
         }
     }
-    fn get_textview(&mut self) -> &mut WillBeWidget<TextView> {
+    fn get_textview(&mut self) -> &mut AsyncWidget<TextView> {
         match &mut self.widgets[1] {
             ProcViewWidgets::TextView(textview) => textview,
             _ => unreachable!()
@@ -360,8 +361,10 @@ impl ProcView {
     pub fn new(core: &WidgetCore) -> ProcView {
         let tcore = core.clone();
         let listview = ListView::new(&core, vec![]);
-        let textview = Box::new(move |_| Ok(TextView::new_blank(&tcore)));
-        let textview = WillBeWidget::new(&core, textview);
+        let textview = AsyncWidget::new(&core, Box::new(move |_| {
+            let textview = TextView::new_blank(&tcore);
+            Ok(textview)
+        }));
         let mut hbox = HBox::new(&core);
         hbox.push_widget(ProcViewWidgets::List(listview));
         hbox.push_widget(ProcViewWidgets::TextView(textview));
@@ -370,7 +373,8 @@ impl ProcView {
         ProcView {
             core: core.clone(),
             hbox: hbox,
-            viewing: None
+            viewing: None,
+            animator: Stale::new()
         }
     }
 
@@ -382,7 +386,7 @@ impl ProcView {
         self.hbox.get_listview_mut()
     }
 
-    fn get_textview(&mut self) -> &mut WillBeWidget<TextView> {
+    fn get_textview(&mut self) -> &mut AsyncWidget<TextView> {
         self.hbox.get_textview()
     }
 
@@ -399,12 +403,9 @@ impl ProcView {
     pub fn remove_proc(&mut self) -> HResult<()> {
         if self.get_listview_mut().content.len() == 0 { return Ok(()) }
         self.get_listview_mut().remove_proc()?;
-        self.get_textview().change_to(Box::new(move |_, core| {
-            let mut textview = TextView::new_blank(&core);
-            textview.refresh().log();
-            textview.animate_slide_up().log();
-            Ok(textview)
-        })).log();
+        self.get_textview().clear().log();
+        self.get_textview().widget_mut()?.set_text("").log();
+        self.viewing = None;
         Ok(())
     }
 
@@ -414,48 +415,52 @@ impl ProcView {
         }
         let output = self.get_listview_mut().selected_proc()?.output.lock()?.clone();
 
+        let animator = self.animator.clone();
+        animator.set_fresh().log();
+
         self.get_textview().change_to(Box::new(move |_, core| {
             let mut textview = TextView::new_blank(&core);
             textview.set_text(&output).log();
-            textview.animate_slide_up().log();
+            textview.animate_slide_up(Some(animator)).log();
             Ok(textview)
         })).log();
+
         self.viewing = Some(self.get_listview_mut().get_selection());
         Ok(())
     }
 
     pub fn toggle_follow(&mut self) -> HResult<()> {
-        self.get_textview().widget()?.lock()?.as_mut()?.toggle_follow();
+        self.get_textview().widget_mut()?.toggle_follow();
         Ok(())
     }
 
     pub fn scroll_up(&mut self) -> HResult<()> {
-        self.get_textview().widget()?.lock()?.as_mut()?.scroll_up();
+        self.get_textview().widget_mut()?.scroll_up();
         Ok(())
     }
 
     pub fn scroll_down(&mut self) -> HResult<()> {
-        self.get_textview().widget()?.lock()?.as_mut()?.scroll_down();
+        self.get_textview().widget_mut()?.scroll_down();
         Ok(())
     }
 
     pub fn page_up(&mut self) -> HResult<()> {
-        self.get_textview().widget()?.lock()?.as_mut()?.page_up();
+        self.get_textview().widget_mut()?.page_up();
         Ok(())
     }
 
     pub fn page_down(&mut self) -> HResult<()> {
-        self.get_textview().widget()?.lock()?.as_mut()?.page_down();
+        self.get_textview().widget_mut()?.page_down();
         Ok(())
     }
 
     pub fn scroll_top(&mut self) -> HResult<()> {
-        self.get_textview().widget()?.lock()?.as_mut()?.scroll_top();
+        self.get_textview().widget_mut()?.scroll_top();
         Ok(())
     }
 
     pub fn scroll_bottom(&mut self) -> HResult<()> {
-        self.get_textview().widget()?.lock()?.as_mut()?.scroll_bottom();
+        self.get_textview().widget_mut()?.scroll_bottom();
         Ok(())
     }
 }
@@ -546,10 +551,13 @@ impl Widget for ProcView {
     }
     fn on_key(&mut self, key: Key) -> HResult<()> {
         match key {
-            Key::Char('w') => { return Err(HError::PopupFinnished) }
-            Key::Char('D') => { self.remove_proc()? }
-            Key::Char('d') => { self.get_listview_mut().kill_proc()? }
-            Key::Up | Key::Char('k') => {
+            Key::Char('w') => {
+                self.animator.set_stale().log();
+                self.clear().log();
+                return Err(HError::PopupFinnished) }
+            Key::Char('d') => { self.remove_proc()? }
+            Key::Char('K') => { self.get_listview_mut().kill_proc()? }
+            Key::Up | Key::Char('p') => {
                 self.get_listview_mut().move_up();
             }
             Key::Down | Key::Char('j') => {

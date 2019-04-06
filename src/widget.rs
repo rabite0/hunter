@@ -1,6 +1,6 @@
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, RwLock};
 use std::sync::mpsc::{Sender, Receiver, channel};
-use std::io::Write;
+use std::io::{Write, stdin};
 
 use termion::event::{Event, Key, MouseEvent};
 use termion::input::TermRead;
@@ -11,19 +11,23 @@ use crate::minibuffer::MiniBuffer;
 use crate::term;
 use crate::term::{Screen, ScreenExt};
 use crate::dirty::{Dirtyable, DirtyBit};
+use crate::preview::Stale;
 use crate::signal_notify::{notify, Signal};
+use crate::config::Config;
+use crate::preview::Async;
 
-use std::io::stdin;
+
 
 #[derive(Debug)]
 pub enum Events {
     InputEvent(Event),
     WidgetReady,
     TerminalResized,
-    ExclusiveEvent(Option<Sender<Events>>),
+    ExclusiveEvent(Option<Mutex<Option<Sender<Events>>>>),
     InputEnabled(bool),
     RequestInput,
-    Status(String)
+    Status(String),
+    ConfigLoaded,
 }
 
 impl PartialEq for WidgetCore {
@@ -51,11 +55,12 @@ pub struct WidgetCore {
     pub screen: Screen,
     pub coordinates: Coordinates,
     pub minibuffer: Arc<Mutex<Option<MiniBuffer>>>,
-    pub event_sender: Sender<Events>,
+    pub event_sender: Arc<Mutex<Sender<Events>>>,
     event_receiver: Arc<Mutex<Option<Receiver<Events>>>>,
     pub status_bar_content: Arc<Mutex<Option<String>>>,
     term_size: (usize, usize),
-    dirty: DirtyBit
+    dirty: DirtyBit,
+    pub config: Arc<RwLock<Async<Config>>>
 }
 
 impl WidgetCore {
@@ -69,15 +74,24 @@ impl WidgetCore {
         let (sender, receiver) = channel();
         let status_bar_content = Arc::new(Mutex::new(None));
 
+        let mut config = Async::new(Box::new(|_| Config::load()));
+        let confsender = Arc::new(Mutex::new(sender.clone()));
+        config.on_ready(Box::new(move || {
+            confsender.lock()?.send(Events::ConfigLoaded).ok();
+            Ok(())
+        }));
+        config.run().log();
+
         let core = WidgetCore {
             screen: screen,
             coordinates: coords,
             minibuffer: Arc::new(Mutex::new(None)),
-            event_sender: sender,
+            event_sender: Arc::new(Mutex::new(sender)),
             event_receiver: Arc::new(Mutex::new(Some(receiver))),
             status_bar_content: status_bar_content,
             term_size: (xsize, ysize),
-            dirty: DirtyBit::new() };
+            dirty: DirtyBit::new(),
+            config: Arc::new(RwLock::new(config)) };
 
         let minibuffer = MiniBuffer::new(&core);
         *core.minibuffer.lock().unwrap() = Some(minibuffer);
@@ -85,17 +99,19 @@ impl WidgetCore {
     }
 
     pub fn get_sender(&self) -> Sender<Events> {
-        self.event_sender.clone()
+        self.event_sender.lock().unwrap().clone()
     }
 }
 
 impl Dirtyable for WidgetCore {
-    fn get_bit(&self) -> &DirtyBit {
-        &self.dirty
+    fn is_dirty(&self) -> bool {
+        self.dirty.is_dirty()
     }
-
-    fn get_bit_mut(&mut self) -> &mut DirtyBit {
-        &mut self.dirty
+    fn set_dirty(&mut self) {
+        self.dirty.set_dirty();
+    }
+    fn set_clean(&mut self) {
+        self.dirty.set_clean();
     }
 }
 
@@ -127,6 +143,7 @@ pub trait Widget {
     fn refresh(&mut self) -> HResult<()>;
     fn get_drawlist(&self) -> HResult<String>;
     fn after_draw(&self) -> HResult<()> { Ok(()) }
+    fn config_loaded(&mut self) -> HResult<()> { Ok(()) }
 
 
 
@@ -162,7 +179,7 @@ pub trait Widget {
     }
 
     fn bad(&mut self, event: Event) -> HResult<()> {
-        self.show_status(&format!("Stop the nasty stuff!! {:?} does nothing!", event))
+        self.show_status(&format!("Stop it!! {:?} does nothing!", event))
     }
 
     fn get_header_drawlist(&mut self) -> HResult<String> {
@@ -238,7 +255,9 @@ pub trait Widget {
 
     fn run_widget(&mut self) -> HResult<()> {
         let (tx_event, rx_event) = channel();
-        self.get_core()?.get_sender().send(Events::ExclusiveEvent(Some(tx_event)))?;
+        self.get_core()?
+            .get_sender()
+            .send(Events::ExclusiveEvent(Some(Mutex::new(Some(tx_event)))))?;
         self.get_core()?.get_sender().send(Events::RequestInput)?;
 
         self.clear()?;
@@ -252,6 +271,7 @@ pub trait Widget {
                         err @ Err(HError::PopupFinnished) |
                         err @ Err(HError::Quit) |
                         err @ Err(HError::MiniBufferCancelledInput) => err?,
+                        err @ Err(HError::WidgetResizedError) => err?,
                         err @ Err(_) => err.log(),
                         Ok(_) => {}
                     }
@@ -259,6 +279,7 @@ pub trait Widget {
                 }
                 Events::WidgetReady => {
                     self.refresh().log();
+                    self.draw().log();
                 }
                 Events::Status(status) => {
                     self.show_status(&status).log();
@@ -269,6 +290,9 @@ pub trait Widget {
                         err @ Err(HError::TerminalResizedError) => err?,
                         _ => {}
                     }
+                }
+                Events::ConfigLoaded => {
+                    self.get_core_mut()?.config.write()?.take_async().log();
                 }
                 _ => {}
             }
@@ -284,7 +308,19 @@ pub trait Widget {
         self.write_to_screen(&clearlist)
     }
 
-    fn animate_slide_up(&mut self) -> HResult<()> {
+    fn config(&self) -> Config {
+        self.get_core()
+            .unwrap()
+            .config.read().unwrap().get()
+            .map(|config| config.clone())
+            .unwrap_or(Config::new())
+    }
+
+    fn animate_slide_up(&mut self, animator: Option<Stale>) -> HResult<()> {
+        if !self.config().animate() { return Ok(()); }
+
+        self.config();
+
         let coords = self.get_coordinates()?.clone();
         let xpos = coords.position().x();
         let ypos = coords.position().y();
@@ -293,20 +329,33 @@ pub trait Widget {
         let clear = self.get_clearlist()?;
         let pause = std::time::Duration::from_millis(5);
 
+        if let Some(ref animator) = animator {
+            if animator.is_stale()? {
+                return Ok(())
+            }
+        }
+
         self.write_to_screen(&clear).log();
 
         for i in (0..10).rev() {
-            let coords = Coordinates { size: Size((xsize,ysize-i)),
+            if let Some(ref animator) = animator {
+                if animator.is_stale()? {
+                    self.set_coordinates(&coords).log();
+                    return Ok(())
+                }
+            }
+            let ani_coords = Coordinates { size: Size((xsize,ysize-i)),
                                        position: Position
                                            ((xpos,
                                              ypos+i))
             };
-            self.set_coordinates(&coords).log();
+            self.set_coordinates(&ani_coords).log();
             let buffer = self.get_drawlist()?;
             self.write_to_screen(&buffer).log();
 
             std::thread::sleep(pause);
         }
+
         Ok(())
     }
 
@@ -341,10 +390,16 @@ pub trait Widget {
                 Events::TerminalResized => {
                     self.screen()?.clear().log();
                 }
+                Events::ConfigLoaded => {
+                    self.get_core_mut()?.config.write()?.take_async().log();
+                    self.config_loaded().log();
+                }
                 _ => {}
             }
             self.resize().log();
-            self.screen()?.take_size().ok();
+            if self.screen()?.is_resized()? {
+                self.screen()?.take_size().ok();
+            }
             self.refresh().ok();
             self.draw().ok();
         }
@@ -352,33 +407,29 @@ pub trait Widget {
     }
 
     fn draw_status(&self) -> HResult<()> {
-        let xsize = term::xsize() as u16;
+        let xsize = term::xsize_u();
         let status = match self.get_core()?.status_bar_content.lock()?.as_ref() {
             Some(status) => status.to_string(),
             None => "".to_string(),
         };
+        let sized_status = term::sized_string_u(&status, xsize);
 
         self.write_to_screen(
             &format!(
-                "{}{}{:xsize$}{}{}",
+                "{}{}{}",
                 term::move_bottom(),
                 term::status_bg(),
-                " ",
-                term::move_bottom(),
-                status,
-                xsize = xsize as usize
+                sized_status
             )).log();
 
         Ok(())
     }
 
     fn show_status(&self, status: &str) -> HResult<()> {
-        let xsize = self.get_core()?.coordinates.xsize_u();
-        let sized_status = term::sized_string_u(status, xsize);
-        HError::log(status.to_string()).log();
+        HError::log::<()>(status.to_string()).log();
         {
             let mut status_content = self.get_core()?.status_bar_content.lock()?;
-            *status_content = Some(sized_status);
+            *status_content = Some(status.to_string());
         }
         self.draw_status()?;
         Ok(())
@@ -408,7 +459,8 @@ pub trait Widget {
     }
 
     fn resize(&mut self) -> HResult<()> {
-        if let Ok((xsize, ysize)) = self.screen()?.is_resized() {
+        if let Ok(true) = self.screen()?.is_resized() {
+            let (xsize, ysize) = self.screen()?.get_size()?;
             let mut coords = self.get_core()?.coordinates.clone();
             coords.set_size_u(xsize, ysize-2);
             self.set_coordinates(&coords)?;
@@ -434,7 +486,10 @@ fn dispatch_events(tx_internal: Sender<Events>,
         for event in rx_event.iter() {
             match &event {
                 Events::ExclusiveEvent(tx_event) => {
-                    tx_exclusive_event = tx_event.clone();
+                    tx_exclusive_event = match tx_event {
+                        Some(locked_sender) => locked_sender.lock().unwrap().take(),
+                        None => None
+                    }
                 }
                 Events::InputEnabled(state) => {
                     input_enabled = *state;

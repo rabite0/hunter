@@ -8,36 +8,39 @@ use termion::raw::{IntoRawMode, RawTerminal};
 
 use parse_ansi::parse_bytes;
 
-use crate::fail::HResult;
+use crate::fail::{HResult, ErrorLog};
 
 pub type TermMode = AlternateScreen<MouseTerminal<RawTerminal<BufWriter<Stdout>>>>;
 
 #[derive(Clone)]
 pub struct Screen {
     screen: Arc<Mutex<Option<TermMode>>>,
-    size: Arc<RwLock<Option<(usize, usize)>>>
+    size: Arc<RwLock<Option<(usize, usize)>>>,
+    terminal: String
 }
 
 impl Screen {
     pub fn new() -> HResult<Screen> {
         let screen = BufWriter::new(std::io::stdout()).into_raw_mode()?;
-        let mut screen = MouseTerminal::from(screen);
+        let screen = MouseTerminal::from(screen);
         let mut screen = AlternateScreen::from(screen);
+        let terminal = std::env::var("TERM").unwrap_or("xterm".into());
 
         screen.cursor_hide()?;
         Ok(Screen {
             screen: Arc::new(Mutex::new(Some(screen))),
-            size: Arc::new(RwLock::new(None))
+            size: Arc::new(RwLock::new(None)),
+            terminal: terminal
         })
     }
 
     pub fn drop_screen(&mut self) {
-        self.cursor_show();
-        self.to_main_screen();
+        self.cursor_show().log();
+        self.to_main_screen().log();
         self.screen = Arc::new(Mutex::new(None));
 
         // Terminal stays fucked without this. Why?
-        std::process::Command::new("reset").arg("-I").spawn();
+        Ok(std::process::Command::new("reset").arg("-I").spawn()).log();
     }
 
     pub fn reset_screen(&mut self) -> HResult<()> {
@@ -51,12 +54,31 @@ impl Screen {
         Ok(())
     }
 
-    pub fn is_resized(&self) -> HResult<(usize, usize)> {
-        Ok(self.size.read()?.clone()?)
+    pub fn is_resized(&self) -> HResult<bool> {
+        Ok(self.size.read()?.is_some())
+    }
+
+    pub fn get_size(&self) -> HResult<(usize, usize)> {
+        match self.size.read()?.clone() {
+            Some((xsize, ysize)) => Ok((xsize, ysize)),
+            None => Ok((self.xsize()?, self.ysize()?))
+        }
     }
 
     pub fn take_size(&self) -> HResult<(usize, usize)> {
         Ok(self.size.write()?.take()?)
+    }
+
+    pub fn set_title(&mut self, title: &str) -> HResult<()> {
+        if self.terminal.starts_with("xterm") ||
+            self.terminal.starts_with("screen") ||
+            self.terminal.starts_with("tmux"){
+             write!(self, "\x1b]2;hunter: {}\x1b\\", title)?;
+        }
+        if self.terminal.starts_with("tmux") {
+            write!(self, "\x1bkhunter: {}\x1b\\", title)?;
+        }
+        Ok(())
     }
 }
 
@@ -112,11 +134,6 @@ pub trait ScreenExt: Write {
         let (_, ysize) = termion::terminal_size()?;
         Ok((ysize - 1) as usize)
     }
-    fn set_title(&mut self, title: &str) -> HResult<()> {
-        write!(self, "\x1b]2;hunter: {}", title)?;
-        write!(self, "\x1bkhunter: {}\x1b\\", title)?;
-        Ok(())
-    }
     fn to_main_screen(&mut self) -> HResult<()> {
         write!(self, "{}", termion::screen::ToMainScreen)?;
         self.flush()?;
@@ -130,6 +147,11 @@ impl ScreenExt for TermMode {}
 pub fn xsize() -> u16 {
     let (xsize, _) = termion::terminal_size().unwrap();
     xsize
+}
+
+pub fn xsize_u() -> usize {
+    let (xsize, _) = termion::terminal_size().unwrap();
+    xsize as usize - 1
 }
 
 pub fn ysize() -> u16 {
@@ -195,6 +217,7 @@ pub fn sized_string_u(string: &str, xsize: usize) -> String {
     padded
 }
 
+
 // Do these as constants
 
 
@@ -228,16 +251,44 @@ pub fn color_green() -> String {
     format!("{}", termion::color::Fg(termion::color::Green))
 }
 
+pub fn color_light_green() -> String {
+    format!("{}", termion::color::Fg(termion::color::LightGreen))
+}
+
+pub fn color_cyan() -> String {
+    format!("{}", termion::color::Fg(termion::color::Cyan))
+}
+
+pub fn color_light_yellow() -> String {
+    format!("{}", termion::color::Fg(termion::color::LightYellow))
+}
+
+pub fn color_orange() -> String {
+    let color = termion::color::Fg(termion::color::AnsiValue::rgb(5 as u8 ,
+                                                                  4 as u8,
+                                                                  0 as u8));
+    format!("{}", color)
+}
+
+
 pub fn from_lscolor(color: &lscolors::Color) -> String {
     match color {
-        lscolors::Color::Black => format!("{}", termion::color::Fg(termion::color::Black)),
-        lscolors::Color::Red => format!("{}", termion::color::Fg(termion::color::Red)),
-        lscolors::Color::Green => format!("{}", termion::color::Fg(termion::color::Green)),
-        lscolors::Color::Yellow => format!("{}", termion::color::Fg(termion::color::Yellow)),
-        lscolors::Color::Blue => format!("{}", termion::color::Fg(termion::color::Blue)),
-        lscolors::Color::Magenta => format!("{}", termion::color::Fg(termion::color::Magenta)),
-        lscolors::Color::Cyan => format!("{}", termion::color::Fg(termion::color::Cyan)),
-        lscolors::Color::White => format!("{}", termion::color::Fg(termion::color::White)),
+        lscolors::Color::Black
+            => format!("{}", termion::color::Fg(termion::color::Black)),
+        lscolors::Color::Red
+            => format!("{}", termion::color::Fg(termion::color::Red)),
+        lscolors::Color::Green
+            => format!("{}", termion::color::Fg(termion::color::Green)),
+        lscolors::Color::Yellow
+            => format!("{}", termion::color::Fg(termion::color::Yellow)),
+        lscolors::Color::Blue
+            => format!("{}", termion::color::Fg(termion::color::Blue)),
+        lscolors::Color::Magenta
+            => format!("{}", termion::color::Fg(termion::color::Magenta)),
+        lscolors::Color::Cyan
+            => format!("{}", termion::color::Fg(termion::color::Cyan)),
+        lscolors::Color::White
+            => format!("{}", termion::color::Fg(termion::color::White)),
         _ => format!("{}", normal_color()),
     }
 }

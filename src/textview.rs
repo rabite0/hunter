@@ -134,9 +134,9 @@ impl Widget for TextView {
         Ok(&mut self.core)
     }
     fn refresh(&mut self) -> HResult<()> {
-        let (xsize, ysize) = self.get_coordinates()?.size().size();
-        let (xpos, ypos) = self.get_coordinates()?.position().position();
-        let len = self.lines.len();
+        // let (xsize, ysize) = self.get_coordinates()?.size().size();
+        // let (xpos, ypos) = self.get_coordinates()?.position().position();
+        // let len = self.lines.len();
 
         if self.follow {
             self.scroll_bottom();
