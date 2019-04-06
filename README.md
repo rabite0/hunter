@@ -42,6 +42,13 @@ show_hidden=off
 ## Drop into hunter cwd on quit
 To change the directory of your shell when quitting hunter with Q you need to source extra/hunter_cd.sh, which is a wrapper that runs hunter and checks for ~/.hunter_cwd after hunter exits and cd's into the contained directory if it exists.
 
+## Filename Substitution
+| Pattern   | Substituted with        |
+|-----------|:------------------------|
+| $s        | selected file(s)        |
+| $n        | tab directory           |
+| $ns       | selected files in tab   |
+
 
 Keybindings:
 ============
