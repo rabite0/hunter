@@ -70,8 +70,10 @@ impl Screen {
     }
 
     pub fn set_title(&mut self, title: &str) -> HResult<()> {
-        if !self.terminal.starts_with("rxvt") {
-            write!(self, "\x1b]2;hunter: {}", title)?;
+        if self.terminal.starts_with("xterm") ||
+            self.terminal.starts_with("screen") ||
+            self.terminal.starts_with("tmux"){
+             write!(self, "\x1b]2;hunter: {}\x1b\\", title)?;
         }
         if self.terminal.starts_with("tmux") {
             write!(self, "\x1bkhunter: {}\x1b\\", title)?;
