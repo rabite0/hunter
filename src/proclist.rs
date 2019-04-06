@@ -404,7 +404,9 @@ impl ProcView {
         if self.get_listview_mut().content.len() == 0 { return Ok(()) }
         self.get_listview_mut().remove_proc()?;
         self.get_textview().clear().log();
-        self.get_textview().widget_mut()?.set_text("")
+        self.get_textview().widget_mut()?.set_text("").log();
+        self.viewing = None;
+        Ok(())
     }
 
     fn show_output(&mut self) -> HResult<()> {
