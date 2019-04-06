@@ -1,6 +1,6 @@
 use failure;
 use failure::Fail;
-use failure::Backtrace;
+//use failure::Backtrace;
 
 use termion::event::Key;
 
@@ -279,7 +279,7 @@ impl<T> From<std::sync::PoisonError<T>> for HError {
 }
 
 impl<T> From<std::sync::TryLockError<T>> for HError {
-    fn from(error: std::sync::TryLockError<T>) -> Self {
+    fn from(_error: std::sync::TryLockError<T>) -> Self {
         // dbg!(&error);
         let err = HError::TryLockError;
         put_log(&err).ok();
@@ -288,7 +288,7 @@ impl<T> From<std::sync::TryLockError<T>> for HError {
 }
 
 impl From<std::option::NoneError> for HError {
-    fn from(error: std::option::NoneError) -> Self {
+    fn from(_error: std::option::NoneError) -> Self {
         //dbg!(&error);
         let err = HError::NoneError;
         //put_log(&err).ok();

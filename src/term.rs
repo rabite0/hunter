@@ -8,7 +8,7 @@ use termion::raw::{IntoRawMode, RawTerminal};
 
 use parse_ansi::parse_bytes;
 
-use crate::fail::HResult;
+use crate::fail::{HResult, ErrorLog};
 
 pub type TermMode = AlternateScreen<MouseTerminal<RawTerminal<BufWriter<Stdout>>>>;
 
@@ -22,7 +22,7 @@ pub struct Screen {
 impl Screen {
     pub fn new() -> HResult<Screen> {
         let screen = BufWriter::new(std::io::stdout()).into_raw_mode()?;
-        let mut screen = MouseTerminal::from(screen);
+        let screen = MouseTerminal::from(screen);
         let mut screen = AlternateScreen::from(screen);
         let terminal = std::env::var("TERM").unwrap_or("xterm".into());
 
@@ -35,12 +35,12 @@ impl Screen {
     }
 
     pub fn drop_screen(&mut self) {
-        self.cursor_show();
-        self.to_main_screen();
+        self.cursor_show().log();
+        self.to_main_screen().log();
         self.screen = Arc::new(Mutex::new(None));
 
         // Terminal stays fucked without this. Why?
-        std::process::Command::new("reset").arg("-I").spawn();
+        Ok(std::process::Command::new("reset").arg("-I").spawn()).log();
     }
 
     pub fn reset_screen(&mut self) -> HResult<()> {

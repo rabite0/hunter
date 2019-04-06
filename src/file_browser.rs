@@ -196,7 +196,8 @@ impl Tabbable for TabView<FileBrowser> {
 
     fn on_config_loaded(&mut self) -> HResult<()> {
         // hack: wait a bit for widget readyness...
-        std::thread::sleep_ms(100);
+        let duration = std::time::Duration::from_millis(100);
+        std::thread::sleep(duration);
 
         let show_hidden = self.config().show_hidden();
         for tab in self.widgets.iter_mut() {
@@ -534,7 +535,7 @@ impl FileBrowser {
             }
         }
 
-        self.columns.resize_children();
+        self.columns.resize_children().log();
         self.refresh()
     }
 

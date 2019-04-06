@@ -5,7 +5,7 @@ use chrono::{DateTime, Local};
 use crate::term;
 use crate::widget::Widget;
 use crate::listview::{ListView, Listable};
-use crate::fail::{HResult, HError, ErrorLog};
+use crate::fail::{HResult, HError};
 use crate::dirty::Dirtyable;
 
 pub type LogView = ListView<Vec<LogEntry>>;

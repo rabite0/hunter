@@ -1,6 +1,6 @@
 use termion::event::Key;
 
-use crate::widget::{Widget, WidgetCore, Events};
+use crate::widget::{Widget, WidgetCore};
 use crate::fail::{HResult, ErrorLog};
 use crate::coordinates::Coordinates;
 

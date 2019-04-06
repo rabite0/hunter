@@ -2,6 +2,7 @@
 #![feature(trivial_bounds)]
 #![feature(try_trait)]
 #![feature(fnbox)]
+#![allow(dead_code)]
 
 extern crate termion;
 extern crate unicode_width;
@@ -25,11 +26,7 @@ extern crate systemstat;
 
 use failure::Fail;
 
-use termion::input::MouseTerminal;
-use termion::raw::IntoRawMode;
-use termion::screen::AlternateScreen;
-
-use std::io::{stdout, Write};
+use std::io::Write;
 
 mod coordinates;
 mod file_browser;
@@ -63,7 +60,6 @@ use term::ScreenExt;
 use fail::{HResult, HError};
 use file_browser::FileBrowser;
 use tabview::TabView;
-use preview::Async;
 
 
 fn main() -> HResult<()> {

@@ -4,7 +4,7 @@ use std::process::Child;
 use std::os::unix::process::{CommandExt, ExitStatusExt};
 use std::io::{BufRead, BufReader};
 use std::ffi::OsString;
-use std::os::unix::ffi::{OsStringExt, OsStrExt};
+use std::os::unix::ffi::OsStringExt;
 
 use termion::event::Key;
 use unicode_width::UnicodeWidthStr;
@@ -403,7 +403,7 @@ impl ProcView {
     pub fn remove_proc(&mut self) -> HResult<()> {
         if self.get_listview_mut().content.len() == 0 { return Ok(()) }
         self.get_listview_mut().remove_proc()?;
-        self.get_textview().clear();
+        self.get_textview().clear().log();
         self.get_textview().widget_mut()?.set_text("")
     }
 
@@ -414,14 +414,14 @@ impl ProcView {
         let output = self.get_listview_mut().selected_proc()?.output.lock()?.clone();
 
         let animator = self.animator.clone();
-        animator.set_fresh();
+        animator.set_fresh().log();
 
         self.get_textview().change_to(Box::new(move |_, core| {
             let mut textview = TextView::new_blank(&core);
             textview.set_text(&output).log();
-            textview.animate_slide_up(Some(animator));
+            textview.animate_slide_up(Some(animator)).log();
             Ok(textview)
-        }));
+        })).log();
 
         self.viewing = Some(self.get_listview_mut().get_selection());
         Ok(())
@@ -550,8 +550,8 @@ impl Widget for ProcView {
     fn on_key(&mut self, key: Key) -> HResult<()> {
         match key {
             Key::Char('w') => {
-                self.animator.set_stale();
-                self.clear();
+                self.animator.set_stale().log();
+                self.clear().log();
                 return Err(HError::PopupFinnished) }
             Key::Char('d') => { self.remove_proc()? }
             Key::Char('k') => { self.get_listview_mut().kill_proc()? }

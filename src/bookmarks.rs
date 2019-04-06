@@ -5,7 +5,6 @@ use std::collections::HashMap;
 use crate::fail::{HResult, HError, ErrorLog};
 use crate::widget::{Widget, WidgetCore};
 use crate::coordinates::Coordinates;
-use crate::files::{Files, File};
 use crate::term;
 
 #[derive(PartialEq, Eq, Clone, Debug)]

@@ -505,7 +505,7 @@ impl Previewer {
             let selected_file = cache.get_selection(&files.directory);
             let mut filelist = ListView::new(&core, files);
 
-            selected_file.map(|file| filelist.select_file(&file));
+            selected_file.map(|file| filelist.select_file(&file)).log();
 
             Ok(PreviewWidget::FileList(filelist))
         }));
