@@ -60,8 +60,8 @@ By default hunter uses emacs style keybindings. If you use a QWERTY-like keyboar
 
 | Key                 | Action                           |
 | ------------------- |:---------------------------------|
-|n/p (evil: n/j)      |move up/down                      |
-|N/P (evil: N/J)      |5x move up/5x move down           |
+|n/p (evil: j/k)      |move down/up                      |
+|N/P (evil: J/K)      |5x move down/5x move up           |
 |<                    |move to top                       |
 |>                    |mve to bottom                     |
 |f/b (evil: h/l)      |enter (run executable)            |
