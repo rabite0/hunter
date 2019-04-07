@@ -51,6 +51,8 @@ impl Cmd {
     }
 
     fn substitute_cwd_files(&mut self, cmd: Vec<OsString>) -> Vec<OsString> {
+        if self.cwd_files.is_none() { return cmd; }
+
         let cwd_pat = OsString::from("$s");
         let cwd_files =  self.cwd_files
             .take()
@@ -66,6 +68,8 @@ impl Cmd {
     }
 
     fn substitute_tab_files(&mut self, cmd: Vec<OsString>) -> Vec<OsString> {
+        if self.tab_files.is_none() { return cmd; }
+
         let tab_files = self.tab_files.take().unwrap();
 
         tab_files.into_iter()
@@ -84,6 +88,8 @@ impl Cmd {
     }
 
     fn substitute_tab_paths(&mut self, cmd: Vec<OsString>) -> Vec<OsString> {
+        if self.tab_paths.is_none() { return cmd; }
+
         let tab_paths = self.tab_paths.take().unwrap();
 
         tab_paths.into_iter()

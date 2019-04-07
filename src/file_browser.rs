@@ -148,9 +148,7 @@ impl Tabbable for TabView<FileBrowser> {
                     .widgets
                     .iter()
                     .map(|w| {
-                        w.selected_files()
-                            .map_err(|_| Vec::<Files>::new())
-                            .unwrap()
+                        w.selected_files().unwrap_or(vec![])
                     }).collect();
 
                 self.widgets[self.active].exec_cmd(tab_dirs, selected_files)
@@ -838,21 +836,29 @@ impl FileBrowser {
                 tab_files: Vec<Vec<File>>) -> HResult<()> {
 
         let cwd = self.cwd()?.clone();
-        let selected_file = self.selected_file()?;
-        let selected_files = self.selected_files()?;
+        let selected_file = self.selected_file().ok();
+        let selected_files = self.selected_files().ok();
 
         let cmd = self.minibuffer("exec")?.trim_start().to_string() + " ";
 
-        let cwd_files = if selected_files.len() == 0 {
-            vec![selected_file]
-        } else { selected_files };
+        let cwd_files = selected_files.map(|selected_files| {
+            if selected_files.len() == 0 {
+                if selected_file.is_some() {
+                    vec![selected_file.unwrap()]
+                } else {
+                    selected_files
+                }
+            } else {
+                selected_files
+            }
+        });
 
         let cmd = crate::proclist::Cmd {
             cmd: OsString::from(cmd),
             short_cmd: None,
             args: None,
             cwd: cwd,
-            cwd_files: Some(cwd_files),
+            cwd_files: cwd_files,
             tab_files: Some(tab_files),
             tab_paths: Some(tab_dirs)
         };
