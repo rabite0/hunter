@@ -1,8 +1,15 @@
 [package]
 name = "hunter"
-version = "0.1.0"
-authors = ["project"]
+version = "1.0.1"
+authors = ["rabite"]
 edition = "2018"
+description = "Fast, lag-free terminal file browser"
+homepage = "https://github.com/rabite0/hunter"
+repository = "https://github.com/rabite0/hunter"
+readme = "README.md"
+license = "WTFPL"
+keywords = ["cli", "terminal", "file"]
+categories = ["command-line-utilities"]
 
 [dependencies]
 termion = "*"
