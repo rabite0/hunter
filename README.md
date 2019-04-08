@@ -97,7 +97,7 @@ By default hunter uses emacs style keybindings. If you use a QWERTY-like keyboar
 |n/p (evil: j/k)      |move down/up                      |
 |N/P (evil: J/K)      |5x move down/5x move up           |
 |<                    |move to top                       |
-|>                    |mve to bottom                     |
+|>                    |move to bottom                    |
 |f/b (evil: h/l)      |enter (run executable)            |
 |S                    |search file                       |
 |Alt(s)               |search next                       |
@@ -161,7 +161,7 @@ By default hunter uses emacs style keybindings. If you use a QWERTY-like keyboar
 |Tab                  |complete                          |
 |F(n)                 |insert tab substitution           |
 |Ctrl(d)              |delete char                       |
-|Ctrl(b)              |mvoe cursor left                  |
+|Ctrl(b)              |move cursor left                  |
 |Ctrl(f)              |move cursor right                 |
 |Ctrl(p)/Alt(p)       |history up                        |
 |Ctrl(n)/Alt(n)       |history down                      |
