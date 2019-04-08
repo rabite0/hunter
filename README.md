@@ -60,7 +60,7 @@ cargo build --release
 
 This will create a binary in {source_dir}/hunter/target/release/hunter. If you want to call this like any other terminal app you have to put this binary in your path. 
 
-```ln -s {soure_dir}/hunter/targer/release/hunter /usr/bin/local/hunter```
+```ln -s {soure_dir}/hunter/targer/release/hunter /usr/local/bin/hunter```
 
 This will link the the binary to your local bin file. You can call hunter from anywhere. To update repeate the process, but you will **not** need to redo the binary link. 
 
