@@ -65,7 +65,7 @@ This will create a binary in {source_dir}/hunter/target/release/hunter. If you w
 This will link the the binary to your local bin file. You can call hunter from anywhere. To update repeat the process, but you will **not** need to redo the binary link. 
 
 ## NOTE:
-hunter uses ranger's rifle to open files if rifle is in your $PATH. If it can't find rifle it uses xdg-open. It also uses ranger's scope.sh to generate previews for non-text files. A slightly modified version is included in the "extra" directory. Put it in your $PATH somewhere if you want previews for non-text files.
+hunter uses [ranger's rifle](https://github.com/ranger/ranger/blob/master/ranger/ext/rifle.py) to open files if rifle is in your $PATH. If it can't find rifle it uses xdg-open. It also uses ranger's scope.sh to generate previews for non-text files. A slightly modified version is included in the "extra" directory. Put it in your $PATH somewhere if you want previews for non-text files.
 
 ## Configuration
 hunter reads $XDG_CONFIG_HOME/hunter/config at startup. There are two options, which can be set. The configuration file is read asynchronously, so if it's not read by the time hunter starts drawing you will see its default configuration until the config file is read. Options can be set like this (default config):
@@ -97,12 +97,12 @@ By default hunter uses emacs style keybindings. If you use a QWERTY-like keyboar
 |n/p (evil: j/k)      |move down/up                      |
 |N/P (evil: J/K)      |5x move down/5x move up           |
 |<                    |move to top                       |
-|>                    |mve to bottom                     |
+|>                    |move to bottom                    |
 |f/b (evil: h/l)      |enter (run executable)            |
 |S                    |search file                       |
 |Alt(s)               |search next                       |
 |Alt(S)               |search prev                       |
-|Ctrl(f)              |filer                             |
+|Ctrl(f)              |filter                            |
 |space                |multi select file                 |
 |v                    |invert selections                 |
 |t                    |toggle tag                        |
