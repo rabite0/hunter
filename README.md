@@ -102,7 +102,7 @@ By default hunter uses emacs style keybindings. If you use a QWERTY-like keyboar
 |S                    |search file                       |
 |Alt(s)               |search next                       |
 |Alt(S)               |search prev                       |
-|Ctrl(f)              |filer                             |
+|Ctrl(f)              |filter                            |
 |space                |multi select file                 |
 |v                    |invert selections                 |
 |t                    |toggle tag                        |
