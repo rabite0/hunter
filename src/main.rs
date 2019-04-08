@@ -15,7 +15,6 @@ extern crate dirs_2;
 extern crate lscolors;
 extern crate users;
 extern crate chrono;
-extern crate mime_detective;
 extern crate rayon;
 extern crate libc;
 extern crate notify;
