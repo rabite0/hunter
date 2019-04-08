@@ -1,24 +1,21 @@
-use std::sync::{Arc, Mutex, RwLock};
 use std::boxed::FnBox;
+use std::sync::{Arc, Mutex, RwLock};
 
 use rayon::ThreadPool;
 
+use crate::coordinates::Coordinates;
+use crate::dirty::Dirtyable;
+use crate::fail::{ErrorLog, HError, HResult};
 use crate::files::{File, Files, Kind};
 use crate::fscache::FsCache;
 use crate::listview::ListView;
 use crate::textview::TextView;
 use crate::widget::{Widget, WidgetCore};
-use crate::coordinates::Coordinates;
-use crate::fail::{HResult, HError, ErrorLog};
-use crate::dirty::Dirtyable;
-
 
 pub type AsyncValueFn<T> = Box<dyn FnBox(Stale) -> HResult<T> + Send + Sync>;
 pub type AsyncValue<T> = Arc<Mutex<Option<HResult<T>>>>;
 pub type AsyncReadyFn = Box<dyn FnBox() -> HResult<()> + Send + Sync>;
-pub type AsyncWidgetFn<W> = Box<dyn FnBox(Stale, WidgetCore)
-                                          -> HResult<W> + Send + Sync>;
-
+pub type AsyncWidgetFn<W> = Box<dyn FnBox(Stale, WidgetCore) -> HResult<W> + Send + Sync>;
 
 type WidgetO = Box<dyn Widget + Send>;
 
@@ -28,9 +25,9 @@ lazy_static! {
 
 fn kill_proc() -> HResult<()> {
     let mut pid = SUBPROC.lock()?;
-    pid.map(|pid|
-        unsafe { libc::kill(pid as i32, 15); }
-    );
+    pid.map(|pid| unsafe {
+        libc::kill(pid as i32, 15);
+    });
     *pid = None;
     Ok(())
 }
@@ -55,8 +52,6 @@ impl Stale {
     }
 }
 
-
-
 pub fn is_stale(stale: &Stale) -> HResult<bool> {
     let stale = stale.is_stale()?;
     Ok(stale)
@@ -66,14 +61,13 @@ use std::fmt::{Debug, Formatter};
 
 impl<T: Send + Debug> Debug for Async<T> {
     fn fmt(&self, formatter: &mut Formatter) -> Result<(), std::fmt::Error> {
-        write!(formatter,
-               "{:?}, {:?} {:?}",
-               self.value,
-               self.async_value,
-               self.stale)
+        write!(
+            formatter,
+            "{:?}, {:?} {:?}",
+            self.value, self.async_value, self.stale
+        )
     }
 }
-
 
 #[derive(Clone)]
 pub struct Async<T: Send> {
@@ -85,32 +79,29 @@ pub struct Async<T: Send> {
     stale: Stale,
 }
 
-
-
 impl<T: Send + 'static> Async<T> {
-    pub fn new(closure: AsyncValueFn<T>)
-                  -> Async<T> {
+    pub fn new(closure: AsyncValueFn<T>) -> Async<T> {
         let async_value = Async {
             value: HError::async_not_ready(),
             async_value: Arc::new(Mutex::new(None)),
             async_closure: Arc::new(Mutex::new(Some(closure))),
             on_ready: Arc::new(Mutex::new(None)),
             started: false,
-            stale: Stale::new() };
+            stale: Stale::new(),
+        };
 
         async_value
     }
 
-    pub fn new_with_stale(closure: AsyncValueFn<T>,
-                          stale: Stale)
-                  -> Async<T> {
+    pub fn new_with_stale(closure: AsyncValueFn<T>, stale: Stale) -> Async<T> {
         let async_value = Async {
             value: HError::async_not_ready(),
             async_value: Arc::new(Mutex::new(None)),
             async_closure: Arc::new(Mutex::new(Some(closure))),
             on_ready: Arc::new(Mutex::new(None)),
             started: false,
-            stale: stale };
+            stale: stale,
+        };
 
         async_value
     }
@@ -122,18 +113,21 @@ impl<T: Send + 'static> Async<T> {
             async_closure: Arc::new(Mutex::new(None)),
             on_ready: Arc::new(Mutex::new(None)),
             started: false,
-            stale: Stale::new()
+            stale: Stale::new(),
         }
     }
 
-    pub fn run_async(async_fn: Arc<Mutex<Option<AsyncValueFn<T>>>>,
-                     async_value: AsyncValue<T>,
-                     on_ready_fn: Arc<Mutex<Option<AsyncReadyFn>>>,
-                     stale: Stale) -> HResult<()> {
+    pub fn run_async(
+        async_fn: Arc<Mutex<Option<AsyncValueFn<T>>>>,
+        async_value: AsyncValue<T>,
+        on_ready_fn: Arc<Mutex<Option<AsyncReadyFn>>>,
+        stale: Stale,
+    ) -> HResult<()> {
         let value_fn = async_fn.lock()?.take()?;
         let value = value_fn.call_box((stale.clone(),));
         async_value.lock()?.replace(value);
-        on_ready_fn.lock()?
+        on_ready_fn
+            .lock()?
             .take()
             .map(|on_ready| on_ready.call_box(()).log());
         Ok(())
@@ -151,10 +145,7 @@ impl<T: Send + 'static> Async<T> {
         self.started = true;
 
         std::thread::spawn(move || {
-            Async::run_async(closure,
-                             async_value,
-                             on_ready_fn,
-                             stale).log();
+            Async::run_async(closure, async_value, on_ready_fn, stale).log();
         });
         Ok(())
     }
@@ -171,21 +162,20 @@ impl<T: Send + 'static> Async<T> {
         self.started = true;
 
         pool.spawn(move || {
-            Async::run_async(closure,
-                             async_value,
-                             on_ready_fn,
-                             stale).log();
+            Async::run_async(closure, async_value, on_ready_fn, stale).log();
         });
 
         Ok(())
     }
 
-
     pub fn wait(self) -> HResult<T> {
-        Async::run_async(self.async_closure,
-                         self.async_value.clone(),
-                         self.on_ready,
-                         self.stale).log();
+        Async::run_async(
+            self.async_closure,
+            self.async_value.clone(),
+            self.on_ready,
+            self.stale,
+        )
+        .log();
         let value = self.async_value.lock()?.take()?;
         value
     }
@@ -221,7 +211,9 @@ impl<T: Send + 'static> Async<T> {
     }
 
     pub fn take_async(&mut self) -> HResult<()> {
-        if self.value.is_ok() { HError::async_taken()? }
+        if self.value.is_ok() {
+            HError::async_taken()?
+        }
 
         let mut async_value = self.async_value.lock()?;
         match async_value.as_ref() {
@@ -242,7 +234,7 @@ impl<T: Send + 'static> Async<T> {
     pub fn get(&self) -> HResult<&T> {
         match self.value {
             Ok(ref value) => Ok(value),
-            Err(ref err) => HError::async_error(err)
+            Err(ref err) => HError::async_error(err),
         }
     }
 
@@ -251,20 +243,18 @@ impl<T: Send + 'static> Async<T> {
 
         match self.value {
             Ok(ref mut value) => Ok(value),
-            Err(ref err) => HError::async_error(err)
+            Err(ref err) => HError::async_error(err),
         }
     }
 
-    pub fn on_ready(&mut self,
-                    fun: AsyncReadyFn) {
+    pub fn on_ready(&mut self, fun: AsyncReadyFn) {
         *self.on_ready.lock().unwrap() = Some(fun);
     }
 }
 
 impl<W: Widget + Send + 'static> PartialEq for AsyncWidget<W> {
     fn eq(&self, other: &AsyncWidget<W>) -> bool {
-        if self.get_coordinates().unwrap() ==
-            other.get_coordinates().unwrap() {
+        if self.get_coordinates().unwrap() == other.get_coordinates().unwrap() {
             true
         } else {
             false
@@ -272,17 +262,15 @@ impl<W: Widget + Send + 'static> PartialEq for AsyncWidget<W> {
     }
 }
 
-
 pub struct AsyncWidget<W: Widget + Send + 'static> {
     widget: Async<W>,
-    core: WidgetCore
+    core: WidgetCore,
 }
 
 impl<W: Widget + Send + 'static> AsyncWidget<W> {
     pub fn new(core: &WidgetCore, closure: AsyncValueFn<W>) -> AsyncWidget<W> {
         let sender = Mutex::new(core.get_sender());
-        let mut widget = Async::new(Box::new(move |stale|
-                                             closure.call_box((stale,))));
+        let mut widget = Async::new(Box::new(move |stale| closure.call_box((stale,))));
         widget.on_ready(Box::new(move || {
             sender.lock()?.send(crate::widget::Events::WidgetReady)?;
             Ok(())
@@ -291,7 +279,7 @@ impl<W: Widget + Send + 'static> AsyncWidget<W> {
 
         AsyncWidget {
             widget: widget,
-            core: core.clone()
+            core: core.clone(),
         }
     }
     pub fn change_to(&mut self, closure: AsyncWidgetFn<W>) -> HResult<()> {
@@ -301,7 +289,7 @@ impl<W: Widget + Send + 'static> AsyncWidget<W> {
         let core = self.get_core()?.clone();
 
         let mut widget = Async::new(Box::new(move |stale| {
-            closure.call_box((stale, core.clone(),))
+            closure.call_box((stale, core.clone()))
         }));
 
         widget.on_ready(Box::new(move || {
@@ -344,8 +332,6 @@ impl<W: Widget + Send + 'static> AsyncWidget<W> {
     }
 }
 
-
-
 impl<T: Widget + Send + 'static> Widget for AsyncWidget<T> {
     fn get_core(&self) -> HResult<&WidgetCore> {
         Ok(&self.core)
@@ -381,26 +367,26 @@ impl<T: Widget + Send + 'static> Widget for AsyncWidget<T> {
             let clear = self.get_clearlist()?;
             let (xpos, ypos) = self.get_coordinates()?.u16position();
             let pos = crate::term::goto_xy(xpos, ypos);
-            return Ok(clear + &pos + "...")
+            return Ok(clear + &pos + "...");
         }
 
         if self.is_stale()? {
-            return self.get_clearlist()
+            return self.get_clearlist();
         }
 
         self.widget()?.get_drawlist()
     }
     fn on_key(&mut self, key: termion::event::Key) -> HResult<()> {
-        if self.widget().is_err() { return Ok(()) }
+        if self.widget().is_err() {
+            return Ok(());
+        }
         self.widget_mut()?.on_key(key)
     }
 }
 
-
 impl PartialEq for Previewer {
     fn eq(&self, other: &Previewer) -> bool {
-        if self.widget.get_coordinates().unwrap() ==
-            other.widget.get_coordinates().unwrap() {
+        if self.widget.get_coordinates().unwrap() == other.widget.get_coordinates().unwrap() {
             true
         } else {
             false
@@ -411,39 +397,40 @@ impl PartialEq for Previewer {
 #[derive(PartialEq)]
 enum PreviewWidget {
     FileList(ListView<Files>),
-    TextView(TextView)
+    TextView(TextView),
 }
-
-
 
 pub struct Previewer {
     widget: AsyncWidget<PreviewWidget>,
     core: WidgetCore,
     file: Option<File>,
     pub cache: FsCache,
-    animator: Stale
+    animator: Stale,
 }
-
 
 impl Previewer {
     pub fn new(core: &WidgetCore, cache: FsCache) -> Previewer {
         let core_ = core.clone();
-        let widget = AsyncWidget::new(&core, Box::new(move |_| {
-            let blank = TextView::new_blank(&core_);
-            let blank = PreviewWidget::TextView(blank);
-            Ok(blank)
-        }));
-        Previewer { widget: widget,
-                    core: core.clone(),
-                    file: None,
-                    cache: cache,
-                    animator: Stale::new()}
+        let widget = AsyncWidget::new(
+            &core,
+            Box::new(move |_| {
+                let blank = TextView::new_blank(&core_);
+                let blank = PreviewWidget::TextView(blank);
+                Ok(blank)
+            }),
+        );
+        Previewer {
+            widget: widget,
+            core: core.clone(),
+            file: None,
+            cache: cache,
+            animator: Stale::new(),
+        }
     }
 
-    fn become_preview(&mut self,
-                      widget: HResult<AsyncWidget<PreviewWidget>>) -> HResult<()> {
+    fn become_preview(&mut self, widget: HResult<AsyncWidget<PreviewWidget>>) -> HResult<()> {
         let coordinates = self.get_coordinates()?.clone();
-        self.widget =  widget?;
+        self.widget = widget?;
         self.widget.set_coordinates(&coordinates)?;
         Ok(())
     }
@@ -462,11 +449,14 @@ impl Previewer {
 
     pub fn take_files(&mut self) -> HResult<Files> {
         let core = self.core.clone();
-        let mut widget = AsyncWidget::new(&core.clone(), Box::new(move |_| {
-            let widget = TextView::new_blank(&core);
-            let widget = PreviewWidget::TextView(widget);
-            Ok(widget)
-        }));
+        let mut widget = AsyncWidget::new(
+            &core.clone(),
+            Box::new(move |_| {
+                let widget = TextView::new_blank(&core);
+                let widget = PreviewWidget::TextView(widget);
+                Ok(widget)
+            }),
+        );
         std::mem::swap(&mut self.widget, &mut widget);
 
         match widget.take_widget() {
@@ -474,24 +464,30 @@ impl Previewer {
                 let files = file_list.content;
                 Ok(files)
             }
-            _ => HError::no_files()?
+            _ => HError::no_files()?,
         }
     }
 
-    pub fn replace_file(&mut self, dir: &File,
-                        old: Option<&File>,
-                        new: Option<&File>) -> HResult<()> {
-        if self.file.as_ref() != Some(dir) { return Ok(()) }
-        self.widget.widget_mut().map(|widget| {
-            match widget {
-                PreviewWidget::FileList(filelist) => {
-                    filelist.content.replace_file(old, new.cloned()).map(|_| {
+    pub fn replace_file(
+        &mut self,
+        dir: &File,
+        old: Option<&File>,
+        new: Option<&File>,
+    ) -> HResult<()> {
+        if self.file.as_ref() != Some(dir) {
+            return Ok(());
+        }
+        self.widget.widget_mut().map(|widget| match widget {
+            PreviewWidget::FileList(filelist) => {
+                filelist
+                    .content
+                    .replace_file(old, new.cloned())
+                    .map(|_| {
                         filelist.refresh().ok();
-                    }).ok();
-
-                }
-                _ => {}
+                    })
+                    .ok();
             }
+            _ => {}
         })
     }
 
@@ -501,19 +497,23 @@ impl Previewer {
         let cache = self.cache.clone();
         self.file = Some(dir);
 
-        self.widget = AsyncWidget::new(&self.core, Box::new(move |_| {
-            let selected_file = cache.get_selection(&files.directory);
-            let mut filelist = ListView::new(&core, files);
+        self.widget = AsyncWidget::new(
+            &self.core,
+            Box::new(move |_| {
+                let selected_file = cache.get_selection(&files.directory);
+                let mut filelist = ListView::new(&core, files);
 
-            selected_file.map(|file| filelist.select_file(&file)).log();
+                selected_file.map(|file| filelist.select_file(&file)).log();
 
-            Ok(PreviewWidget::FileList(filelist))
-        }));
+                Ok(PreviewWidget::FileList(filelist))
+            }),
+        );
     }
 
-    pub fn set_file(&mut self,
-                    file: &File) -> HResult<()> {
-        if Some(file) == self.file.as_ref() && !self.widget.is_stale()? { return Ok(()) }
+    pub fn set_file(&mut self, file: &File) -> HResult<()> {
+        if Some(file) == self.file.as_ref() && !self.widget.is_stale()? {
+            return Ok(());
+        }
         self.file = Some(file.clone());
 
         let coordinates = self.get_coordinates().unwrap().clone();
@@ -525,39 +525,32 @@ impl Previewer {
         self.widget.set_stale().ok();
         self.animator.set_fresh().log();
 
-        self.become_preview(Ok(AsyncWidget::new(&self.core,
-                                                Box::new(move |stale: Stale| {
-            kill_proc().unwrap();
+        self.become_preview(Ok(AsyncWidget::new(
+            &self.core,
+            Box::new(move |stale: Stale| {
+                kill_proc().unwrap();
 
-            if file.kind == Kind::Directory  {
-                let preview = Previewer::preview_dir(&file,
-                                                     cache,
-                                                     &core,
-                                                     stale,
-                                                     animator);
-                return preview;
-            }
+                if file.kind == Kind::Directory {
+                    let preview = Previewer::preview_dir(&file, cache, &core, stale, animator);
+                    return preview;
+                }
 
-            if file.is_text() {
-                return Previewer::preview_text(&file,
-                                               &core,
-                                               stale,
-                                               animator);
-            }
+                if file.is_text() {
+                    return Previewer::preview_text(&file, &core, stale, animator);
+                }
 
-            let preview = Previewer::preview_external(&file,
-                                                      &core,
-                                                      stale,
-                                                      animator.clone());
-            if preview.is_ok() { return preview; }
-            else {
-                let mut blank = TextView::new_blank(&core);
-                blank.set_coordinates(&coordinates).log();
-                blank.refresh().log();
-                blank.animate_slide_up(Some(animator)).log();
-                return Ok(PreviewWidget::TextView(blank))
-            }
-        }))))
+                let preview = Previewer::preview_external(&file, &core, stale, animator.clone());
+                if preview.is_ok() {
+                    return preview;
+                } else {
+                    let mut blank = TextView::new_blank(&core);
+                    blank.set_coordinates(&coordinates).log();
+                    blank.refresh().log();
+                    blank.animate_slide_up(Some(animator)).log();
+                    return Ok(PreviewWidget::TextView(blank));
+                }
+            }),
+        )))
     }
 
     pub fn reload(&mut self) {
@@ -567,25 +560,26 @@ impl Previewer {
         }
     }
 
-
-
     fn preview_failed(file: &File) -> HResult<PreviewWidget> {
         HError::preview_failed(file)
     }
 
-    fn preview_dir(file: &File,
-                   cache: FsCache,
-                   core: &WidgetCore,
-                   stale: Stale,
-                   animator: Stale)
-                   -> HResult<PreviewWidget> {
+    fn preview_dir(
+        file: &File,
+        cache: FsCache,
+        core: &WidgetCore,
+        stale: Stale,
+        animator: Stale,
+    ) -> HResult<PreviewWidget> {
         let (selection, cached_files) = cache.get_files(&file, stale.clone())?;
 
         let files = cached_files.wait()?;
 
         let len = files.len();
 
-        if len == 0 || is_stale(&stale)? { return Previewer::preview_failed(&file) }
+        if len == 0 || is_stale(&stale)? {
+            return Previewer::preview_failed(&file);
+        }
 
         let mut file_list = ListView::new(&core, files);
         if let Some(selection) = selection {
@@ -593,39 +587,43 @@ impl Previewer {
         }
         file_list.set_coordinates(&core.coordinates)?;
         file_list.refresh()?;
-        if is_stale(&stale)? { return Previewer::preview_failed(&file) }
+        if is_stale(&stale)? {
+            return Previewer::preview_failed(&file);
+        }
         file_list.animate_slide_up(Some(animator))?;
         Ok(PreviewWidget::FileList(file_list))
     }
 
-    fn preview_text(file: &File,
-                    core: &WidgetCore,
-                    stale: Stale,
-                    animator: Stale)
-                    -> HResult<PreviewWidget> {
+    fn preview_text(
+        file: &File,
+        core: &WidgetCore,
+        stale: Stale,
+        animator: Stale,
+    ) -> HResult<PreviewWidget> {
         let lines = core.coordinates.ysize() as usize;
-        let mut textview
-            = TextView::new_from_file_limit_lines(&core,
-                                                  &file,
-                                                  lines)?;
-        if is_stale(&stale)? { return Previewer::preview_failed(&file) }
+        let mut textview = TextView::new_from_file_limit_lines(&core, &file, lines)?;
+        if is_stale(&stale)? {
+            return Previewer::preview_failed(&file);
+        }
 
         textview.set_coordinates(&core.coordinates)?;
         textview.refresh()?;
 
-        if is_stale(&stale)? { return Previewer::preview_failed(&file) }
+        if is_stale(&stale)? {
+            return Previewer::preview_failed(&file);
+        }
 
         textview.animate_slide_up(Some(animator))?;
         Ok(PreviewWidget::TextView(textview))
     }
 
-    fn preview_external(file: &File,
-                        core: &WidgetCore,
-                        stale: Stale,
-                        animator: Stale)
-                        -> HResult<PreviewWidget> {
-        let process =
-            std::process::Command::new("scope.sh")
+    fn preview_external(
+        file: &File,
+        core: &WidgetCore,
+        stale: Stale,
+        animator: Stale,
+    ) -> HResult<PreviewWidget> {
+        let process = std::process::Command::new("scope.sh")
             .arg(&file.path)
             .arg("10".to_string())
             .arg("10".to_string())
@@ -642,11 +640,15 @@ impl Previewer {
             *pid_ = Some(pid);
         }
 
-        if is_stale(&stale)? { return Previewer::preview_failed(&file) }
+        if is_stale(&stale)? {
+            return Previewer::preview_failed(&file);
+        }
 
         let output = process.wait_with_output()?;
 
-        if is_stale(&stale)? { return Previewer::preview_failed(&file) }
+        if is_stale(&stale)? {
+            return Previewer::preview_failed(&file);
+        }
         {
             let mut pid_ = SUBPROC.lock()?;
             *pid_ = None;
@@ -655,25 +657,21 @@ impl Previewer {
         //let status = output.status.code()?;
 
         if !is_stale(&stale)? {
-            let output = std::str::from_utf8(&output.stdout)
-                .unwrap()
-                .to_string();
+            let output = std::str::from_utf8(&output.stdout).unwrap().to_string();
             let mut textview = TextView {
                 lines: output.lines().map(|s| s.to_string()).collect(),
                 core: core.clone(),
                 follow: false,
-                offset: 0};
+                offset: 0,
+            };
             textview.set_coordinates(&core.coordinates).log();
             textview.refresh().log();
             textview.animate_slide_up(Some(animator)).log();
-            return Ok(PreviewWidget::TextView(textview))
+            return Ok(PreviewWidget::TextView(textview));
         }
         HError::preview_failed(file)
     }
-
 }
-
-
 
 impl Widget for Previewer {
     fn get_core(&self) -> HResult<&WidgetCore> {
@@ -709,13 +707,13 @@ impl Widget for PreviewWidget {
     fn get_core(&self) -> HResult<&WidgetCore> {
         match self {
             PreviewWidget::FileList(widget) => widget.get_core(),
-            PreviewWidget::TextView(widget) => widget.get_core()
+            PreviewWidget::TextView(widget) => widget.get_core(),
         }
     }
     fn get_core_mut(&mut self) -> HResult<&mut WidgetCore> {
         match self {
             PreviewWidget::FileList(widget) => widget.get_core_mut(),
-            PreviewWidget::TextView(widget) => widget.get_core_mut()
+            PreviewWidget::TextView(widget) => widget.get_core_mut(),
         }
     }
     fn set_coordinates(&mut self, coordinates: &Coordinates) -> HResult<()> {
@@ -727,19 +725,21 @@ impl Widget for PreviewWidget {
     fn refresh(&mut self) -> HResult<()> {
         match self {
             PreviewWidget::FileList(widget) => widget.refresh(),
-            PreviewWidget::TextView(widget) => widget.refresh()
+            PreviewWidget::TextView(widget) => widget.refresh(),
         }
     }
     fn get_drawlist(&self) -> HResult<String> {
         match self {
             PreviewWidget::FileList(widget) => widget.get_drawlist(),
-            PreviewWidget::TextView(widget) => widget.get_drawlist()
+            PreviewWidget::TextView(widget) => widget.get_drawlist(),
         }
     }
 }
 
-
-impl<T> Widget for Box<T> where T: Widget + ?Sized {
+impl<T> Widget for Box<T>
+where
+    T: Widget + ?Sized,
+{
     fn get_core(&self) -> HResult<&WidgetCore> {
         Ok((**self).get_core()?)
     }

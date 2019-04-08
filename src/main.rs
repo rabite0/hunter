@@ -8,58 +8,52 @@ extern crate termion;
 extern crate unicode_width;
 #[macro_use]
 extern crate lazy_static;
+extern crate alphanumeric_sort;
+extern crate chrono;
+extern crate dirs_2;
 extern crate failure;
 extern crate failure_derive;
-extern crate alphanumeric_sort;
-extern crate dirs_2;
-extern crate lscolors;
-extern crate users;
-extern crate chrono;
-extern crate rayon;
 extern crate libc;
+extern crate lscolors;
 extern crate notify;
 extern crate parse_ansi;
+extern crate rayon;
 extern crate signal_notify;
-extern crate tree_magic;
 extern crate systemstat;
+extern crate tree_magic;
+extern crate users;
 
 use failure::Fail;
 
 use std::io::Write;
 
+mod bookmarks;
+mod config;
 mod coordinates;
+mod dirty;
+mod fail;
 mod file_browser;
 mod files;
+mod foldview;
+mod fscache;
+mod hbox;
 mod listview;
 mod miller_columns;
+mod minibuffer;
+mod paths;
 mod preview;
+mod proclist;
+mod stats;
+mod tabview;
 mod term;
 mod textview;
 mod widget;
-mod hbox;
-mod tabview;
-mod fail;
-mod minibuffer;
-mod proclist;
-mod bookmarks;
-mod paths;
-mod foldview;
-mod dirty;
-mod fscache;
-mod config;
-mod stats;
 
-
-
-
-
-
-use widget::{Widget, WidgetCore};
-use term::ScreenExt;
-use fail::{HResult, HError};
+use fail::{HError, HResult};
 use file_browser::FileBrowser;
 use tabview::TabView;
-
+use term::ScreenExt;
+use widget::{Widget, WidgetCore};
 
 fn main() -> HResult<()> {
     // do this early so it might be ready when needed
@@ -71,8 +65,8 @@ fn main() -> HResult<()> {
         Ok(_) => Ok(()),
         Err(HError::Quit) => {
             core.screen.drop_screen();
-            return Ok(())
-        },
+            return Ok(());
+        }
         Err(err) => {
             core.screen.drop_screen();
             eprintln!("{:?}\n{:?}", err, err.cause());

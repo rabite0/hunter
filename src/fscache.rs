@@ -1,16 +1,15 @@
-use notify::{INotifyWatcher, Watcher, DebouncedEvent, RecursiveMode};
+use notify::{DebouncedEvent, INotifyWatcher, RecursiveMode, Watcher};
 
-use std::sync::{Arc, RwLock};
-use std::sync::mpsc::{channel, Sender, Receiver};
 use std::collections::{HashMap, HashSet};
-use std::time::Duration;
 use std::path::PathBuf;
+use std::sync::mpsc::{channel, Receiver, Sender};
+use std::sync::{Arc, RwLock};
+use std::time::Duration;
 
+use crate::fail::{ErrorLog, HError, HResult};
+use crate::files::{File, Files, SortBy};
 use crate::preview::{Async, Stale};
-use crate::files::{Files, File, SortBy};
 use crate::widget::Events;
-use crate::fail::{HResult, HError, ErrorLog};
-
 
 #[derive(Debug, Clone)]
 pub struct DirSettings {
@@ -28,7 +27,7 @@ impl DirSettings {
             dirs_first: true,
             reverse: false,
             show_hidden: true,
-            filter: None
+            filter: None,
         }
     }
 }
@@ -45,24 +44,22 @@ impl TabSettings {
         TabSettings {
             selection: None,
             multi_selections: vec![],
-            dir_settings: DirSettings::new()
+            dir_settings: DirSettings::new(),
         }
     }
 }
 
-
 impl std::fmt::Debug for FsCache {
     fn fmt(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
-        write!(formatter,
-               "{:?}\n{:?}\n{:?}",
-               self.tab_settings,
-               self.watched_dirs,
-               self.files)
+        write!(
+            formatter,
+            "{:?}\n{:?}\n{:?}",
+            self.tab_settings, self.watched_dirs, self.files
+        )
     }
 }
 
 unsafe impl Sync for FsCache {}
-
 
 #[derive(Clone)]
 pub struct FsCache {
@@ -77,9 +74,7 @@ pub struct FsCache {
 impl FsCache {
     pub fn new(sender: Sender<Events>) -> FsCache {
         let (tx_fs_event, rx_fs_event) = channel();
-        let watcher = INotifyWatcher::new(tx_fs_event,
-                                          Duration::from_secs(2)).unwrap();
-
+        let watcher = INotifyWatcher::new(tx_fs_event, Duration::from_secs(2)).unwrap();
 
         let fs_cache = FsCache {
             files: Arc::new(RwLock::new(HashMap::new())),
@@ -90,10 +85,12 @@ impl FsCache {
             sender: sender.clone(),
         };
 
-        watch_fs(rx_fs_event,
-                 fs_cache.files.clone(),
-                 fs_cache.fs_changes.clone(),
-                 sender.clone());
+        watch_fs(
+            rx_fs_event,
+            fs_cache.files.clone(),
+            fs_cache.fs_changes.clone(),
+            sender.clone(),
+        );
 
         fs_cache
     }
@@ -134,7 +131,14 @@ impl FsCache {
     }
 
     pub fn get_selection(&self, dir: &File) -> HResult<File> {
-        Ok(self.tab_settings.read()?.get(&dir).as_ref()?.selection.as_ref()?.clone())
+        Ok(self
+            .tab_settings
+            .read()?
+            .get(&dir)
+            .as_ref()?
+            .selection
+            .as_ref()?
+            .clone())
     }
 
     pub fn save_settings(&self, files: &Files, selection: Option<File>) -> HResult<()> {
@@ -171,7 +175,8 @@ impl FsCache {
     }
 
     pub fn watch_only(&self, open_dirs: HashSet<File>) -> HResult<()> {
-        let removable = self.watched_dirs
+        let removable = self
+            .watched_dirs
             .read()?
             .difference(&open_dirs)
             .map(|dir| dir.clone())
@@ -187,7 +192,9 @@ impl FsCache {
     fn add_watch(&self, dir: &File) -> HResult<()> {
         if !self.watched_dirs.read()?.contains(&dir) {
             self.watched_dirs.write()?.insert(dir.clone());
-            self.watcher.write()?.watch(&dir.path, RecursiveMode::NonRecursive)?
+            self.watcher
+                .write()?
+                .watch(&dir.path, RecursiveMode::NonRecursive)?
         }
         Ok(())
     }
@@ -202,8 +209,8 @@ impl FsCache {
 
     fn get_cached_files(&self, dir: &File) -> HResult<CachedFiles> {
         let tab_settings = match self.tab_settings.read()?.get(&dir) {
-                Some(tab_settings) => tab_settings.clone(),
-                None => TabSettings::new()
+            Some(tab_settings) => tab_settings.clone(),
+            None => TabSettings::new(),
         };
         let selection = tab_settings.selection.clone();
         let file_cache = self.files.clone();
@@ -236,13 +243,12 @@ impl FsCache {
         Ok((selection, files))
     }
 
-
-    pub fn apply_settingss(cache: &FsCache,
-                       files: &mut Files)
-                       -> HResult<()> {
+    pub fn apply_settingss(cache: &FsCache, files: &mut Files) -> HResult<()> {
         let dir = &files.directory;
         let tab_settings = cache.tab_settings.read()?.get(&dir).cloned();
-        if tab_settings.is_none() { return Ok(()) }
+        if tab_settings.is_none() {
+            return Ok(());
+        }
         let tab_settings = tab_settings?;
 
         files.sort = tab_settings.dir_settings.sort;
@@ -265,7 +271,6 @@ impl FsCache {
         Ok(())
     }
 
-
     fn extract_tab_settings(files: &Files, selection: Option<File>) -> TabSettings {
         TabSettings {
             selection: selection,
@@ -276,16 +281,17 @@ impl FsCache {
                 reverse: files.reverse,
                 show_hidden: files.show_hidden,
                 filter: files.filter.clone(),
-            }
+            },
         }
     }
 }
 
-
-fn watch_fs(rx_fs_events: Receiver<DebouncedEvent>,
-            fs_cache: Arc<RwLock<HashMap<File, Files>>>,
-            fs_changes: Arc<RwLock<Vec<(File, Option<File>, Option<File>)>>>,
-            sender: Sender<Events>) {
+fn watch_fs(
+    rx_fs_events: Receiver<DebouncedEvent>,
+    fs_cache: Arc<RwLock<HashMap<File, Files>>>,
+    fs_changes: Arc<RwLock<Vec<(File, Option<File>, Option<File>)>>>,
+    sender: Sender<Events>,
+) {
     std::thread::spawn(move || -> HResult<()> {
         for event in rx_fs_events.iter() {
             apply_event(&fs_cache, &fs_changes, event).log();
@@ -296,13 +302,15 @@ fn watch_fs(rx_fs_events: Receiver<DebouncedEvent>,
     });
 }
 
-fn apply_event(_fs_cache: &Arc<RwLock<HashMap<File, Files>>>,
-               fs_changes: &Arc<RwLock<Vec<(File, Option<File>, Option<File>)>>>,
-               event: DebouncedEvent)
-               -> HResult<()> {
+fn apply_event(
+    _fs_cache: &Arc<RwLock<HashMap<File, Files>>>,
+    fs_changes: &Arc<RwLock<Vec<(File, Option<File>, Option<File>)>>>,
+    event: DebouncedEvent,
+) -> HResult<()> {
     let path = &event.get_source_path()?;
 
-    let dirpath = path.parent()
+    let dirpath = path
+        .parent()
         .map(|path| path.to_path_buf())
         .unwrap_or_else(|| PathBuf::from("/"));
     let dir = File::new_from_path(&dirpath, None)?;
@@ -310,14 +318,12 @@ fn apply_event(_fs_cache: &Arc<RwLock<HashMap<File, Files>>>,
     let old_file = File::new_from_path(&path, None)?;
     let mut new_file = match event {
         DebouncedEvent::Remove(_) => None,
-        _ => Some(File::new_from_path(&path, None)?)
+        _ => Some(File::new_from_path(&path, None)?),
     };
 
     new_file.as_mut().map(|file| file.meta_sync());
 
-    fs_changes.write()?.push((dir,
-                              Some(old_file),
-                              new_file));
+    fs_changes.write()?.push((dir, Some(old_file), new_file));
 
     // for dir in fs_cache.write()?.values_mut() {
     //     if dir.path_in_here(&path).unwrap_or(false) {
@@ -349,18 +355,17 @@ trait PathFromEvent {
 impl PathFromEvent for DebouncedEvent {
     fn get_source_path(&self) -> HResult<&PathBuf> {
         match self {
-            DebouncedEvent::Create(path)      |
-            DebouncedEvent::Write(path)       |
-            DebouncedEvent::Chmod(path)       |
-            DebouncedEvent::Remove(path)      |
-            DebouncedEvent::NoticeWrite(path) |
-            DebouncedEvent::NoticeRemove(path)  => Ok(path),
+            DebouncedEvent::Create(path)
+            | DebouncedEvent::Write(path)
+            | DebouncedEvent::Chmod(path)
+            | DebouncedEvent::Remove(path)
+            | DebouncedEvent::NoticeWrite(path)
+            | DebouncedEvent::NoticeRemove(path) => Ok(path),
             DebouncedEvent::Rename(old_path, _) => Ok(old_path),
-            DebouncedEvent::Error(err, path)
-                => Err(HError::INotifyError(format!("{}, {:?}", err, path))),
-            DebouncedEvent::Rescan
-                => Err(HError::INotifyError("Need to rescan".to_string()))
-
+            DebouncedEvent::Error(err, path) => {
+                Err(HError::INotifyError(format!("{}, {:?}", err, path)))
+            }
+            DebouncedEvent::Rescan => Err(HError::INotifyError("Need to rescan".to_string())),
         }
     }
 }

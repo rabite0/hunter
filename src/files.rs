@@ -1,30 +1,26 @@
 use std::cmp::{Ord, Ordering};
-use std::ops::Index;
+use std::ffi::{OsStr, OsString};
 use std::fs::Metadata;
+use std::hash::{Hash, Hasher};
+use std::ops::Index;
+use std::os::unix::ffi::{OsStrExt, OsStringExt};
 use std::os::unix::fs::MetadataExt;
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, Mutex, RwLock};
 use std::sync::mpsc::Sender;
-use std::hash::{Hash, Hasher};
-use std::os::unix::ffi::{OsStringExt, OsStrExt};
-use std::ffi::{OsStr, OsString};
+use std::sync::{Arc, Mutex, RwLock};
 
-use lscolors::LsColors;
-use tree_magic;
-use users::{get_current_username,
-            get_current_groupname,
-            get_user_by_uid,
-            get_group_by_gid};
 use chrono::TimeZone;
 use failure::Error;
+use lscolors::LsColors;
 use notify::DebouncedEvent;
 use rayon::{ThreadPool, ThreadPoolBuilder};
+use tree_magic;
+use users::{get_current_groupname, get_current_username, get_group_by_gid, get_user_by_uid};
 
-use crate::fail::{HResult, HError, ErrorLog};
 use crate::dirty::{AsyncDirtyBit, DirtyBit, Dirtyable};
+use crate::fail::{ErrorLog, HError, HResult};
 use crate::preview::{Async, Stale};
 use crate::widget::Events;
-
 
 lazy_static! {
     static ref COLORS: LsColors = LsColors::from_env().unwrap();
@@ -57,9 +53,9 @@ pub fn load_tags() -> HResult<()> {
         }
 
         let tags = std::fs::read_to_string(tag_path)?;
-        let mut tags = tags.lines()
-            .map(|f|
-                 PathBuf::from(f))
+        let mut tags = tags
+            .lines()
+            .map(|f| PathBuf::from(f))
             .collect::<Vec<PathBuf>>();
         let mut tag_lock = TAGS.write()?;
         tag_lock.0 = true;
@@ -88,10 +84,12 @@ pub fn check_tag(path: &PathBuf) -> HResult<bool> {
 
 pub fn tags_loaded() -> HResult<()> {
     let loaded = TAGS.read()?.0;
-    if loaded { Ok(()) }
-    else { HError::tags_not_loaded() }
+    if loaded {
+        Ok(())
+    } else {
+        HError::tags_not_loaded()
+    }
 }
-
 
 #[derive(PartialEq, Eq, Hash, Clone, Debug)]
 pub struct Files {
@@ -115,7 +113,6 @@ impl Index<usize> for Files {
     }
 }
 
-
 impl Dirtyable for Files {
     fn is_dirty(&self) -> bool {
         self.dirty.is_dirty()
@@ -130,7 +127,6 @@ impl Dirtyable for Files {
     }
 }
 
-
 impl Files {
     pub fn new_from_path(path: &Path) -> Result<Files, Error> {
         let direntries: Result<Vec<_>, _> = std::fs::read_dir(&path)?.collect();
@@ -143,9 +139,7 @@ impl Files {
                 let name = file.file_name();
                 let name = name.to_string_lossy();
                 let path = file.path();
-                File::new(&name,
-                          path,
-                          Some(dirty_meta.clone()))
+                File::new(&name, path, Some(dirty_meta.clone()))
             })
             .collect();
 
@@ -165,8 +159,6 @@ impl Files {
 
         files.sort();
 
-
-
         if files.files.len() == 0 {
             files.files = vec![File::new_placeholder(&path)?];
         }
@@ -174,9 +166,7 @@ impl Files {
         Ok(files)
     }
 
-    pub fn new_from_path_cancellable(path: &Path,
-                                     stale: Stale)
-                                     -> Result<Files, Error> {
+    pub fn new_from_path_cancellable(path: &Path, stale: Stale) -> Result<Files, Error> {
         let direntries: Result<Vec<_>, _> = std::fs::read_dir(&path)?.collect();
         let dirty = DirtyBit::new();
         let dirty_meta = AsyncDirtyBit::new();
@@ -190,10 +180,12 @@ impl Files {
                     let name = file.file_name();
                     let name = name.to_string_lossy();
                     let path = file.path();
-                    Some(File::new_with_stale(&name,
-                                              path,
-                                              Some(dirty_meta.clone()),
-                                              stale.clone()))
+                    Some(File::new_with_stale(
+                        &name,
+                        path,
+                        Some(dirty_meta.clone()),
+                        stale.clone(),
+                    ))
                 }
             })
             .fuse()
@@ -202,7 +194,7 @@ impl Files {
 
         if crate::preview::is_stale(&stale).unwrap() {
             return Err(crate::fail::HError::StalePreviewError {
-                file: path.to_string_lossy().to_string()
+                file: path.to_string_lossy().to_string(),
             })?;
         }
 
@@ -233,10 +225,10 @@ impl Files {
         let filter = self.filter.clone();
         let show_hidden = self.show_hidden;
 
-        let file = self.files
+        let file = self
+            .files
             .iter_mut()
-            .filter(|f| !(filter.is_some() &&
-                         !f.name.contains(filter.as_ref().unwrap())))
+            .filter(|f| !(filter.is_some() && !f.name.contains(filter.as_ref().unwrap())))
             .filter(|f| !(!show_hidden && f.name.starts_with(".")))
             .nth(index);
         file
@@ -245,8 +237,7 @@ impl Files {
     pub fn get_files(&self) -> Vec<&File> {
         self.files
             .iter()
-            .filter(|f| !(self.filter.is_some() &&
-                         !f.name.contains(self.filter.as_ref().unwrap())))
+            .filter(|f| !(self.filter.is_some() && !f.name.contains(self.filter.as_ref().unwrap())))
             .filter(|f| !(!self.show_hidden && f.name.starts_with(".")))
             .collect()
     }
@@ -256,8 +247,7 @@ impl Files {
         let show_hidden = self.show_hidden;
         self.files
             .iter_mut()
-            .filter(|f| !(filter.is_some() &&
-                         !f.name.contains(filter.as_ref().unwrap())))
+            .filter(|f| !(filter.is_some() && !f.name.contains(filter.as_ref().unwrap())))
             .filter(|f| !(!show_hidden && f.name.starts_with(".")))
             .collect()
     }
@@ -273,7 +263,11 @@ impl Files {
                     if a.meta().unwrap().size() == b.meta().unwrap().size() {
                         return alphanumeric_sort::compare_str(&b.name, &a.name);
                     }
-                    a.meta().unwrap().size().cmp(&b.meta().unwrap().size()).reverse()
+                    a.meta()
+                        .unwrap()
+                        .size()
+                        .cmp(&b.meta().unwrap().size())
+                        .reverse()
                 });
             }
             SortBy::MTime => {
@@ -326,9 +320,7 @@ impl Files {
         self.show_hidden = !self.show_hidden
     }
 
-    pub fn replace_file(&mut self,
-                        old: Option<&File>,
-                        new: Option<File>) -> HResult<()> {
+    pub fn replace_file(&mut self, old: Option<&File>, new: Option<File>) -> HResult<()> {
         let (tag, selected) = if let Some(old) = old {
             if let Some(old) = self.find_file_with_path(&old.path) {
                 (old.tag, old.selected)
@@ -348,38 +340,36 @@ impl Files {
         Ok(())
     }
 
-    pub fn handle_event(&mut self,
-                        event: &DebouncedEvent) -> HResult<()> {
+    pub fn handle_event(&mut self, event: &DebouncedEvent) -> HResult<()> {
         match event {
             DebouncedEvent::Create(path) => {
                 self.path_in_here(&path)?;
-                let file = File::new_from_path(&path,
-                                               Some(self.dirty_meta.clone()))?;
+                let file = File::new_from_path(&path, Some(self.dirty_meta.clone()))?;
                 self.files.push(file);
                 self.sort();
-            },
+            }
             DebouncedEvent::Write(path) | DebouncedEvent::Chmod(path) => {
                 self.path_in_here(&path)?;
                 let file = self.find_file_with_path(&path)?;
                 file.reload_meta()?;
-            },
+            }
             DebouncedEvent::Remove(path) => {
                 self.path_in_here(&path)?;
                 let file = self.find_file_with_path(&path)?.clone();
                 self.files.remove_item(&file);
-            },
+            }
             DebouncedEvent::Rename(old_path, new_path) => {
                 self.path_in_here(&new_path)?;
                 let mut file = self.find_file_with_path(&old_path)?;
                 file.name = new_path.file_name()?.to_string_lossy().to_string();
                 file.path = new_path.into();
                 file.reload_meta()?;
-            },
+            }
             DebouncedEvent::Error(err, path) => {
                 dbg!(err);
                 dbg!(path);
-            },
-            _ => {},
+            }
+            _ => {}
         }
         self.set_dirty();
         Ok(())
@@ -387,7 +377,11 @@ impl Files {
 
     pub fn path_in_here(&self, path: &Path) -> HResult<bool> {
         let dir = &self.directory.path;
-        let path = if path.is_dir() { path } else { path.parent().unwrap() };
+        let path = if path.is_dir() {
+            path
+        } else {
+            path.parent().unwrap()
+        };
         if dir == path {
             Ok(true)
         } else {
@@ -426,7 +420,9 @@ impl Files {
             }
         };
 
-        if self.meta_upto >= Some(meta_files) && !self.dirty_meta.is_dirty() { return }
+        if self.meta_upto >= Some(meta_files) && !self.dirty_meta.is_dirty() {
+            return;
+        }
 
         self.set_dirty();
         self.dirty_meta.set_clean();
@@ -434,10 +430,12 @@ impl Files {
         let meta_pool = make_pool(sender.clone());
         let show_hidden = self.show_hidden;
 
-        for file in self.files
+        for file in self
+            .files
             .iter_mut()
             .filter(|f| !(!show_hidden && f.name.starts_with(".")))
-            .take(meta_files) {
+            .take(meta_files)
+        {
             if !file.meta_processed {
                 file.take_meta(&meta_pool, &mut self.meta_updated).ok();
             }
@@ -453,7 +451,6 @@ impl Files {
         self.files.get(0)?.meta.set_fresh()?;
         Ok(())
     }
-
 
     pub fn set_filter(&mut self, filter: Option<String>) {
         self.filter = filter;
@@ -477,7 +474,7 @@ impl Files {
 pub enum Kind {
     Directory,
     File,
-    Placeholder
+    Placeholder,
 }
 
 impl std::fmt::Display for SortBy {
@@ -498,7 +495,6 @@ pub enum SortBy {
     MTime,
 }
 
-
 impl PartialEq for File {
     fn eq(&self, other: &File) -> bool {
         if self.path == other.path {
@@ -518,7 +514,6 @@ impl Hash for File {
 
 impl Eq for File {}
 
-
 #[derive(Clone, Debug)]
 pub struct File {
     pub name: String,
@@ -531,23 +526,26 @@ pub struct File {
     pub dirty_meta: Option<AsyncDirtyBit>,
     pub meta_processed: bool,
     pub selected: bool,
-    pub tag: Option<bool>
+    pub tag: Option<bool>,
 }
 
 impl File {
-    pub fn new(
-        name: &str,
-        path: PathBuf,
-        dirty_meta: Option<AsyncDirtyBit>) -> File {
+    pub fn new(name: &str, path: PathBuf, dirty_meta: Option<AsyncDirtyBit>) -> File {
         let tag = check_tag(&path).ok();
         let meta = File::make_async_meta(&path, dirty_meta.clone(), None);
         let dirsize = if path.is_dir() {
             Some(File::make_async_dirsize(&path, dirty_meta.clone(), None))
-        } else { None };
+        } else {
+            None
+        };
 
         File {
             name: name.to_string(),
-            kind: if path.is_dir() { Kind::Directory } else { Kind::File },
+            kind: if path.is_dir() {
+                Kind::Directory
+            } else {
+                Kind::File
+            },
             path: path,
             dirsize: dirsize,
             target: None,
@@ -560,23 +558,31 @@ impl File {
         }
     }
 
-    pub fn new_with_stale(name: &str,
-                          path: PathBuf,
-                          dirty_meta: Option<AsyncDirtyBit>,
-                          stale: Stale) -> File {
+    pub fn new_with_stale(
+        name: &str,
+        path: PathBuf,
+        dirty_meta: Option<AsyncDirtyBit>,
+        stale: Stale,
+    ) -> File {
         let tag = check_tag(&path).ok();
-        let meta = File::make_async_meta(&path,
-                                         dirty_meta.clone(),
-                                         Some(stale.clone()));
+        let meta = File::make_async_meta(&path, dirty_meta.clone(), Some(stale.clone()));
         let dirsize = if path.is_dir() {
-            Some(File::make_async_dirsize(&path,
-                                          dirty_meta.clone(),
-                                          Some(stale)))
-        } else { None };
+            Some(File::make_async_dirsize(
+                &path,
+                dirty_meta.clone(),
+                Some(stale),
+            ))
+        } else {
+            None
+        };
 
         File {
             name: name.to_string(),
-            kind: if path.is_dir() { Kind::Directory } else { Kind::File },
+            kind: if path.is_dir() {
+                Kind::Directory
+            } else {
+                Kind::File
+            },
             path: path,
             dirsize: dirsize,
             target: None,
@@ -589,8 +595,7 @@ impl File {
         }
     }
 
-    pub fn new_from_path(path: &Path,
-                         dirty_meta: Option<AsyncDirtyBit>) -> HResult<File> {
+    pub fn new_from_path(path: &Path, dirty_meta: Option<AsyncDirtyBit>) -> HResult<File> {
         let pathbuf = path.to_path_buf();
         let name = path
             .file_name()
@@ -615,19 +620,23 @@ impl File {
         self.process_meta()
     }
 
-    pub fn make_async_meta(path: &PathBuf,
-                           dirty_meta: Option<AsyncDirtyBit>,
-                           stale_preview: Option<Stale>) -> Async<Metadata> {
+    pub fn make_async_meta(
+        path: &PathBuf,
+        dirty_meta: Option<AsyncDirtyBit>,
+        stale_preview: Option<Stale>,
+    ) -> Async<Metadata> {
         let path = path.clone();
 
         let meta_closure = Box::new(move |stale: Stale| {
-            if stale.is_stale()? { HError::stale()? }
+            if stale.is_stale()? {
+                HError::stale()?
+            }
             Ok(std::fs::symlink_metadata(&path)?)
         });
 
         let mut meta = match stale_preview {
             Some(stale) => Async::new_with_stale(meta_closure, stale),
-            None => Async::new(meta_closure)
+            None => Async::new(meta_closure),
         };
         if let Some(dirty_meta) = dirty_meta {
             meta.on_ready(Box::new(move || {
@@ -640,19 +649,23 @@ impl File {
         meta
     }
 
-    pub fn make_async_dirsize(path: &PathBuf,
-                              dirty_meta: Option<AsyncDirtyBit>,
-                              stale_preview: Option<Stale>) -> Async<usize> {
+    pub fn make_async_dirsize(
+        path: &PathBuf,
+        dirty_meta: Option<AsyncDirtyBit>,
+        stale_preview: Option<Stale>,
+    ) -> Async<usize> {
         let path = path.clone();
 
         let dirsize_closure = Box::new(move |stale: Stale| {
-            if stale.is_stale()? { HError::stale()? }
+            if stale.is_stale()? {
+                HError::stale()?
+            }
             Ok(std::fs::read_dir(&path)?.count())
         });
 
         let mut dirsize = match stale_preview {
             Some(stale) => Async::new_with_stale(dirsize_closure, stale),
-            None => Async::new(dirsize_closure)
+            None => Async::new(dirsize_closure),
         };
 
         if let Some(dirty_meta) = dirty_meta {
@@ -670,33 +683,45 @@ impl File {
         self.meta.get()
     }
 
-    fn take_dirsize(&mut self,
-                    pool: &ThreadPool,
-                    meta_updated: &mut bool) -> HResult<()> {
+    fn take_dirsize(&mut self, pool: &ThreadPool, meta_updated: &mut bool) -> HResult<()> {
         let dirsize = self.dirsize.as_mut()?;
-        if let Ok(_) = dirsize.value { return Ok(()) }
+        if let Ok(_) = dirsize.value {
+            return Ok(());
+        }
 
         match dirsize.take_async() {
-            Ok(_) => { *meta_updated = true; },
-            Err(HError::AsyncNotReadyError) => { dirsize.run_pooled(&*pool).ok(); },
-            Err(HError::AsyncAlreadyTakenError) => {},
-            Err(HError::NoneError) => {},
-            err @ Err(_) => { err?; }
+            Ok(_) => {
+                *meta_updated = true;
+            }
+            Err(HError::AsyncNotReadyError) => {
+                dirsize.run_pooled(&*pool).ok();
+            }
+            Err(HError::AsyncAlreadyTakenError) => {}
+            Err(HError::NoneError) => {}
+            err @ Err(_) => {
+                err?;
+            }
         }
         Ok(())
     }
 
-    pub fn take_meta(&mut self,
-                     pool: &ThreadPool,
-                     meta_updated: &mut bool) -> HResult<()> {
-        if self.meta_processed { return Ok(()) }
+    pub fn take_meta(&mut self, pool: &ThreadPool, meta_updated: &mut bool) -> HResult<()> {
+        if self.meta_processed {
+            return Ok(());
+        }
 
         match self.meta.take_async() {
-            Ok(_) => { *meta_updated = true; },
-            Err(HError::AsyncNotReadyError) => { self.meta.run_pooled(&*pool).ok(); },
-            Err(HError::AsyncAlreadyTakenError) => {},
-            Err(HError::NoneError) => {},
-            err @ Err(_) => { err?; }
+            Ok(_) => {
+                *meta_updated = true;
+            }
+            Err(HError::AsyncNotReadyError) => {
+                self.meta.run_pooled(&*pool).ok();
+            }
+            Err(HError::AsyncAlreadyTakenError) => {}
+            Err(HError::NoneError) => {}
+            err @ Err(_) => {
+                err?;
+            }
         }
 
         self.process_meta()?;
@@ -709,7 +734,9 @@ impl File {
             let color = self.get_color(&meta);
             let target = if meta.file_type().is_symlink() {
                 self.path.read_link().ok()
-            } else { None };
+            } else {
+                None
+            };
 
             self.color = color;
             self.target = target;
@@ -720,14 +747,15 @@ impl File {
 
     pub fn reload_meta(&mut self) -> HResult<()> {
         self.meta_processed = false;
-        self.meta = File::make_async_meta(&self.path,
-                                          self.dirty_meta.clone(),
-                                          None);
+        self.meta = File::make_async_meta(&self.path, self.dirty_meta.clone(), None);
         self.meta.run().log();
 
         if self.dirsize.is_some() {
-            self.dirsize
-                = Some(File::make_async_dirsize(&self.path, self.dirty_meta.clone(), None));
+            self.dirsize = Some(File::make_async_dirsize(
+                &self.path,
+                self.dirty_meta.clone(),
+                None,
+            ));
             self.dirsize.as_mut()?.run().log();
         }
         Ok(())
@@ -742,9 +770,8 @@ impl File {
 
     pub fn calculate_size(&self) -> HResult<(u64, String)> {
         if let Some(ref dirsize) = self.dirsize {
-            return Ok((dirsize.value.clone()? as u64, "".to_string()))
+            return Ok((dirsize.value.clone()? as u64, "".to_string()));
         }
-
 
         let mut unit = 0;
         let mut size = self.meta()?.size();
@@ -770,9 +797,8 @@ impl File {
     // }
 
     pub fn is_text(&self) -> bool {
-         tree_magic::match_filepath("text/plain", &self.path)
+        tree_magic::match_filepath("text/plain", &self.path)
     }
-
 
     pub fn parent(&self) -> Option<PathBuf> {
         Some(self.path.parent()?.to_path_buf())
@@ -808,7 +834,7 @@ impl File {
         let base_path = base.path.clone();
         match self.path.strip_prefix(base_path) {
             Ok(path) => PathBuf::from(path),
-            Err(_) => self.path.clone()
+            Err(_) => self.path.clone(),
         }
     }
 
@@ -844,7 +870,9 @@ impl File {
 
         match new_state {
             true => TAGS.write()?.1.push(self.path.clone()),
-            false => { TAGS.write()?.1.remove_item(&self.path); },
+            false => {
+                TAGS.write()?.1.remove_item(&self.path);
+            }
         }
         self.save_tags()?;
         Ok(())
@@ -854,10 +882,14 @@ impl File {
         std::thread::spawn(|| -> HResult<()> {
             let tagfile_path = crate::paths::tagfile_path()?;
             let tags = TAGS.read()?.clone();
-            let tags_str = tags.1.iter().map(|p| {
-                let path = p.to_string_lossy().to_string();
-                format!("{}\n", path)
-            }).collect::<String>();
+            let tags_str = tags
+                .1
+                .iter()
+                .map(|p| {
+                    let path = p.to_string_lossy().to_string();
+                    format!("{}\n", path)
+                })
+                .collect::<String>();
             std::fs::write(tagfile_path, tags_str)?;
             Ok(())
         });
@@ -895,7 +927,7 @@ impl File {
 
     pub fn pretty_print_permissions(&self) -> HResult<String> {
         let perms: usize = format!("{:o}", self.meta()?.mode()).parse().unwrap();
-        let perms: usize  = perms % 800;
+        let perms: usize = perms % 800;
         let perms = format!("{}", perms);
 
         let r = format!("{}r", crate::term::color_green());
@@ -903,50 +935,59 @@ impl File {
         let x = format!("{}x", crate::term::color_red());
         let n = format!("{}-", crate::term::highlight_color());
 
-        let perms = perms.chars().map(|c| match c.to_string().parse().unwrap() {
-            1 => format!("{}{}{}", n,n,x),
-            2 => format!("{}{}{}", n,w,n),
-            3 => format!("{}{}{}", n,w,x),
-            4 => format!("{}{}{}", r,n,n),
-            5 => format!("{}{}{}", r,n,x),
-            6 => format!("{}{}{}", r,w,n),
-            7 => format!("{}{}{}", r,w,x),
-            _ => format!("---")
-        }).collect();
+        let perms = perms
+            .chars()
+            .map(|c| match c.to_string().parse().unwrap() {
+                1 => format!("{}{}{}", n, n, x),
+                2 => format!("{}{}{}", n, w, n),
+                3 => format!("{}{}{}", n, w, x),
+                4 => format!("{}{}{}", r, n, n),
+                5 => format!("{}{}{}", r, n, x),
+                6 => format!("{}{}{}", r, w, n),
+                7 => format!("{}{}{}", r, w, x),
+                _ => format!("---"),
+            })
+            .collect();
 
         Ok(perms)
     }
 
     pub fn pretty_user(&self) -> Option<String> {
-        if self.meta().is_err() { return None }
+        if self.meta().is_err() {
+            return None;
+        }
         let uid = self.meta().unwrap().uid();
         let file_user = users::get_user_by_uid(uid)?;
         let cur_user = users::get_current_username()?;
-        let color =
-            if file_user.name() == cur_user {
-                crate::term::color_green()
-            } else {
-                crate::term::color_red()  };
+        let color = if file_user.name() == cur_user {
+            crate::term::color_green()
+        } else {
+            crate::term::color_red()
+        };
         Some(format!("{}{}", color, file_user.name().to_string_lossy()))
     }
 
     pub fn pretty_group(&self) -> Option<String> {
-        if self.meta().is_err() { return None }
+        if self.meta().is_err() {
+            return None;
+        }
         let gid = self.meta().unwrap().gid();
         let file_group = users::get_group_by_gid(gid)?;
         let cur_group = users::get_current_groupname()?;
-        let color =
-            if file_group.name() == cur_group {
-                crate::term::color_green()
-            } else {
-                crate::term::color_red()  };
+        let color = if file_group.name() == cur_group {
+            crate::term::color_green()
+        } else {
+            crate::term::color_red()
+        };
         Some(format!("{}{}", color, file_group.name().to_string_lossy()))
     }
 
     pub fn pretty_mtime(&self) -> Option<String> {
-        if self.meta().is_err() { return None }
-        let time: chrono::DateTime<chrono::Local>
-            = chrono::Local.timestamp(self.meta().unwrap().mtime(), 0);
+        if self.meta().is_err() {
+            return None;
+        }
+        let time: chrono::DateTime<chrono::Local> =
+            chrono::Local.timestamp(self.meta().unwrap().mtime(), 0);
         Some(time.format("%F %R").to_string())
     }
 
@@ -958,7 +999,6 @@ impl File {
         self.path.short_string()
     }
 }
-
 
 pub trait PathBufExt {
     fn short_path(&self) -> PathBuf;
@@ -974,7 +1014,7 @@ impl PathBufExt for PathBuf {
             if let Ok(short) = self.strip_prefix(home) {
                 let mut path = PathBuf::from("~");
                 path.push(short);
-                return path
+                return path;
             }
         }
         return self.clone();
@@ -1052,20 +1092,20 @@ impl OsStrTools for OsStr {
                         split_pos.push((0, i));
                     } else {
                         let len = split_pos.len();
-                        let last_split = split_pos[len-1].1;
+                        let last_split = split_pos[len - 1].1;
                         split_pos.push((last_split, i));
                     }
                 }
                 split_pos
-            }).iter()
+            })
+            .iter()
             .map(|(start, end)| {
-                OsString::from_vec(orig_string[*start..*end]
-                                   .to_vec()).replace(&OsString::from_vec(pat.clone()),
-                                                      &OsString::from(""))
-            }).collect();
+                OsString::from_vec(orig_string[*start..*end].to_vec())
+                    .replace(&OsString::from_vec(pat.clone()), &OsString::from(""))
+            })
+            .collect();
         split_string
     }
-
 
     fn quote(&self) -> OsString {
         let mut string = self.as_bytes().to_vec();
@@ -1080,9 +1120,7 @@ impl OsStrTools for OsStr {
     }
 
     fn splice_quoted(&self, from: &OsStr, to: Vec<OsString>) -> Vec<OsString> {
-        let quoted_to = to.iter()
-            .map(|to| to.quote())
-            .collect();
+        let quoted_to = to.iter().map(|to| to.quote()).collect();
         self.splice_with(from, quoted_to)
     }
 
@@ -1099,13 +1137,10 @@ impl OsStrTools for OsStr {
         let fromlen = from.len();
 
         let lpart = OsString::from_vec(string[0..pos].to_vec());
-        let rpart = OsString::from_vec(string[pos+fromlen..].to_vec());
+        let rpart = OsString::from_vec(string[pos + fromlen..].to_vec());
 
-        let mut result = vec![
-            vec![lpart.trim_last_space()],
-            to,
-            vec![rpart]
-        ].into_iter()
+        let mut result = vec![vec![lpart.trim_last_space()], to, vec![rpart]]
+            .into_iter()
             .flatten()
             .filter(|part| part.len() != 0)
             .collect::<Vec<OsString>>();
@@ -1113,7 +1148,9 @@ impl OsStrTools for OsStr {
         if result.last() == Some(&OsString::from("")) {
             result.pop();
             result
-        } else { result }
+        } else {
+            result
+        }
     }
 
     fn replace(&self, from: &OsStr, to: &OsStr) -> OsString {
@@ -1130,9 +1167,12 @@ impl OsStrTools for OsStr {
                     pos.push(i);
                 }
                 pos
-            }).iter().rev().fold(orig_string.to_vec(), |mut string, pos| {
+            })
+            .iter()
+            .rev()
+            .fold(orig_string.to_vec(), |mut string, pos| {
                 let pos = *pos;
-                string.splice(pos..pos+from_len, to.clone());
+                string.splice(pos..pos + from_len, to.clone());
                 string
             });
 
@@ -1144,7 +1184,7 @@ impl OsStrTools for OsStr {
         let len = string.len();
 
         if len > 0 {
-            OsString::from_vec(string[..len-1].to_vec())
+            OsString::from_vec(string[..len - 1].to_vec())
         } else {
             self.to_os_string()
         }
@@ -1155,10 +1195,10 @@ impl OsStrTools for OsStr {
         let pat = pat.as_bytes();
         let pat_len = pat.len();
 
-        string.windows(pat_len)
-            .find(|chars|
-                  chars == &pat
-            ).is_some()
+        string
+            .windows(pat_len)
+            .find(|chars| chars == &pat)
+            .is_some()
     }
 
     fn position(&self, pat: &OsStr) -> Option<usize> {
@@ -1166,9 +1206,6 @@ impl OsStrTools for OsStr {
         let pat = pat.as_bytes();
         let pat_len = pat.len();
 
-        string.windows(pat_len)
-            .position(|chars|
-                      chars == pat
-            )
+        string.windows(pat_len).position(|chars| chars == pat)
     }
 }

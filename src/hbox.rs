@@ -1,8 +1,8 @@
-use termion::event::{Event};
+use termion::event::Event;
 
+use crate::coordinates::{Coordinates, Position, Size};
+use crate::fail::{ErrorLog, HError, HResult};
 use crate::widget::{Widget, WidgetCore};
-use crate::coordinates::{Coordinates, Size, Position};
-use crate::fail::{HResult, HError, ErrorLog};
 
 #[derive(PartialEq)]
 pub struct HBox<T: Widget> {
@@ -13,21 +13,25 @@ pub struct HBox<T: Widget> {
     pub active: Option<usize>,
 }
 
-
-impl<T> HBox<T> where T: Widget + PartialEq {
+impl<T> HBox<T>
+where
+    T: Widget + PartialEq,
+{
     pub fn new(core: &WidgetCore) -> HBox<T> {
-        HBox { core: core.clone(),
-               widgets: vec![],
-               ratios: None,
-               zoom_active: false,
-               active: None
-         }
+        HBox {
+            core: core.clone(),
+            widgets: vec![],
+            ratios: None,
+            zoom_active: false,
+            active: None,
+        }
     }
-
 
     pub fn resize_children(&mut self) -> HResult<()> {
         let len = self.widgets.len();
-        if len == 0 { return Ok(()) }
+        if len == 0 {
+            return Ok(());
+        }
 
         if self.zoom_active {
             let coords = self.core.coordinates.clone();
@@ -36,7 +40,6 @@ impl<T> HBox<T> where T: Widget + PartialEq {
         }
 
         let coords: Vec<Coordinates> = self.calculate_coordinates()?;
-
 
         for (widget, coord) in self.widgets.iter_mut().zip(coords.iter()) {
             widget.set_coordinates(coord).log();
@@ -83,14 +86,15 @@ impl<T> HBox<T> where T: Widget + PartialEq {
 
     pub fn calculate_equal_ratios(&self) -> HResult<Vec<usize>> {
         let len = self.widgets.len();
-        if len == 0 { return HError::no_widget(); }
+        if len == 0 {
+            return HError::no_widget();
+        }
 
         let ratios = (0..len).map(|_| 100 / len).collect();
         Ok(ratios)
     }
 
-    pub fn calculate_coordinates(&self)
-                                 -> HResult<Vec<Coordinates>> {
+    pub fn calculate_coordinates(&self) -> HResult<Vec<Coordinates>> {
         let box_coords = self.get_coordinates()?;
         let box_xsize = box_coords.xsize();
         let box_ysize = box_coords.ysize();
@@ -98,39 +102,39 @@ impl<T> HBox<T> where T: Widget + PartialEq {
 
         let ratios = match &self.ratios {
             Some(ratios) => ratios.clone(),
-            None => self.calculate_equal_ratios()?
+            None => self.calculate_equal_ratios()?,
         };
 
-        let coords = ratios.iter().fold(Vec::<Coordinates>::new(), |mut coords, ratio| {
-            let ratio = *ratio as u16;
-            let len = coords.len();
-            let gap = if len == 0 { 0 } else { 1 };
+        let coords = ratios
+            .iter()
+            .fold(Vec::<Coordinates>::new(), |mut coords, ratio| {
+                let ratio = *ratio as u16;
+                let len = coords.len();
+                let gap = if len == 0 { 0 } else { 1 };
 
-            let widget_xsize = box_xsize * ratio / 100;
-            let widget_xpos = if len == 0 {
-                box_coords.top().x()
-            } else {
-                let prev_coords = coords.last().unwrap();
-                let prev_xsize = prev_coords.xsize();
-                let prev_xpos = prev_coords.position().x();
+                let widget_xsize = box_xsize * ratio / 100;
+                let widget_xpos = if len == 0 {
+                    box_coords.top().x()
+                } else {
+                    let prev_coords = coords.last().unwrap();
+                    let prev_xsize = prev_coords.xsize();
+                    let prev_xpos = prev_coords.position().x();
 
-                prev_xsize + prev_xpos + gap
-            };
+                    prev_xsize + prev_xpos + gap
+                };
 
-            coords.push(Coordinates {
-                size: Size((widget_xsize,
-                            box_ysize)),
-                position: Position((widget_xpos,
-                                   box_top))
+                coords.push(Coordinates {
+                    size: Size((widget_xsize, box_ysize)),
+                    position: Position((widget_xpos, box_top)),
+                });
+                coords
             });
-            coords
-        });
 
         Ok(coords)
     }
 
     pub fn set_active(&mut self, i: usize) -> HResult<()> {
-        if i+1 > self.widgets.len() {
+        if i + 1 > self.widgets.len() {
             HError::no_widget()?
         }
         self.active = Some(i);
@@ -146,10 +150,10 @@ impl<T> HBox<T> where T: Widget + PartialEq {
     }
 }
 
-
-
-
-impl<T> Widget for HBox<T> where T: Widget + PartialEq {
+impl<T> Widget for HBox<T>
+where
+    T: Widget + PartialEq,
+{
     fn get_core(&self) -> HResult<&WidgetCore> {
         Ok(&self.core)
     }
@@ -184,9 +188,16 @@ impl<T> Widget for HBox<T> where T: Widget + PartialEq {
             return self.active_widget()?.get_drawlist();
         }
 
-        Ok(self.widgets.iter().map(|child| {
-            child.get_drawlist().log_and().unwrap_or_else(|_| String::new())
-        }).collect())
+        Ok(self
+            .widgets
+            .iter()
+            .map(|child| {
+                child
+                    .get_drawlist()
+                    .log_and()
+                    .unwrap_or_else(|_| String::new())
+            })
+            .collect())
     }
 
     fn on_event(&mut self, event: Event) -> HResult<()> {

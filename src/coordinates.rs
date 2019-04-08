@@ -17,10 +17,10 @@ impl Coordinates {
         }
     }
 
-    pub fn new_at(xsize: u16, ysize: u16, xpos: u16, ypos: u16 ) -> Coordinates {
+    pub fn new_at(xsize: u16, ysize: u16, xpos: u16, ypos: u16) -> Coordinates {
         Coordinates {
             size: Size((xsize, ysize)),
-            position: Position((xpos, ypos))
+            position: Position((xpos, ypos)),
         }
     }
 
@@ -33,7 +33,7 @@ impl Coordinates {
     }
 
     pub fn set_size_u(&mut self, x: usize, y: usize) {
-        self.size.0 = ((x+1) as u16, (y+1) as u16);
+        self.size.0 = ((x + 1) as u16, (y + 1) as u16);
     }
 
     pub fn set_xsize(&mut self, x: u16) {
@@ -49,7 +49,7 @@ impl Coordinates {
     }
 
     pub fn set_position_u(&mut self, x: usize, y: usize) {
-        self.position.0 = ((x+1) as u16, (y+1) as u16);
+        self.position.0 = ((x + 1) as u16, (y + 1) as u16);
     }
 
     pub fn set_xpos(&mut self, x: u16) {
@@ -90,7 +90,7 @@ impl Coordinates {
 
     pub fn position_u(&self) -> (usize, usize) {
         let (xpos, ypos) = self.u16position();
-        ((xpos-1) as usize, (ypos-1) as usize)
+        ((xpos - 1) as usize, (ypos - 1) as usize)
     }
 
     pub fn size(&self) -> &Size {
@@ -103,7 +103,7 @@ impl Coordinates {
 
     pub fn size_u(&self) -> (usize, usize) {
         let (xsize, ysize) = self.u16size();
-        ((xsize-1) as usize, (ysize-1) as usize)
+        ((xsize - 1) as usize, (ysize - 1) as usize)
     }
 
     pub fn top(&self) -> Position {
@@ -119,7 +119,7 @@ impl Size {
     }
     pub fn size_u(&self) -> (usize, usize) {
         let (xsize, ysize) = self.0;
-        ((xsize-1) as usize, (ysize-1) as usize)
+        ((xsize - 1) as usize, (ysize - 1) as usize)
     }
     pub fn xsize(&self) -> u16 {
         (self.0).0
@@ -135,7 +135,7 @@ impl Position {
     }
     pub fn position_u(&self) -> (usize, usize) {
         let (xpos, ypos) = self.0;
-        ((xpos-1) as usize, (ypos-1) as usize)
+        ((xpos - 1) as usize, (ypos - 1) as usize)
     }
     pub fn x(&self) -> u16 {
         (self.0).0

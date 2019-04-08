@@ -1,8 +1,8 @@
 use termion::event::Key;
 
-use crate::widget::{Widget, WidgetCore};
-use crate::fail::{HResult, ErrorLog};
 use crate::coordinates::Coordinates;
+use crate::fail::{ErrorLog, HResult};
+use crate::widget::{Widget, WidgetCore};
 
 pub trait Tabbable {
     fn new_tab(&mut self) -> HResult<()>;
@@ -18,33 +18,42 @@ pub trait Tabbable {
     fn on_key_sub(&mut self, key: Key) -> HResult<()>;
     fn on_key(&mut self, key: Key) -> HResult<()> {
         match key {
-            Key::F(n) => self.goto_tab(n as usize -1),
+            Key::F(n) => self.goto_tab(n as usize - 1),
             Key::Ctrl('t') => self.new_tab(),
             Key::Ctrl('w') => self.close_tab(),
             Key::Char('\t') => self.next_tab(),
-            _ => self.on_key_sub(key)
+            _ => self.on_key_sub(key),
         }
     }
-    fn on_refresh(&mut self) -> HResult<()> { Ok(()) }
-    fn on_config_loaded(&mut self) -> HResult<()> { Ok(()) }
-
-
+    fn on_refresh(&mut self) -> HResult<()> {
+        Ok(())
+    }
+    fn on_config_loaded(&mut self) -> HResult<()> {
+        Ok(())
+    }
 }
-
 
 #[derive(PartialEq)]
-pub struct TabView<T> where T: Widget, TabView<T>: Tabbable {
+pub struct TabView<T>
+where
+    T: Widget,
+    TabView<T>: Tabbable,
+{
     pub widgets: Vec<T>,
     pub active: usize,
-    core: WidgetCore
+    core: WidgetCore,
 }
 
-impl<T> TabView<T> where T: Widget, TabView<T>: Tabbable {
+impl<T> TabView<T>
+where
+    T: Widget,
+    TabView<T>: Tabbable,
+{
     pub fn new(core: &WidgetCore) -> TabView<T> {
         TabView {
             widgets: vec![],
             active: 0,
-            core: core.clone()
+            core: core.clone(),
         }
     }
 
@@ -65,7 +74,7 @@ impl<T> TabView<T> where T: Widget, TabView<T>: Tabbable {
         let len = self.widgets.len();
         if len > 1 {
             self.widgets.remove(index);
-            if index+1 == len {
+            if index + 1 == len {
                 self.active -= 1;
             }
         }
@@ -103,7 +112,11 @@ impl<T> TabView<T> where T: Widget, TabView<T>: Tabbable {
     }
 }
 
-impl<T> Widget for TabView<T> where T: Widget, TabView<T>: Tabbable {
+impl<T> Widget for TabView<T>
+where
+    T: Widget,
+    TabView<T>: Tabbable,
+{
     fn get_core(&self) -> HResult<&WidgetCore> {
         Ok(&self.core)
     }
@@ -128,34 +141,36 @@ impl<T> Widget for TabView<T> where T: Widget, TabView<T>: Tabbable {
         let header = self.active_tab_().render_header()?;
         let tab_names = self.get_tab_names();
         let mut nums_length = 0;
-        let tabnums = (0..self.widgets.len()).map(|num| {
-            nums_length += format!("{}:{} ",
-                                   num,
-                                   tab_names[num].as_ref().unwrap()).len();
-            if num == self.active {
-                format!(" {}{}:{}{}{}",
+        let tabnums = (0..self.widgets.len())
+            .map(|num| {
+                nums_length += format!("{}:{} ", num, tab_names[num].as_ref().unwrap()).len();
+                if num == self.active {
+                    format!(
+                        " {}{}:{}{}{}",
                         crate::term::invert(),
                         num,
                         tab_names[num].as_ref().unwrap(),
                         crate::term::reset(),
-                        crate::term::header_color())
-            } else {
-                format!(" {}:{}", num, tab_names[num].as_ref().unwrap())
-            }
-        }).collect::<String>();
-
+                        crate::term::header_color()
+                    )
+                } else {
+                    format!(" {}:{}", num, tab_names[num].as_ref().unwrap())
+                }
+            })
+            .collect::<String>();
 
         let nums_pos = xsize.saturating_sub(nums_length as u16);
 
-        Ok(format!("{}{}{}{}",
-                header,
-                crate::term::header_color(),
-                crate::term::goto_xy(nums_pos, 1),
-                tabnums))
+        Ok(format!(
+            "{}{}{}{}",
+            header,
+            crate::term::header_color(),
+            crate::term::goto_xy(nums_pos, 1),
+            tabnums
+        ))
     }
 
-    fn render_footer(&self) -> HResult<String>
-    {
+    fn render_footer(&self) -> HResult<String> {
         self.active_tab_().render_footer()
     }
 

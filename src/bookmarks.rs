@@ -2,10 +2,10 @@ use termion::event::Key;
 
 use std::collections::HashMap;
 
-use crate::fail::{HResult, HError, ErrorLog};
-use crate::widget::{Widget, WidgetCore};
 use crate::coordinates::Coordinates;
+use crate::fail::{ErrorLog, HError, HResult};
 use crate::term;
+use crate::widget::{Widget, WidgetCore};
 
 #[derive(PartialEq, Eq, Clone, Debug)]
 pub struct Bookmarks {
@@ -14,7 +14,9 @@ pub struct Bookmarks {
 
 impl Bookmarks {
     pub fn new() -> Bookmarks {
-        let mut bm = Bookmarks { mapping: HashMap::new() };
+        let mut bm = Bookmarks {
+            mapping: HashMap::new(),
+        };
         bm.load().log();
         bm
     }
@@ -35,8 +37,7 @@ impl Bookmarks {
         }
 
         let bm_content = std::fs::read_to_string(bm_file)?;
-        let mapping = bm_content.lines()
-            .fold(HashMap::new(), |mut bm, line| {
+        let mapping = bm_content.lines().fold(HashMap::new(), |mut bm, line| {
             let parts = line.splitn(2, ":").collect::<Vec<&str>>();
             if parts.len() == 2 {
                 if let Some(key) = parts[0].chars().next() {
@@ -62,16 +63,17 @@ impl Bookmarks {
     }
     pub fn save(&self) -> HResult<()> {
         let bm_file = crate::paths::bookmark_path()?;
-        let bookmarks = self.mapping.iter().map(|(key, path)| {
-            format!("{}:{}\n", key, path)
-        }).collect::<String>();
+        let bookmarks = self
+            .mapping
+            .iter()
+            .map(|(key, path)| format!("{}:{}\n", key, path))
+            .collect::<String>();
 
         std::fs::write(bm_file, bookmarks)?;
 
         Ok(())
     }
 }
-
 
 pub struct BMPopup {
     core: WidgetCore,
@@ -86,7 +88,7 @@ impl BMPopup {
             core: core.clone(),
             bookmarks: Bookmarks::new(),
             bookmark_path: None,
-            add_mode: false
+            add_mode: false,
         };
         bmpopup.set_coordinates(&core.coordinates).log();
         bmpopup
@@ -96,8 +98,8 @@ impl BMPopup {
         self.bookmark_path = Some(cwd);
         self.refresh()?;
         match self.popup() {
-            Ok(_) => {},
-            Err(HError::PopupFinnished) => {},
+            Ok(_) => {}
+            Err(HError::PopupFinnished) => {}
             err @ Err(HError::TerminalResizedError) => err?,
             err @ Err(HError::WidgetResizedError) => err?,
             err @ Err(_) => err?,
@@ -132,10 +134,10 @@ impl BMPopup {
             crate::term::reset(),
             key,
             path,
-            padding = padding as usize)
+            padding = padding as usize
+        )
     }
 }
-
 
 impl Widget for BMPopup {
     fn get_core(&self) -> HResult<&WidgetCore> {
@@ -155,9 +157,11 @@ impl Widget for BMPopup {
     fn set_coordinates(&mut self, _: &Coordinates) -> HResult<()> {
         let (xsize, ysize) = crate::term::size()?;
         let len = self.bookmarks.mapping.len();
-        let ysize = ysize.saturating_sub( len + 1 );
+        let ysize = ysize.saturating_sub(len + 1);
 
-        self.core.coordinates.set_size_u(xsize.saturating_sub(1), len);
+        self.core
+            .coordinates
+            .set_size_u(xsize.saturating_sub(1), len);
         self.core.coordinates.set_position_u(1, ysize);
 
         Ok(())
@@ -173,10 +177,16 @@ impl Widget for BMPopup {
             drawlist += &self.render_line(ypos, &'`', cwd);
         }
 
-        let bm_list = self.bookmarks.mapping.iter().enumerate().map(|(i, (key, path))| {
-            let line = i as u16 + ypos + 1;
-            self.render_line(line, key, path)
-        }).collect::<String>();
+        let bm_list = self
+            .bookmarks
+            .mapping
+            .iter()
+            .enumerate()
+            .map(|(i, (key, path))| {
+                let line = i as u16 + ypos + 1;
+                self.render_line(line, key, path)
+            })
+            .collect::<String>();
 
         drawlist += &bm_list;
 
@@ -186,8 +196,8 @@ impl Widget for BMPopup {
         match key {
             Key::Ctrl('c') => {
                 self.bookmark_path = None;
-                return HError::popup_finnished()
-            },
+                return HError::popup_finnished();
+            }
             Key::Char('`') => return HError::popup_finnished(),
             Key::Char(key) => {
                 if self.add_mode {

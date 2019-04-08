@@ -1,19 +1,21 @@
-use systemstat::{System, Platform};
 use systemstat::data::Filesystem;
+use systemstat::{Platform, System};
 
-use std::path::{Path, PathBuf, Component};
 use std::collections::HashMap;
+use std::path::{Component, Path, PathBuf};
 
-use crate::fail::{HResult, ErrorLog};
+use crate::fail::{ErrorLog, HResult};
 
-#[derive(Debug,Clone)]
+#[derive(Debug, Clone)]
 pub struct FsStat {
-    pub stats: HashMap<PathBuf, Filesystem>
+    pub stats: HashMap<PathBuf, Filesystem>,
 }
 
 impl FsStat {
     pub fn new() -> HResult<FsStat> {
-        let mut stats = FsStat { stats: HashMap::new() };
+        let mut stats = FsStat {
+            stats: HashMap::new(),
+        };
         stats.refresh().log();
 
         Ok(stats)
@@ -23,7 +25,8 @@ impl FsStat {
         let sys = System::new();
         let mounts = sys.mounts()?;
 
-        let stats = mounts.into_iter()
+        let stats = mounts
+            .into_iter()
             .fold(HashMap::new(), |mut stats, mount: Filesystem| {
                 let path = PathBuf::from(&mount.fs_mounted_on);
                 stats.insert(path, mount);
@@ -42,16 +45,15 @@ impl FsStat {
             .filter(|mount_point| path.starts_with(&mount_point))
             .collect::<Vec<&PathBuf>>();
 
-        let deepest_match = candidates.iter()
-            .fold(PathBuf::new(), |mut deepest, path| {
-                let curren_path_len = deepest.components().count();
-                let candidate_path_len = path.components().count();
+        let deepest_match = candidates.iter().fold(PathBuf::new(), |mut deepest, path| {
+            let curren_path_len = deepest.components().count();
+            let candidate_path_len = path.components().count();
 
-                if candidate_path_len >  curren_path_len {
-                    deepest = path.to_path_buf();
-                }
-               deepest
-            });
+            if candidate_path_len > curren_path_len {
+                deepest = path.to_path_buf();
+            }
+            deepest
+        });
         let fs = self.stats.get(&deepest_match)?;
         Ok(fs)
     }
@@ -69,7 +71,7 @@ impl FsExt for Filesystem {
         let dev = path.components().last().unwrap();
         let dev = match dev {
             Component::Normal(dev) => dev.to_string_lossy().to_string(),
-            _ => "wtf".to_string()
+            _ => "wtf".to_string(),
         };
         dev
     }

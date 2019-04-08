@@ -1,5 +1,5 @@
-use std::sync::{Arc, RwLock};
 use std::hash::{Hash, Hasher};
+use std::sync::{Arc, RwLock};
 
 #[derive(PartialEq, Eq, Hash, Clone, Debug)]
 pub struct DirtyBit(bool);
@@ -33,7 +33,6 @@ pub trait Dirtyable {
     fn set_clean(&mut self);
 }
 
-
 impl DirtyBit {
     pub fn new() -> DirtyBit {
         DirtyBit(false)
@@ -45,7 +44,6 @@ impl AsyncDirtyBit {
         AsyncDirtyBit(Arc::new(RwLock::new(DirtyBit::new())))
     }
 }
-
 
 impl Dirtyable for DirtyBit {
     fn is_dirty(&self) -> bool {

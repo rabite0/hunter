@@ -1,10 +1,10 @@
 use std::io::BufRead;
 
+use crate::dirty::Dirtyable;
+use crate::fail::HResult;
 use crate::files::File;
 use crate::term::sized_string;
 use crate::widget::{Widget, WidgetCore};
-use crate::fail::HResult;
-use crate::dirty::Dirtyable;
 
 #[derive(PartialEq)]
 pub struct TextView {
@@ -26,9 +26,9 @@ impl TextView {
     pub fn new_from_file(core: &WidgetCore, file: &File) -> HResult<TextView> {
         let file = std::fs::File::open(&file.path)?;
         let file = std::io::BufReader::new(file);
-        let lines = file.lines().map(|line|
-                                     Ok(line?
-                                        .replace("\t", "    ")))
+        let lines = file
+            .lines()
+            .map(|line| Ok(line?.replace("\t", "    ")))
             .filter_map(|l: HResult<String>| l.ok())
             .collect();
 
@@ -39,16 +39,17 @@ impl TextView {
             offset: 0,
         })
     }
-    pub fn new_from_file_limit_lines(core: &WidgetCore,
-                                     file: &File,
-                                     num: usize) -> HResult<TextView> {
+    pub fn new_from_file_limit_lines(
+        core: &WidgetCore,
+        file: &File,
+        num: usize,
+    ) -> HResult<TextView> {
         let file = std::fs::File::open(&file.path).unwrap();
         let file = std::io::BufReader::new(file);
-        let lines = file.lines()
-                        .take(num)
-                        .map(|line|
-                             Ok(line?
-                                .replace("\t", "    ")))
+        let lines = file
+            .lines()
+            .take(num)
+            .map(|line| Ok(line?.replace("\t", "    ")))
             .filter_map(|l: HResult<String>| l.ok())
             .collect();
 
@@ -76,10 +77,12 @@ impl TextView {
         let offset = self.offset as isize;
         let len = self.lines.len() as isize;
 
-        if len <= ysize + offset { return }
+        if len <= ysize + offset {
+            return;
+        }
 
         if amount > 0 {
-            if  ysize + amount + offset + 1 >= len {
+            if ysize + amount + offset + 1 >= len {
                 // Too far down
                 self.offset = (len - ysize - 1) as usize;
             } else {
@@ -152,21 +155,22 @@ impl Widget for TextView {
         let (xsize, ysize) = self.get_coordinates()?.size().size();
         let (xpos, ypos) = self.get_coordinates()?.position().position();
 
-        let output = self.get_clearlist()? +
-            &self
-            .lines
-            .iter()
-            .skip(self.offset)
-            .take(ysize as usize)
-            .enumerate()
-            .map(|(i, line)| {
-                format!(
-                    "{}{}{}",
-                    crate::term::goto_xy(xpos, i as u16 + ypos),
-                    crate::term::reset(),
-                    sized_string(&line, xsize))
-            })
-            .collect::<String>();
+        let output = self.get_clearlist()?
+            + &self
+                .lines
+                .iter()
+                .skip(self.offset)
+                .take(ysize as usize)
+                .enumerate()
+                .map(|(i, line)| {
+                    format!(
+                        "{}{}{}",
+                        crate::term::goto_xy(xpos, i as u16 + ypos),
+                        crate::term::reset(),
+                        sized_string(&line, xsize)
+                    )
+                })
+                .collect::<String>();
         Ok(output)
     }
 }

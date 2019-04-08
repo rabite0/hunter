@@ -2,10 +2,10 @@ use termion::event::Key;
 
 use std::collections::HashMap;
 
-use crate::coordinates::{Coordinates};
-use crate::widget::{Widget, WidgetCore};
-use crate::fail::{HResult, HError, ErrorLog};
+use crate::coordinates::Coordinates;
+use crate::fail::{ErrorLog, HError, HResult};
 use crate::term::ScreenExt;
+use crate::widget::{Widget, WidgetCore};
 
 type HMap = HashMap<String, Vec<String>>;
 
@@ -13,7 +13,7 @@ type HMap = HashMap<String, Vec<String>>;
 struct History {
     history: HMap,
     position: Option<usize>,
-    loaded: bool
+    loaded: bool,
 }
 
 impl History {
@@ -21,31 +21,35 @@ impl History {
         History {
             history: HashMap::new(),
             position: None,
-            loaded: false
+            loaded: false,
         }
     }
 
     fn load(&mut self) -> HResult<()> {
-        if self.loaded { return Ok(()) }
+        if self.loaded {
+            return Ok(());
+        }
 
         let hpath = crate::paths::history_path()?;
         let hf_content = std::fs::read_to_string(hpath)?;
 
-        let history = hf_content.lines().fold(HashMap::new(), |mut hm: HMap, line| {
-            let parts = line.splitn(2, ":").collect::<Vec<&str>>();
-            if parts.len() == 2 {
-                let (htype, hline) = (parts[0].to_string(), parts[1].to_string());
+        let history = hf_content
+            .lines()
+            .fold(HashMap::new(), |mut hm: HMap, line| {
+                let parts = line.splitn(2, ":").collect::<Vec<&str>>();
+                if parts.len() == 2 {
+                    let (htype, hline) = (parts[0].to_string(), parts[1].to_string());
 
-                match hm.get_mut(&htype) {
-                    Some(hvec) => hvec.push(hline),
-                    None => {
-                        let hvec = vec![hline];
-                        hm.insert(htype, hvec);
-                    }
-                };
-            }
-            hm
-        });
+                    match hm.get_mut(&htype) {
+                        Some(hvec) => hvec.push(hline),
+                        None => {
+                            let hvec = vec![hline];
+                            hm.insert(htype, hvec);
+                        }
+                    };
+                }
+                hm
+            });
 
         self.history = history;
         self.loaded = true;
@@ -56,10 +60,16 @@ impl History {
     fn save(&self) -> HResult<()> {
         let hpath = crate::paths::history_path()?;
 
-        let history = self.history.iter().map(|(htype, hlines)| {
-            hlines.iter().map(|hline| format!("{}:{}\n", htype, hline))
-                .collect::<String>()
-        }).collect::<String>();
+        let history = self
+            .history
+            .iter()
+            .map(|(htype, hlines)| {
+                hlines
+                    .iter()
+                    .map(|hline| format!("{}:{}\n", htype, hline))
+                    .collect::<String>()
+            })
+            .collect::<String>();
 
         std::fs::write(hpath, history)?;
         Ok(())
@@ -89,8 +99,12 @@ impl History {
         let mut position = self.position;
         let hist_len = history.len();
 
-        if position == Some(0) { position = None; }
-        if hist_len == 0 { return Err(HError::NoHistoryError); }
+        if position == Some(0) {
+            position = None;
+        }
+        if hist_len == 0 {
+            return Err(HError::NoHistoryError);
+        }
 
         if let Some(position) = position {
             let historic = history[position - 1].clone();
@@ -101,7 +115,6 @@ impl History {
             self.position = Some(hist_len - 1);
             Ok(historic)
         }
-
     }
 
     fn get_next(&mut self, htype: &str) -> HResult<String> {
@@ -110,10 +123,12 @@ impl History {
         let mut position = self.position;
         let hist_len = history.len();
 
-        if hist_len == 0 { return Err(HError::NoHistoryError); }
-        if position == Some(hist_len) ||
-           position == None
-            { position = Some(0); }
+        if hist_len == 0 {
+            return Err(HError::NoHistoryError);
+        }
+        if position == Some(hist_len) || position == None {
+            position = Some(0);
+        }
 
         if let Some(position) = position {
             let historic = history[position].clone();
@@ -135,7 +150,7 @@ pub struct MiniBuffer {
     position: usize,
     history: History,
     completions: Vec<String>,
-    last_completion: Option<String>
+    last_completion: Option<String>,
 }
 
 impl MiniBuffer {
@@ -152,7 +167,7 @@ impl MiniBuffer {
             position: 0,
             history: History::new(),
             completions: vec![],
-            last_completion: None
+            last_completion: None,
         }
     }
 
@@ -171,7 +186,9 @@ impl MiniBuffer {
             _ => {}
         };
 
-        if self.input == "" { self.input_empty()?; }
+        if self.input == "" {
+            self.input_empty()?;
+        }
 
         Ok(self.input.clone())
     }
@@ -183,7 +200,8 @@ impl MiniBuffer {
                 return Ok(());
             }
 
-            let part = self.input
+            let part = self
+                .input
                 .rsplitn(2, " ")
                 .take(1)
                 .map(|s| s.to_string())
@@ -193,8 +211,7 @@ impl MiniBuffer {
             if let Ok(mut completions) = completions {
                 let completion = completions.pop()?;
 
-                self.input
-                    = self.input[..self.input.len() - part.len()].to_string();
+                self.input = self.input[..self.input.len() - part.len()].to_string();
                 self.input.push_str(&completion);
                 self.position += &completion.len() - part.len();
 
@@ -206,8 +223,7 @@ impl MiniBuffer {
                 if let Ok(mut completions) = completions {
                     let completion = completions.pop()?;
 
-                    self.input = self.input[..self.input.len()
-                                            - part.len()].to_string();
+                    self.input = self.input[..self.input.len() - part.len()].to_string();
                     self.input.push_str(&completion);
                     self.position += &completion.len() - part.len();
 
@@ -286,26 +302,16 @@ impl MiniBuffer {
         let new_input = match boundaries {
             (Some(dir_boundary), Some(word_boundary)) => {
                 if dir_boundary > word_boundary {
-                    before_cursor
-                        .split_at(dir_boundary).0
-                        .to_string() + "/"
+                    before_cursor.split_at(dir_boundary).0.to_string() + "/"
                 } else {
-                    before_cursor
-                        .split_at(word_boundary).0
-                        .to_string() + " "
+                    before_cursor.split_at(word_boundary).0.to_string() + " "
                 }
             }
-            (Some(dir_boundary), None) => {
-                before_cursor
-                    .split_at(dir_boundary).0
-                    .to_string() + "/"
-            }
+            (Some(dir_boundary), None) => before_cursor.split_at(dir_boundary).0.to_string() + "/",
             (None, Some(word_boundary)) => {
-                before_cursor
-                    .split_at(word_boundary).0
-                    .to_string() + " "
+                before_cursor.split_at(word_boundary).0.to_string() + " "
             }
-            (None, None) => "".to_string()
+            (None, None) => "".to_string(),
         } + after_cursor;
 
         let len_difference = old_input_len - new_input.len();
@@ -317,17 +323,17 @@ impl MiniBuffer {
     }
 
     pub fn input_finnished(&self) -> HResult<()> {
-        return HError::popup_finnished()
+        return HError::popup_finnished();
     }
 
     pub fn input_cancelled(&self) -> HResult<()> {
         self.show_status("Input cancelled").log();
-        return HError::minibuffer_cancel()
+        return HError::minibuffer_cancel();
     }
 
     pub fn input_empty(&self) -> HResult<()> {
         self.show_status("Empty!").log();
-        return HError::minibuffer_empty()
+        return HError::minibuffer_empty();
     }
 }
 
@@ -338,23 +344,32 @@ pub fn find_bins(comp_name: &str) -> HResult<Vec<String>> {
         .map(|s| s.to_string())
         .collect::<Vec<String>>();
 
-    let completions = paths.iter().map(|path| {
-        if let Ok(read_dir) = std::fs::read_dir(path) {
-            read_dir.map(|file| {
-                let file = file.unwrap();
-                let name = file.file_name().into_string().unwrap();
-                if name.starts_with(comp_name) {
-                    Ok(name)
-                } else {
-                    Err(HError::NoCompletionsError)
-                }
-            }).collect::<Vec<HResult<String>>>()
-        } else { vec![Err(HError::NoCompletionsError)] }
-    }).flatten()
+    let completions = paths
+        .iter()
+        .map(|path| {
+            if let Ok(read_dir) = std::fs::read_dir(path) {
+                read_dir
+                    .map(|file| {
+                        let file = file.unwrap();
+                        let name = file.file_name().into_string().unwrap();
+                        if name.starts_with(comp_name) {
+                            Ok(name)
+                        } else {
+                            Err(HError::NoCompletionsError)
+                        }
+                    })
+                    .collect::<Vec<HResult<String>>>()
+            } else {
+                vec![Err(HError::NoCompletionsError)]
+            }
+        })
+        .flatten()
         .filter(|result| result.is_ok())
         .map(|result| result.unwrap())
         .collect::<Vec<String>>();
-    if completions.is_empty() { return Err(HError::NoCompletionsError); }
+    if completions.is_empty() {
+        return Err(HError::NoCompletionsError);
+    }
     Ok(completions)
 }
 
@@ -365,29 +380,37 @@ pub fn find_files(comp_name: String) -> HResult<Vec<String>> {
 
     let filename_part = path.file_name()?.to_string_lossy().to_string();
 
-    let dir = if path.is_dir() { &path } else { path.parent().unwrap() };
+    let dir = if path.is_dir() {
+        &path
+    } else {
+        path.parent().unwrap()
+    };
     let dir = std::path::PathBuf::from(dir);
 
     let prefix = comp_name.trim_end_matches(&filename_part);
 
     let reader = std::fs::read_dir(&dir)?;
 
-    let completions = reader.map(|file| {
-        let file = file?;
-        let name = file.file_name().into_string().unwrap();
-        if name.starts_with(&filename_part) {
-            if file.file_type().unwrap().is_dir() {
-                Ok(format!("{}{}/", prefix, name))
+    let completions = reader
+        .map(|file| {
+            let file = file?;
+            let name = file.file_name().into_string().unwrap();
+            if name.starts_with(&filename_part) {
+                if file.file_type().unwrap().is_dir() {
+                    Ok(format!("{}{}/", prefix, name))
+                } else {
+                    Ok(format!("{}{}", prefix, name))
+                }
             } else {
-                Ok(format!("{}{}", prefix, name))
+                Err(HError::NoCompletionsError)
             }
-        } else {
-            Err(HError::NoCompletionsError)
-        }
-    }).filter(|res| res.is_ok() )
-      .map(|res| res.unwrap() )
-      .collect::<Vec<String>>();
-    if completions.is_empty() { return Err(HError::NoCompletionsError); }
+        })
+        .filter(|res| res.is_ok())
+        .map(|res| res.unwrap())
+        .collect::<Vec<String>>();
+    if completions.is_empty() {
+        return Err(HError::NoCompletionsError);
+    }
     Ok(completions)
 }
 
@@ -404,19 +427,21 @@ impl Widget for MiniBuffer {
 
     fn get_drawlist(&self) -> HResult<String> {
         let (xpos, ypos) = self.get_coordinates()?.u16position();
-        Ok(format!("{}{}{}{}: {}",
-                crate::term::goto_xy(xpos, ypos),
-                termion::clear::CurrentLine,
-                crate::term::header_color(),
-                self.query,
-                self.input))
+        Ok(format!(
+            "{}{}{}{}: {}",
+            crate::term::goto_xy(xpos, ypos),
+            termion::clear::CurrentLine,
+            crate::term::header_color(),
+            self.query,
+            self.input
+        ))
     }
 
     fn on_key(&mut self, key: Key) -> HResult<()> {
         match key {
             Key::Esc | Key::Ctrl('c') => {
                 self.input_cancelled()?;
-            },
+            }
             Key::Char('\n') => {
                 if self.input != "" {
                     self.history.add(&self.query, &self.input);
@@ -427,7 +452,7 @@ impl Widget for MiniBuffer {
                 self.complete()?;
             }
             Key::F(n) => {
-                let fnstr = format!("${}", n-1);
+                let fnstr = format!("${}", n - 1);
                 self.input.insert_str(self.position, &fnstr);
                 self.position += 2;
             }
@@ -458,23 +483,27 @@ impl Widget for MiniBuffer {
             Key::Down | Key::Ctrl('n') | Key::Alt('n') => {
                 self.history_down()?;
             }
-            Key::Ctrl('u') => { self.clear_line()?; },
-            Key::Ctrl('h') => { self.delete_word()?; },
-            Key::Ctrl('a') => { self.position = 0 },
-            Key::Ctrl('e') => { self.position = self.input.len(); },
+            Key::Ctrl('u') => {
+                self.clear_line()?;
+            }
+            Key::Ctrl('h') => {
+                self.delete_word()?;
+            }
+            Key::Ctrl('a') => self.position = 0,
+            Key::Ctrl('e') => {
+                self.position = self.input.len();
+            }
             Key::Char(key) => {
                 self.input.insert(self.position, key);
                 self.position += 1;
             }
-            _ => {  }
+            _ => {}
         }
         Ok(())
     }
 
     fn after_draw(&self) -> HResult<()> {
-        let cursor_pos = self.query.len() +
-                         ": ".len() +
-                         self.position;
+        let cursor_pos = self.query.len() + ": ".len() + self.position;
 
         let mut screen = self.screen()?;
         let ysize = screen.ysize()?;

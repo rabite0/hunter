@@ -3,20 +3,30 @@ use unicode_width::UnicodeWidthStr;
 
 use std::path::{Path, PathBuf};
 
+use crate::dirty::Dirtyable;
+use crate::fail::{ErrorLog, HResult};
 use crate::files::{File, Files};
-use crate::fail::{HResult, ErrorLog};
 use crate::term;
 use crate::widget::{Widget, WidgetCore};
-use crate::dirty::Dirtyable;
 
 pub trait Listable {
     fn len(&self) -> usize;
     fn render(&self) -> Vec<String>;
-    fn render_header(&self) -> HResult<String> { Ok("".to_string()) }
-    fn render_footer(&self) -> HResult<String> { Ok("".to_string()) }
-    fn on_new(&mut self) -> HResult<()> { Ok(()) }
-    fn on_refresh(&mut self) -> HResult<()> { Ok(()) }
-    fn on_key(&mut self, _key: Key) -> HResult<()> { Ok(()) }
+    fn render_header(&self) -> HResult<String> {
+        Ok("".to_string())
+    }
+    fn render_footer(&self) -> HResult<String> {
+        Ok("".to_string())
+    }
+    fn on_new(&mut self) -> HResult<()> {
+        Ok(())
+    }
+    fn on_refresh(&mut self) -> HResult<()> {
+        Ok(())
+    }
+    fn on_key(&mut self, _key: Key) -> HResult<()> {
+        Ok(())
+    }
 }
 
 impl Listable for ListView<Files> {
@@ -24,7 +34,7 @@ impl Listable for ListView<Files> {
         self.content.len()
     }
 
-    fn render(&self)-> Vec<String> {
+    fn render(&self) -> Vec<String> {
         self.render()
     }
 
@@ -59,18 +69,36 @@ impl Listable for ListView<Files> {
                 self.move_up();
                 self.refresh()?;
             }
-            Key::Char('P') => { for _ in 0..10 { self.move_up() } self.refresh()?; }
-            Key::Char('N') => { for _ in 0..10 { self.move_down() } self.refresh()?; }
+            Key::Char('P') => {
+                for _ in 0..10 {
+                    self.move_up()
+                }
+                self.refresh()?;
+            }
+            Key::Char('N') => {
+                for _ in 0..10 {
+                    self.move_down()
+                }
+                self.refresh()?;
+            }
             Key::Down | Key::Char('n') => {
                 self.move_down();
                 self.refresh()?;
-            },
+            }
             Key::Char('<') => self.move_top(),
             Key::Char('>') => self.move_bottom(),
-            Key::Char('S') => { self.search_file().log(); }
-            Key::Alt('s') => { self.search_next().log(); }
-            Key::Alt('S') => { self.search_prev().log(); }
-            Key::Ctrl('f') => { self.filter().log(); }
+            Key::Char('S') => {
+                self.search_file().log();
+            }
+            Key::Alt('s') => {
+                self.search_next().log();
+            }
+            Key::Alt('S') => {
+                self.search_prev().log();
+            }
+            Key::Ctrl('f') => {
+                self.filter().log();
+            }
             Key::Left => self.goto_grand_parent()?,
             Key::Right => self.goto_selected()?,
             Key::Char(' ') => self.multi_select_file(),
@@ -82,14 +110,18 @@ impl Listable for ListView<Files> {
             Key::Char('K') => self.select_next_mtime(),
             Key::Char('k') => self.select_prev_mtime(),
             Key::Char('d') => self.toggle_dirs_first(),
-            _ => { self.bad(Event::Key(key))?; }
+            _ => {
+                self.bad(Event::Key(key))?;
+            }
         }
         Ok(())
     }
 }
 
 #[derive(PartialEq)]
-pub struct ListView<T> where ListView<T>: Listable
+pub struct ListView<T>
+where
+    ListView<T>: Listable,
 {
     pub content: T,
     pub lines: usize,
@@ -104,7 +136,7 @@ pub struct ListView<T> where ListView<T>: Listable
 impl<T> ListView<T>
 where
     ListView<T>: Widget,
-    ListView<T>: Listable
+    ListView<T>: Listable,
 {
     pub fn new(core: &WidgetCore, content: T) -> ListView<T> {
         let mut view = ListView::<T> {
@@ -115,7 +147,7 @@ where
             buffer: Vec::new(),
             core: core.clone(),
             seeking: false,
-            searching: None
+            searching: None,
         };
         view.on_new().log();
         view
@@ -173,11 +205,9 @@ where
         self.offset = offset;
         self.selection = position;
     }
-
 }
 
-impl ListView<Files>
-{
+impl ListView<Files> {
     pub fn selected_file(&self) -> &File {
         let selection = self.selection;
         let file = &self.content.get_files()[selection];
@@ -202,7 +232,7 @@ impl ListView<Files>
     pub fn goto_grand_parent(&mut self) -> HResult<()> {
         match self.grand_parent() {
             Some(grand_parent) => self.goto_path(&grand_parent),
-            None => { self.show_status("Can't go further!") },
+            None => self.show_status("Can't go further!"),
         }
     }
 
@@ -220,9 +250,7 @@ impl ListView<Files>
                 self.offset = 0;
                 self.refresh()
             }
-            Err(err) => {
-                self.show_status(&format!("Can't open this path: {}", err))
-            }
+            Err(err) => self.show_status(&format!("Can't open this path: {}", err)),
         }
     }
 
@@ -242,7 +270,8 @@ impl ListView<Files>
         self.content.sort();
         self.select_file(&file);
         self.refresh().log();
-        self.show_status(&format!("Sorting by: {}", self.content.sort)).log();
+        self.show_status(&format!("Sorting by: {}", self.content.sort))
+            .log();
     }
 
     fn reverse_sort(&mut self) {
@@ -251,7 +280,8 @@ impl ListView<Files>
         self.content.sort();
         self.select_file(&file);
         self.refresh().log();
-        self.show_status(&format!("Reversed sorting by: {}", self.content.sort)).log();
+        self.show_status(&format!("Reversed sorting by: {}", self.content.sort))
+            .log();
     }
 
     fn select_next_mtime(&mut self) {
@@ -270,7 +300,7 @@ impl ListView<Files>
             self.offset = 0;
         } else {
             self.move_down();
-         }
+        }
 
         let file = self.clone_selected_file();
         self.content.dirs_first = dir_settings;
@@ -322,8 +352,8 @@ impl ListView<Files>
         self.content.sort();
         self.select_file(&file);
         self.refresh().log();
-        self.show_status(&format!("Direcories first: {}",
-                                  self.content.dirs_first)).log();
+        self.show_status(&format!("Direcories first: {}", self.content.dirs_first))
+            .log();
     }
 
     fn multi_select_file(&mut self) {
@@ -357,13 +387,18 @@ impl ListView<Files>
 
     fn search_file(&mut self) -> HResult<()> {
         let name = self.minibuffer("search")?;
-        let file = self.content.files.iter().find(|file| {
-            if file.name.to_lowercase().contains(&name) {
-                true
-            } else {
-                false
-            }
-        })?.clone();
+        let file = self
+            .content
+            .files
+            .iter()
+            .find(|file| {
+                if file.name.to_lowercase().contains(&name) {
+                    true
+                } else {
+                    false
+                }
+            })?
+            .clone();
 
         self.select_file(&file);
         self.searching = Some(name);
@@ -377,17 +412,19 @@ impl ListView<Files>
         let prev_search = self.searching.clone()?;
         let selection = self.get_selection();
 
-        let file = self.content
+        let file = self
+            .content
             .files
             .iter()
-            .skip(selection+1)
+            .skip(selection + 1)
             .find(|file| {
                 if file.name.to_lowercase().contains(&prev_search) {
                     true
                 } else {
                     false
                 }
-            }).clone();
+            })
+            .clone();
 
         if let Some(file) = file {
             let file = file.clone();
@@ -404,22 +441,23 @@ impl ListView<Files>
         }
         let prev_search = self.searching.clone()?;
 
-
         self.reverse_sort();
 
         let selection = self.get_selection();
 
-        let file = self.content
+        let file = self
+            .content
             .files
             .iter()
-            .skip(selection+1)
+            .skip(selection + 1)
             .find(|file| {
                 if file.name.to_lowercase().contains(&prev_search) {
                     true
                 } else {
                     false
                 }
-            }).cloned();
+            })
+            .cloned();
 
         self.reverse_sort();
 
@@ -436,7 +474,8 @@ impl ListView<Files>
         let filter = self.minibuffer("filter").ok();
 
         let msgstr = filter.clone().unwrap_or(String::from(""));
-        self.show_status(&format!("Filtering with: \"{}\"", msgstr)).log();
+        self.show_status(&format!("Filtering with: \"{}\"", msgstr))
+            .log();
 
         self.content.set_filter(filter);
 
@@ -451,28 +490,35 @@ impl ListView<Files>
         let (size, unit) = file.calculate_size().unwrap_or((0, "".to_string()));
         let tag = match file.is_tagged() {
             Ok(true) => term::color_red() + "*",
-            _ => "".to_string()
+            _ => "".to_string(),
         };
         let tag_len = if tag != "" { 1 } else { 0 };
 
         let selection_gap = "  ".to_string();
-        let (name, selection_color) =  if file.is_selected() {
+        let (name, selection_color) = if file.is_selected() {
             (selection_gap + name, crate::term::color_yellow())
-        } else { (name.clone(), "".to_string()) };
+        } else {
+            (name.clone(), "".to_string())
+        };
 
         let (link_indicator, link_indicator_len) = if file.target.is_some() {
-            (format!("{}{}{}",
-                     term::color_yellow(),
-                     "--> ".to_string(),
-                     term::highlight_color()),
-             4)
-        } else { ("".to_string(), 0) };
+            (
+                format!(
+                    "{}{}{}",
+                    term::color_yellow(),
+                    "--> ".to_string(),
+                    term::highlight_color()
+                ),
+                4,
+            )
+        } else {
+            ("".to_string(), 0)
+        };
 
         let xsize = self.get_coordinates().unwrap().xsize();
         let sized_string = term::sized_string(&name, xsize);
-        let size_pos = xsize - (size.to_string().len() as u16
-                                + unit.to_string().len() as u16
-                                + link_indicator_len);
+        let size_pos = xsize
+            - (size.to_string().len() as u16 + unit.to_string().len() as u16 + link_indicator_len);
         let padding = sized_string.len() - sized_string.width_cjk();
         let padding = xsize - padding as u16;
         let padding = padding - tag_len;
@@ -481,21 +527,25 @@ impl ListView<Files>
             "{}{}{}{}{}{}{}{}",
             termion::cursor::Save,
             match &file.color {
-                Some(color) => format!("{}{}{}{:padding$}{}",
-                                       tag,
-                                       term::from_lscolor(color),
-                                       selection_color,
-                                       &sized_string,
-                                       term::normal_color(),
-                                       padding = padding as usize),
-                _ => format!("{}{}{}{:padding$}{}",
-                             tag,
-                             term::normal_color(),
-                             selection_color,
-                             &sized_string,
-                             term::normal_color(),
-                             padding = padding as usize),
-            } ,
+                Some(color) => format!(
+                    "{}{}{}{:padding$}{}",
+                    tag,
+                    term::from_lscolor(color),
+                    selection_color,
+                    &sized_string,
+                    term::normal_color(),
+                    padding = padding as usize
+                ),
+                _ => format!(
+                    "{}{}{}{:padding$}{}",
+                    tag,
+                    term::normal_color(),
+                    selection_color,
+                    &sized_string,
+                    term::normal_color(),
+                    padding = padding as usize
+                ),
+            },
             termion::cursor::Restore,
             termion::cursor::Right(size_pos),
             link_indicator,
@@ -514,8 +564,10 @@ impl ListView<Files>
     }
 }
 
-
-impl<T> Widget for ListView<T> where ListView<T>: Listable {
+impl<T> Widget for ListView<T>
+where
+    ListView<T>: Listable,
+{
     fn get_core(&self) -> HResult<&WidgetCore> {
         Ok(&self.core)
     }

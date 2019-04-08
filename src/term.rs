@@ -1,14 +1,14 @@
-use std::io::{Stdout, Write, BufWriter};
+use std::io::{BufWriter, Stdout, Write};
 use std::sync::{Arc, Mutex, RwLock};
 
 use termion;
-use termion::screen::AlternateScreen;
 use termion::input::MouseTerminal;
 use termion::raw::{IntoRawMode, RawTerminal};
+use termion::screen::AlternateScreen;
 
 use parse_ansi::parse_bytes;
 
-use crate::fail::{HResult, ErrorLog};
+use crate::fail::{ErrorLog, HResult};
 
 pub type TermMode = AlternateScreen<MouseTerminal<RawTerminal<BufWriter<Stdout>>>>;
 
@@ -16,7 +16,7 @@ pub type TermMode = AlternateScreen<MouseTerminal<RawTerminal<BufWriter<Stdout>>
 pub struct Screen {
     screen: Arc<Mutex<Option<TermMode>>>,
     size: Arc<RwLock<Option<(usize, usize)>>>,
-    terminal: String
+    terminal: String,
 }
 
 impl Screen {
@@ -30,7 +30,7 @@ impl Screen {
         Ok(Screen {
             screen: Arc::new(Mutex::new(Some(screen))),
             size: Arc::new(RwLock::new(None)),
-            terminal: terminal
+            terminal: terminal,
         })
     }
 
@@ -61,7 +61,7 @@ impl Screen {
     pub fn get_size(&self) -> HResult<(usize, usize)> {
         match self.size.read()?.clone() {
             Some((xsize, ysize)) => Ok((xsize, ysize)),
-            None => Ok((self.xsize()?, self.ysize()?))
+            None => Ok((self.xsize()?, self.ysize()?)),
         }
     }
 
@@ -70,10 +70,11 @@ impl Screen {
     }
 
     pub fn set_title(&mut self, title: &str) -> HResult<()> {
-        if self.terminal.starts_with("xterm") ||
-            self.terminal.starts_with("screen") ||
-            self.terminal.starts_with("tmux"){
-             write!(self, "\x1b]2;hunter: {}\x1b\\", title)?;
+        if self.terminal.starts_with("xterm")
+            || self.terminal.starts_with("screen")
+            || self.terminal.starts_with("tmux")
+        {
+            write!(self, "\x1b]2;hunter: {}\x1b\\", title)?;
         }
         if self.terminal.starts_with("tmux") {
             write!(self, "\x1bkhunter: {}\x1b\\", title)?;
@@ -107,9 +108,7 @@ pub trait ScreenExt: Write {
         Ok(())
     }
     fn clear(&mut self) -> HResult<()> {
-        write!(self, "{}{}",
-               termion::style::Reset,
-               termion::clear::All)?;
+        write!(self, "{}{}", termion::style::Reset, termion::clear::All)?;
         Ok(())
     }
     fn write_str(&mut self, str: &str) -> HResult<()> {
@@ -124,7 +123,7 @@ pub trait ScreenExt: Write {
     }
     fn size(&self) -> HResult<(usize, usize)> {
         let (xsize, ysize) = termion::terminal_size()?;
-        Ok(((xsize-1) as usize, (ysize-1) as usize))
+        Ok(((xsize - 1) as usize, (ysize - 1) as usize))
     }
     fn xsize(&self) -> HResult<usize> {
         let (xsize, _) = termion::terminal_size()?;
@@ -161,7 +160,7 @@ pub fn ysize() -> u16 {
 
 pub fn size() -> HResult<(usize, usize)> {
     let (xsize, ysize) = termion::terminal_size()?;
-    Ok(((xsize-1) as usize, (ysize-1) as usize))
+    Ok(((xsize - 1) as usize, (ysize - 1) as usize))
 }
 
 pub fn sized_string(string: &str, xsize: u16) -> String {
@@ -179,7 +178,9 @@ fn is_ansi(ansi_pos: &Vec<(usize, usize)>, char_pos: &usize) -> bool {
     ansi_pos.iter().fold(false, |is_ansi, (start, end)| {
         if char_pos >= start && char_pos <= end {
             true
-        } else { is_ansi }
+        } else {
+            is_ansi
+        }
     })
 }
 
@@ -196,32 +197,27 @@ fn ansi_len_at(ansi_pos: &Vec<(usize, usize)>, char_pos: &usize) -> usize {
 }
 
 pub fn sized_string_u(string: &str, xsize: usize) -> String {
-    let ansi_pos = parse_bytes(string.as_bytes()).map(|m| {
-        (m.start(), m.end())
-    }).collect();
+    let ansi_pos = parse_bytes(string.as_bytes())
+        .map(|m| (m.start(), m.end()))
+        .collect();
 
     let sized = string.chars().fold(String::new(), |acc, ch| {
         let width: usize = unicode_width::UnicodeWidthStr::width_cjk(acc.as_str());
         let ansi_len = ansi_len_at(&ansi_pos, &acc.len());
         let unprinted = acc.len() - width;
 
-        if width + unprinted >= xsize + ansi_len + 1{
+        if width + unprinted >= xsize + ansi_len + 1 {
             acc
         } else {
             acc + &ch.to_string()
         }
-
     });
     let ansi_len = ansi_len_at(&ansi_pos, &sized.len());
-    let padded = format!("{:padding$}", sized, padding=xsize + ansi_len + 1);
+    let padded = format!("{:padding$}", sized, padding = xsize + ansi_len + 1);
     padded
 }
 
-
 // Do these as constants
-
-
-
 
 pub fn highlight_color() -> String {
     format!(
@@ -264,31 +260,20 @@ pub fn color_light_yellow() -> String {
 }
 
 pub fn color_orange() -> String {
-    let color = termion::color::Fg(termion::color::AnsiValue::rgb(5 as u8 ,
-                                                                  4 as u8,
-                                                                  0 as u8));
+    let color = termion::color::Fg(termion::color::AnsiValue::rgb(5 as u8, 4 as u8, 0 as u8));
     format!("{}", color)
 }
 
-
 pub fn from_lscolor(color: &lscolors::Color) -> String {
     match color {
-        lscolors::Color::Black
-            => format!("{}", termion::color::Fg(termion::color::Black)),
-        lscolors::Color::Red
-            => format!("{}", termion::color::Fg(termion::color::Red)),
-        lscolors::Color::Green
-            => format!("{}", termion::color::Fg(termion::color::Green)),
-        lscolors::Color::Yellow
-            => format!("{}", termion::color::Fg(termion::color::Yellow)),
-        lscolors::Color::Blue
-            => format!("{}", termion::color::Fg(termion::color::Blue)),
-        lscolors::Color::Magenta
-            => format!("{}", termion::color::Fg(termion::color::Magenta)),
-        lscolors::Color::Cyan
-            => format!("{}", termion::color::Fg(termion::color::Cyan)),
-        lscolors::Color::White
-            => format!("{}", termion::color::Fg(termion::color::White)),
+        lscolors::Color::Black => format!("{}", termion::color::Fg(termion::color::Black)),
+        lscolors::Color::Red => format!("{}", termion::color::Fg(termion::color::Red)),
+        lscolors::Color::Green => format!("{}", termion::color::Fg(termion::color::Green)),
+        lscolors::Color::Yellow => format!("{}", termion::color::Fg(termion::color::Yellow)),
+        lscolors::Color::Blue => format!("{}", termion::color::Fg(termion::color::Blue)),
+        lscolors::Color::Magenta => format!("{}", termion::color::Fg(termion::color::Magenta)),
+        lscolors::Color::Cyan => format!("{}", termion::color::Fg(termion::color::Cyan)),
+        lscolors::Color::White => format!("{}", termion::color::Fg(termion::color::White)),
         _ => format!("{}", normal_color()),
     }
 }
@@ -306,8 +291,8 @@ pub fn goto_xy(x: u16, y: u16) -> String {
 }
 
 pub fn goto_xy_u(x: usize, y: usize) -> String {
-    let x = (x+1) as u16;
-    let y = (y+1) as u16;
+    let x = (x + 1) as u16;
+    let y = (y + 1) as u16;
     format!("{}", termion::cursor::Goto(x, y))
 }
 
