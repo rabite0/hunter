@@ -23,9 +23,9 @@ A big thanks to ranger and its developers. Without its inspiration this wouldn't
 * Tabs
 * Multi-file selection
 * ranger import for bookmarks/tags
-* minibuffer with completion and filename/selection/tab/direcory substitution
+* minibuffer with completion and filename/selection/tab/directory substitution
 * subprocess viewer that shows output of started subprocesses
-* exit and cd into last directory and put seleceted files into shell variables
+* exit and cd into last directory and put selected files into shell variables
 * slide up animation for previews for a smoother experience (configurable)
 * fffast
 
@@ -49,7 +49,7 @@ git clone https://github.com/rabite0/hunter.git
 // Go into the repos directory
 cd {source_dir}/hunter/
 
-// Note: if you want vim bindinings you will have to switch to the evil branch.
+// Note: if you want vim bindings you will have to switch to the evil branch.
 // git checkout evil
 
 // Build
@@ -60,9 +60,9 @@ cargo build --release
 
 This will create a binary in {source_dir}/hunter/target/release/hunter. If you want to call this like any other terminal app you have to put this binary in your path. 
 
-```ln -s {soure_dir}/hunter/targer/release/hunter /usr/local/bin/hunter```
+```ln -s {source_dir}/hunter/target/release/hunter /usr/bin/local/hunter```
 
-This will link the the binary to your local bin file. You can call hunter from anywhere. To update repeate the process, but you will **not** need to redo the binary link. 
+This will link the the binary to your local bin file. You can call hunter from anywhere. To update repeat the process, but you will **not** need to redo the binary link. 
 
 ## NOTE:
 hunter uses [ranger's rifle](https://github.com/ranger/ranger/blob/master/ranger/ext/rifle.py) to open files if rifle is in your $PATH. If it can't find rifle it uses xdg-open. It also uses ranger's scope.sh to generate previews for non-text files. A slightly modified version is included in the "extra" directory. Put it in your $PATH somewhere if you want previews for non-text files.
@@ -114,7 +114,7 @@ By default hunter uses emacs style keybindings. If you use a QWERTY-like keyboar
 |d                    |toggle dirs first                 |
 |/                    |turbo cd                          |
 |Q                    |quit with dir/selections          |
-|F                    |start executabe in background     |
+|F                    |start executable in background     |
 |-                    |goto prev cwd                     |
 |`                    |goto bookmark                     |
 |m                    |add bookmark                      |
@@ -144,7 +144,7 @@ By default hunter uses emacs style keybindings. If you use a QWERTY-like keyboar
 |k                    |kill process                      |
 |p evil(k)            |move up                           |
 |n evil(j)            |move down                         |
-|f                    |toggle follow outupt              |
+|f                    |toggle follow output              |
 |Ctrl(n) evil(Ctrl(j) |scroll output down                |
 |Ctrl(p) evil(Ctrl(k) |scroll output up                  |
 |Ctrl(v)              |page down                         |
