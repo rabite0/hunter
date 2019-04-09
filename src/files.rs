@@ -363,8 +363,23 @@ impl Files {
             new.selected = selected;
             self.files.push(new);
         });
+
         self.sort();
+
+        if self.len() == 0 {
+            let placeholder = File::new_placeholder(&self.directory.path)?;
+            self.files.push(placeholder);
+        } else {
+            self.remove_placeholder();
+        }
+
         Ok(())
+    }
+
+    fn remove_placeholder(&mut self) {
+        let dirpath = self.directory.path.clone();
+        self.find_file_with_path(&dirpath).cloned()
+            .map(|placeholder| self.files.remove_item(&placeholder));
     }
 
     pub fn handle_event(&mut self,
