@@ -440,6 +440,11 @@ impl ListView<Files>
 
         self.content.set_filter(filter);
 
+        if self.content.len() == 0 {
+            self.show_status("No files like that! Resetting filter").log();
+            self.content.set_filter(Some("".to_string()));
+        }
+
         if self.get_selection() > self.len() {
             self.set_selection(self.len());
         }
