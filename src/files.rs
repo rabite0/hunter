@@ -19,6 +19,7 @@ use chrono::TimeZone;
 use failure::Error;
 use notify::DebouncedEvent;
 use rayon::{ThreadPool, ThreadPoolBuilder};
+use alphanumeric_sort::compare_str;
 
 use crate::fail::{HResult, HError, ErrorLog};
 use crate::dirty::{AsyncDirtyBit, DirtyBit, Dirtyable};
@@ -266,23 +267,41 @@ impl Files {
         match self.sort {
             SortBy::Name => self
                 .files
-                .sort_by(|a, b| alphanumeric_sort::compare_str(&a.name, &b.name)),
+                .sort_by(|a, b| {
+                    compare_str(&a.name, &b.name)
+                }),
             SortBy::Size => {
                 self.meta_all_sync().log();
                 self.files.sort_by(|a, b| {
-                    if a.meta().unwrap().size() == b.meta().unwrap().size() {
-                        return alphanumeric_sort::compare_str(&b.name, &a.name);
+                    match (a.meta(), b.meta()) {
+                        (Ok(a_meta), Ok(b_meta)) => {
+                            if a_meta.size() == b_meta.size() {
+                                compare_str(&b.name, &a.name)
+                            } else {
+                                a_meta.size().cmp(&b_meta.size()).reverse()
+                            }
+
+                        }
+                        _ => return std::cmp::Ordering::Equal
                     }
-                    a.meta().unwrap().size().cmp(&b.meta().unwrap().size()).reverse()
+
+
                 });
             }
             SortBy::MTime => {
                 self.meta_all_sync().log();
                 self.files.sort_by(|a, b| {
-                    if a.meta().unwrap().mtime() == b.meta().unwrap().mtime() {
-                        return alphanumeric_sort::compare_str(&a.name, &b.name);
+                    match (a.meta(), b.meta()) {
+                        (Ok(a_meta), Ok(b_meta)) => {
+                            if a_meta.mtime() == b_meta.mtime() {
+                                compare_str(&b.name, &a.name)
+                            } else {
+                                a_meta.mtime().cmp(&b_meta.mtime()).reverse()
+                            }
+
+                        }
+                        _ => return std::cmp::Ordering::Equal
                     }
-                    a.meta().unwrap().mtime().cmp(&b.meta().unwrap().mtime())
                 });
             }
         };
