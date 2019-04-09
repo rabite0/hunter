@@ -70,7 +70,7 @@ hunter uses [ranger's rifle](https://github.com/ranger/ranger/blob/master/ranger
 ## Configuration
 hunter reads $XDG_CONFIG_HOME/hunter/config at startup. There are two options, which can be set. The configuration file is read asynchronously, so if it's not read by the time hunter starts drawing you will see its default configuration until the config file is read. Options can be set like this (default config):
 
-animation=on
+animation=on  
 show_hidden=off
 
 ## Drop into hunter cwd on quit
