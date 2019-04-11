@@ -1,4 +1,4 @@
-use notify::{INotifyWatcher, Watcher, DebouncedEvent, RecursiveMode};
+use notify::{RecommendedWatcher, Watcher, DebouncedEvent, RecursiveMode};
 
 use std::sync::{Arc, RwLock};
 use std::sync::mpsc::{channel, Sender, Receiver};
@@ -69,7 +69,7 @@ pub struct FsCache {
     files: Arc<RwLock<HashMap<File, Files>>>,
     pub tab_settings: Arc<RwLock<HashMap<File, TabSettings>>>,
     watched_dirs: Arc<RwLock<HashSet<File>>>,
-    watcher: Arc<RwLock<INotifyWatcher>>,
+    watcher: Arc<RwLock<RecommendedWatcher>>,
     pub fs_changes: Arc<RwLock<Vec<(File, Option<File>, Option<File>)>>>,
     sender: Sender<Events>,
 }
@@ -77,7 +77,7 @@ pub struct FsCache {
 impl FsCache {
     pub fn new(sender: Sender<Events>) -> FsCache {
         let (tx_fs_event, rx_fs_event) = channel();
-        let watcher = INotifyWatcher::new(tx_fs_event,
+        let watcher = RecommendedWatcher::new(tx_fs_event,
                                           Duration::from_secs(2)).unwrap();
 
 
