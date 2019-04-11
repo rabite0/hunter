@@ -98,7 +98,7 @@ By default hunter uses emacs style keybindings. If you use a QWERTY-like keyboar
 |N/P (evil: J/K)      |5x move down/5x move up           |
 |<                    |move to top                       |
 |>                    |move to bottom                    |
-|f/b (evil: h/l)      |enter (run executable)            |
+|f/b (evil: l/h)      |open/go back                      |
 |S                    |search file                       |
 |Alt(s)               |search next                       |
 |Alt(S)               |search prev                       |
@@ -114,7 +114,7 @@ By default hunter uses emacs style keybindings. If you use a QWERTY-like keyboar
 |d                    |toggle dirs first                 |
 |/                    |turbo cd                          |
 |Q                    |quit with dir/selections          |
-|F                    |start executable in background     |
+|F                    |run in background                 |
 |-                    |goto prev cwd                     |
 |`                    |goto bookmark                     |
 |m                    |add bookmark                      |
@@ -133,7 +133,7 @@ By default hunter uses emacs style keybindings. If you use a QWERTY-like keyboar
 |(key)                |open bookmark                     |
 |`                    |goto last cwd                     |
 |Ctrl(c)              |cancel                            |
-|Alt(key)           |delete bookmark                   |
+|Alt(key)             |delete bookmark                   |
 
 ## Keybindings in process viewer:
 
