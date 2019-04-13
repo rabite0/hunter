@@ -40,6 +40,13 @@ A big thanks to ranger and its developers. Without its inspiration this wouldn't
 
 ## INSTALLATION:
 
+### Build with cargo
+
+```
+// cargo install hunter
+```
+
+
 ### Build from source
 
 ```
@@ -87,42 +94,42 @@ To change the directory of your shell when quitting hunter with Q you need to so
 Keybindings:
 ============
 
-## evil mode
-By default hunter uses emacs style keybindings. If you use a QWERTY-like keyboard layout this is probably not what you want. In that case use the "evil" branch which remaps movement keys to vi-style.
+## holy mode
+By default hunter uses vi-style keybindings. If you use a QWERTY-like keyboard layout this is probably what you want. Most people will want this, so I maed it the default. If you have a different keyboard layout this might not be the best choice. The holy-branch changes the movement keys to the emacs keybindings, which is more ergonomic on e.g. Colemak.
 
 ## Main view:
 
-| Key                 | Action                           |
-| ------------------- |:---------------------------------|
-|n/p (evil: j/k)      |move down/up                      |
-|N/P (evil: J/K)      |5x move down/5x move up           |
-|<                    |move to top                       |
-|>                    |move to bottom                    |
-|f/b (evil: l/h)      |open/go back                      |
-|S                    |search file                       |
-|Alt(s)               |search next                       |
-|Alt(S)               |search prev                       |
-|Ctrl(f)              |filter                            |
-|space                |multi select file                 |
-|v                    |invert selections                 |
-|t                    |toggle tag                        |
-|h                    |toggle show hidden                |
-|r                    |reverse sort                      |
-|s                    |cycle sort (name/size/mtime)      |
-|K                    |select next by mtime              |
-|k                    |select prev by mtime              |
-|d                    |toggle dirs first                 |
-|/                    |turbo cd                          |
-|Q                    |quit with dir/selections          |
-|F                    |run in background                 |
-|-                    |goto prev cwd                     |
-|`                    |goto bookmark                     |
-|m                    |add bookmark                      |
-|w                    |show processes                    |
-|l evil(L)            |show log                          |
-|z                    |open subshell in cwd              |
-|c                    |toggle columns                    |
-|F(n)                 |switch to tab                     |
+| Key                 | Action                             |
+| ------------------- | :--------------------------------- |
+| j/k (holy: n/p)     | move down/up                       |
+| J/K (holy: N/P)     | 5x move down/5x move up            |
+| <                   | move to top                        |
+| >                   | move to bottom                     |
+| l/h (holy: f/b)     | open/go back                       |
+| S                   | search file                        |
+| Alt(s)              | search next                        |
+| Alt(S)              | search prev                        |
+| Ctrl(f)             | filter                             |
+| space               | multi select file                  |
+| v                   | invert selections                  |
+| t                   | toggle tag                         |
+| h                   | toggle show hidden                 |
+| r                   | reverse sort                       |
+| s                   | cycle sort (name/size/mtime)       |
+| K                   | select next by mtime               |
+| k                   | select prev by mtime               |
+| d                   | toggle dirs first                  |
+| /                   | turbo cd                           |
+| Q                   | quit with dir/selections           |
+| F                   | run in background                  |
+|---------------------|------------------------------------|
+| `                   | goto bookmark                      |
+| m                   | add bookmark                       |
+| w                   | show processes                     |
+| L holy(l)           | show log                           |
+| z                   | open subshell in cwd               |
+| c                   | toggle columns                     |
+| F(n)                | switch to tab                      |
 
 
 
@@ -142,11 +149,11 @@ By default hunter uses emacs style keybindings. If you use a QWERTY-like keyboar
 |w                    |close process viewer              |
 |d                    |remove process                    |
 |k                    |kill process                      |
-|p evil(k)            |move up                           |
-|n evil(j)            |move down                         |
+|k holy(p)            |move up                           |
+|j holy(n)            |move down                         |
 |f                    |toggle follow output              |
-|Ctrl(n) evil(Ctrl(j) |scroll output down                |
-|Ctrl(p) evil(Ctrl(k) |scroll output up                  |
+|Ctrl(j) holy(Ctrl(n) |scroll output down                |
+|Ctrl(k) holy(Ctrl(p) |scroll output up                  |
 |Ctrl(v)              |page down                         |
 |Alt(v)               |page up                           |
 |<                    |scroll to bottom                  |
