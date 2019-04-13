@@ -402,11 +402,13 @@ impl FileBrowser {
 
         } else {
             self.core.get_sender().send(Events::InputEnabled(false))?;
+            self.core.screen.drop_screen();
 
             let status = std::process::Command::new("rifle")
                 .args(file.path.file_name())
                 .status();
 
+            self.core.screen.reset_screen();
             self.clear().log();
             self.core.screen.cursor_hide().log();
 

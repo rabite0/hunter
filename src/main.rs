@@ -26,6 +26,7 @@ extern crate systemstat;
 use failure::Fail;
 
 use std::io::Write;
+use std::panic;
 
 mod coordinates;
 mod file_browser;
@@ -61,20 +62,36 @@ use file_browser::FileBrowser;
 use tabview::TabView;
 
 
+fn drop_screen(core: &mut WidgetCore) -> HResult<()> {
+    core.screen.drop_screen();
+    Ok(())
+}
+
+fn die_gracefully(core: &WidgetCore) {
+    let panic_hook = panic::take_hook();
+    let core = core.clone();
+
+    panic::set_hook(Box::new(move |info| {
+        let mut core = core.clone();
+        drop_screen(&mut core).ok();
+        panic_hook(info);
+    }));
+}
+
 fn main() -> HResult<()> {
     // do this early so it might be ready when needed
     crate::files::load_tags().ok();
 
     let mut core = WidgetCore::new().expect("Can't create WidgetCore!");
 
+    // Resets terminal when hunter crashes :(
+    die_gracefully(&mut core);
+
     match run(core.clone()) {
-        Ok(_) => Ok(()),
-        Err(HError::Quit) => {
-            core.screen.drop_screen();
-            return Ok(())
-        },
+        Ok(_) => drop_screen(&mut core),
+        Err(HError::Quit) => drop_screen(&mut core),
         Err(err) => {
-            core.screen.drop_screen();
+            drop_screen(&mut core)?;
             eprintln!("{:?}\n{:?}", err, err.cause());
             return Err(err);
         }
