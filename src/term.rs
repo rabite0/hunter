@@ -37,7 +37,7 @@ impl Screen {
     pub fn drop_screen(&mut self) {
         self.cursor_show().log();
         self.to_main_screen().log();
-        self.screen = Arc::new(Mutex::new(None));
+        self.screen.lock().map(|mut screen| std::mem::drop(screen.take())).ok();
 
         // Terminal stays fucked without this. Why?
         Ok(std::process::Command::new("reset").arg("-I").spawn()).log();
