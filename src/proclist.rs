@@ -563,7 +563,7 @@ impl Widget for ProcView {
                 return Err(HError::PopupFinnished) }
             Key::Char('d') => { self.remove_proc()? }
             Key::Char('K') => { self.get_listview_mut().kill_proc()? }
-            Key::Up | Key::Char('p') => {
+            Key::Up | Key::Char('k') => {
                 self.get_listview_mut().move_up();
             }
             Key::Down | Key::Char('j') => {
