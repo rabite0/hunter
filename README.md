@@ -128,7 +128,7 @@ By default hunter uses vi-style keybindings. If you use a QWERTY-like keyboard l
 | `                   | goto bookmark                      |
 | m                   | add bookmark                       |
 | w                   | show processes                     |
-| L holy(l)           | show log                           |
+| g holy(l)           | show log                           |
 | z                   | open subshell in cwd               |
 | c                   | toggle columns                     |
 | F(n)                | switch to tab                      |
