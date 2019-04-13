@@ -16,7 +16,11 @@ pub fn ranger_path() -> HResult<PathBuf> {
 }
 
 pub fn hunter_path() -> HResult<PathBuf> {
-    let mut hunter_path = dirs_2::config_dir()?;
+    let mut hunter_path = if cfg!(mac_os) {
+        PathBuf::from("~/.config/").canonicalize()?
+    } else {
+        dirs_2::config_dir()?
+    };
     hunter_path.push("hunter/");
     Ok(hunter_path)
 }
