@@ -76,7 +76,7 @@ impl Listable for ListView<Files> {
             Key::Char(' ') => self.multi_select_file(),
             Key::Char('v') => self.invert_selection(),
             Key::Char('t') => self.toggle_tag()?,
-            Key::Char('h') => self.toggle_hidden(),
+            Key::Char('H') => self.toggle_hidden(),
             Key::Char('r') => self.reverse_sort(),
             Key::Char('s') => self.cycle_sort(),
             Key::Char('N') => self.select_next_mtime(),
