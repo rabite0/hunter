@@ -15,7 +15,7 @@ Technically hunter is not a file "manager" itself. It has no built in primitives
 
 This is a young project and probably (definitely) has some bugs and edge cases. It hasn't been tested on a lot of terminals, but at least alacritty, kitty and urxvt work fine. It should work on most Unix-flavoured systems supported by Rust, but was only tested on GNU/Linux. I haven't lost any files so far, at least.
 
-A big thanks to ranger and its developers. Without its inspiration this wouldn't have been possible. hunter not a drop-in replacement and doesn't cover every use-care, especially if you're into advanced customization, since hunter has basically none unless you modify the code, but if you just need fast above all else it might be a good choice.
+A big thanks to ranger and its developers. Without its inspiration this wouldn't have been possible. hunter is not a drop-in replacement and doesn't cover every use-care, especially if you're into advanced customization, since hunter has basically none unless you modify the code, but if you just need fast above all else it might be a good choice.
 
 ## Features:
 * Lag-free architecture, always responsive
@@ -77,8 +77,10 @@ hunter uses [ranger's rifle](https://github.com/ranger/ranger/blob/master/ranger
 ## Configuration
 hunter reads $XDG_CONFIG_HOME/hunter/config at startup. There are two options, which can be set. The configuration file is read asynchronously, so if it's not read by the time hunter starts drawing you will see its default configuration until the config file is read. Options can be set like this (default config):
 
-animation=on  
+```
+animation=on
 show_hidden=off
+```
 
 ## Drop into hunter cwd on quit
 To change the directory of your shell when quitting hunter with Q you need to source extra/hunter_cd.sh, which is a wrapper that runs hunter and checks for ~/.hunter_cwd after hunter exits and cd's into the contained directory if it exists.
