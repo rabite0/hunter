@@ -43,15 +43,15 @@ A big thanks to ranger and its developers. Without its inspiration this wouldn't
 ### Build with cargo
 
 ```
-// cargo install hunter
+cargo install hunter
 ```
 
 
 ### Build from source
 
 ```
-// Clone the git repo 
-git clone https://github.com/rabite0/hunter.git 
+// Clone the git repo
+git clone https://github.com/rabite0/hunter.git
 
 // Go into the repos directory
 cd {source_dir}/hunter/
@@ -63,13 +63,13 @@ cd {source_dir}/hunter/
 cargo build --release
 ```
 
-### 
+###
 
-This will create a binary in {source_dir}/hunter/target/release/hunter. If you want to call this like any other terminal app you have to put this binary in your path. 
+This will create a binary in {source_dir}/hunter/target/release/hunter. If you want to call this like any other terminal app you have to put this binary in your path.
 
 ```ln -s {source_dir}/hunter/target/release/hunter /usr/bin/local/hunter```
 
-This will link the the binary to your local bin file. You can call hunter from anywhere. To update repeat the process, but you will **not** need to redo the binary link. 
+This will link the the binary to your local bin file. You can call hunter from anywhere. To update repeat the process, but you will **not** need to redo the binary link.
 
 ## NOTE:
 hunter uses [ranger's rifle](https://github.com/ranger/ranger/blob/master/ranger/ext/rifle.py) to open files if rifle is in your $PATH. If it can't find rifle it uses xdg-open. It also uses ranger's scope.sh to generate previews for non-text files. A slightly modified version is included in the "extra" directory. Put it in your $PATH somewhere if you want previews for non-text files.
@@ -77,7 +77,7 @@ hunter uses [ranger's rifle](https://github.com/ranger/ranger/blob/master/ranger
 ## Configuration
 hunter reads $XDG_CONFIG_HOME/hunter/config at startup. There are two options, which can be set. The configuration file is read asynchronously, so if it's not read by the time hunter starts drawing you will see its default configuration until the config file is read. Options can be set like this (default config):
 
-animation=on  
+animation=on
 show_hidden=off
 
 ## Drop into hunter cwd on quit
@@ -122,7 +122,7 @@ By default hunter uses vi-style keybindings. If you use a QWERTY-like keyboard l
 | /                   | turbo cd                           |
 | Q                   | quit with dir/selections           |
 | F                   | run in background                  |
-|---------------------|------------------------------------|
+| ~                   | goto pre cwd                       |
 | `                   | goto bookmark                      |
 | m                   | add bookmark                       |
 | w                   | show processes                     |
