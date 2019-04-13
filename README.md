@@ -43,7 +43,7 @@ A big thanks to ranger and its developers. Without its inspiration this wouldn't
 ### Build with cargo
 
 ```
-// cargo install hunter
+cargo install hunter
 ```
 
 
@@ -122,7 +122,7 @@ By default hunter uses vi-style keybindings. If you use a QWERTY-like keyboard l
 | /                   | turbo cd                           |
 | Q                   | quit with dir/selections           |
 | F                   | run in background                  |
-|---------------------|------------------------------------|
+| ~                   | goto pre cwd                       |
 | `                   | goto bookmark                      |
 | m                   | add bookmark                       |
 | w                   | show processes                     |
