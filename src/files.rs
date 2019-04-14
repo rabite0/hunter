@@ -28,7 +28,7 @@ use crate::widget::Events;
 
 
 lazy_static! {
-    static ref COLORS: LsColors = LsColors::from_env().unwrap();
+    static ref COLORS: LsColors = LsColors::from_env().unwrap_or_default();
     static ref TAGS: RwLock<(bool, Vec<PathBuf>)> = RwLock::new((false, vec![]));
 }
 
