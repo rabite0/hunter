@@ -130,6 +130,7 @@ impl FsCache {
         let files = self.get_files(&dir, Stale::new())?.1;
         let mut files = files.wait()?;
         FsCache::apply_settingss(&self, &mut files).ok();
+        let files = FsCache::ensure_not_empty(files)?;
         Ok(files)
     }
 
@@ -230,6 +231,7 @@ impl FsCache {
             }
 
             files.sort();
+            let files = FsCache::ensure_not_empty(files)?;
             Ok(files)
         }));
 
@@ -263,6 +265,15 @@ impl FsCache {
 
         files.sort();
         Ok(())
+    }
+
+    pub fn ensure_not_empty(mut files: Files) -> HResult<Files> {
+        if files.len() == 0 {
+            let path = &files.directory.path;
+            let placeholder = File::new_placeholder(&path)?;
+            files.files.push(placeholder);
+        }
+        Ok(files)
     }
 
 

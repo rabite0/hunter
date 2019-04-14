@@ -342,7 +342,12 @@ impl Files {
     }
 
     pub fn toggle_hidden(&mut self) {
-        self.show_hidden = !self.show_hidden
+        self.show_hidden = !self.show_hidden;
+        self.set_dirty();
+
+        if self.show_hidden == true {
+            self.remove_placeholder();
+        }
     }
 
     pub fn replace_file(&mut self,

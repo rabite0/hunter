@@ -35,6 +35,12 @@ impl Listable for ListView<Files> {
     }
 
     fn on_refresh(&mut self) -> HResult<()> {
+        if self.content.len() == 0 {
+            let path = &self.content.directory.path;
+            let placeholder = File::new_placeholder(&path)?;
+            self.content.files.push(placeholder);
+        }
+
         let sender = self.core.get_sender();
 
         let visible_files = self.core.coordinates.size_u().1 + self.offset + 1;
