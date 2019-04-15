@@ -226,7 +226,6 @@ impl Tabbable for TabView<FileBrowser> {
 
 impl FileBrowser {
     pub fn new(core: &WidgetCore, cache: Option<FsCache>) -> HResult<FileBrowser> {
-        let startup = cache.is_none();
         let fs_cache = cache.unwrap_or_else(|| FsCache::new(core.get_sender()));
 
         let cwd = std::env::current_dir().unwrap();
@@ -273,10 +272,6 @@ impl FileBrowser {
             list.content.dirty_meta.set_dirty();
             list.refresh().log();
 
-            if startup {
-                list.animate_slide_up(None).log();
-            }
-
             list.content.meta_all();
             Ok(list)
         }));
@@ -303,10 +298,6 @@ impl FileBrowser {
                 }
 
                 list.refresh().log();
-
-                if startup {
-                    list.animate_slide_up(None).log();
-                }
 
                 Ok(list)
             }));
