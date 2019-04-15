@@ -399,7 +399,7 @@ impl FileBrowser {
                 .args(file.path.file_name())
                 .status();
 
-            self.core.screen.reset_screen();
+            self.core.screen.reset_screen().log();
             self.clear().log();
             self.core.screen.cursor_hide().log();
 
