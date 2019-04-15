@@ -29,6 +29,14 @@ A big thanks to ranger and its developers. Without its inspiration this wouldn't
 * slide up animation for previews for a smoother experience (configurable)
 * fffast
 
+## Known to work on:
+
+* GNU/Linux
+* macOS
+* Windows (WSL)
+
+If it works on a system not mentioned here, please open an issue. Also feel free to open an issue if it doesn't work on your system, if it's reasonably Unix-like.
+
 ## PREREQUISITES:
 
 * gcc
@@ -75,7 +83,7 @@ This will link the the binary to your local bin file. You can call hunter from a
 hunter uses [ranger's rifle](https://github.com/ranger/ranger/blob/master/ranger/ext/rifle.py) to open files if rifle is in your $PATH. If it can't find rifle it uses xdg-open. It also uses ranger's scope.sh to generate previews for non-text files. A slightly modified version is included in the "extra" directory. Put it in your $PATH somewhere if you want previews for non-text files.
 
 ## Configuration
-hunter reads $XDG_CONFIG_HOME/hunter/config at startup. There are two options, which can be set. The configuration file is read asynchronously, so if it's not read by the time hunter starts drawing you will see its default configuration until the config file is read. Options can be set like this (default config):
+hunter reads $XDG_CONFIG_HOME/hunter/config at startup. On macOS it reads $HOME/Library/Preferences/hunter/config, according to Apple guidelines, although this might change. There are two options, which can be set. The configuration file is read asynchronously, so if it's not read by the time hunter starts drawing you will see its default configuration until the config file is read. Options can be set like this (default config):
 
 ```
 animation=on
