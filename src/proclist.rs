@@ -8,6 +8,7 @@ use std::os::unix::ffi::OsStringExt;
 
 use termion::event::Key;
 use unicode_width::UnicodeWidthStr;
+use osstrtools::OsStrTools;
 
 use crate::listview::{Listable, ListView};
 use crate::textview::TextView;
@@ -18,7 +19,7 @@ use crate::dirty::Dirtyable;
 use crate::hbox::HBox;
 use crate::fail::{HResult, HError, ErrorLog};
 use crate::term;
-use crate::files::{File, OsStrTools};
+use crate::files::File;
 
 #[derive(Debug)]
 struct Process {
