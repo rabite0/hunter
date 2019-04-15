@@ -22,6 +22,7 @@ extern crate parse_ansi;
 extern crate signal_notify;
 extern crate tree_magic;
 extern crate systemstat;
+extern crate osstrtools;
 
 use failure::Fail;
 
