@@ -61,13 +61,13 @@ impl Listable for ListView<Files> {
 
     fn on_key(&mut self, key: Key) -> HResult<()> {
         match key {
-            Key::Up | Key::Char('k') => {
+            Key::Up | Key::Char('p') => {
                 self.move_up();
                 self.refresh()?;
             }
-            Key::Char('K') => { for _ in 0..10 { self.move_up() } self.refresh()?; }
-            Key::Char('J') => { for _ in 0..10 { self.move_down() } self.refresh()?; }
-            Key::Down | Key::Char('j') => {
+            Key::Char('P') => { for _ in 0..10 { self.move_up() } self.refresh()?; }
+            Key::Char('N') => { for _ in 0..10 { self.move_down() } self.refresh()?; }
+            Key::Down | Key::Char('n') => {
                 self.move_down();
                 self.refresh()?;
             },
@@ -82,7 +82,7 @@ impl Listable for ListView<Files> {
             Key::Char(' ') => self.multi_select_file(),
             Key::Char('v') => self.invert_selection(),
             Key::Char('t') => self.toggle_tag()?,
-            Key::Char('H') => self.toggle_hidden(),
+            Key::Char('h') => self.toggle_hidden(),
             Key::Char('r') => self.reverse_sort(),
             Key::Char('s') => self.cycle_sort(),
             Key::Char('N') => self.select_next_mtime(),
