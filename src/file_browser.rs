@@ -260,19 +260,20 @@ impl FileBrowser {
             let main_dir = File::new(&name,
                                      main_path.clone(),
                                      None);
-            let files = cache.get_files_sync(&main_dir)?;
+            let mut files = cache.get_files_sync(&main_dir)?;
             let selection = cache.get_selection(&main_dir).ok();
+
+            files.meta_all();
+            files.meta_all();
+
             let mut list = ListView::new(&core_m.clone(),
                                          files);
             if let Some(file) = selection {
                 list.select_file(&file);
             }
 
-            list.content.meta_all();
-            list.content.dirty_meta.set_dirty();
             list.refresh().log();
 
-            list.content.meta_all();
             Ok(list)
         }));
 
