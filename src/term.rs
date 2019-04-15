@@ -40,7 +40,7 @@ impl Screen {
         self.screen.lock().map(|mut screen| std::mem::drop(screen.take())).ok();
 
         // Terminal stays fucked without this. Why?
-        Ok(std::process::Command::new("reset").arg("-I").spawn()).log();
+        //Ok(std::process::Command::new("reset").arg("-I").spawn()).log();
     }
 
     pub fn reset_screen(&mut self) -> HResult<()> {
