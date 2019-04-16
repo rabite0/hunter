@@ -15,7 +15,6 @@ categories = ["command-line-utilities"]
 termion = "1.5.1"
 unicode-width = "0.1.5"
 lazy_static = "0.2.11"
-x11-clipboard = "0.3.1"
 alphanumeric-sort = "1.0.6"
 lscolors = { version = "0.5.0", features = [ "ansi_term" ]  }
 tree_magic = "0.2.1"
