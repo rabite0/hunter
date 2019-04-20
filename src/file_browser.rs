@@ -907,7 +907,7 @@ impl FileBrowser {
         let xsize = self.get_coordinates()?.xsize();
         let ypos = self.get_coordinates()?.position().y();
         let pos = self.main_widget()?.get_selection();
-        let file = self.main_widget()?.content.files.get(pos)?;
+        let file = self.main_widget()?.content.get_files().get(pos).cloned()?;
 
         let permissions = file.pretty_print_permissions().unwrap_or("NOPERMS".into());
         let user = file.pretty_user().unwrap_or("NOUSER".into());
