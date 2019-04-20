@@ -1,7 +1,7 @@
 [package]
 name = "hunter"
-version = "1.0.9"
-authors = ["rabite"]
+version = "1.0.10"
+authors = ["rabite0"]
 edition = "2018"
 description = "Fast, lag-free terminal file browser"
 homepage = "https://github.com/rabite0/hunter"
