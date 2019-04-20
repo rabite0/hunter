@@ -20,7 +20,6 @@ use failure::Error;
 use notify::DebouncedEvent;
 use rayon::{ThreadPool, ThreadPoolBuilder};
 use alphanumeric_sort::compare_str;
-use osstrtools::OsStrTools;
 
 use crate::fail::{HResult, HError, ErrorLog};
 use crate::dirty::{AsyncDirtyBit, DirtyBit, Dirtyable};
