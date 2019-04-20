@@ -23,6 +23,7 @@ extern crate signal_notify;
 extern crate tree_magic;
 extern crate systemstat;
 extern crate osstrtools;
+extern crate pathbuftools;
 
 use failure::Fail;
 

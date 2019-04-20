@@ -1,4 +1,5 @@
 use termion::event::Key;
+use pathbuftools::PathBufTools;
 
 use std::io::Write;
 use std::sync::{Arc, Mutex, RwLock};
@@ -6,7 +7,7 @@ use std::path::PathBuf;
 use std::ffi::OsString;
 use std::collections::HashSet;
 
-use crate::files::{File, Files, PathBufExt};
+use crate::files::{File, Files};
 use crate::fscache::FsCache;
 use crate::listview::ListView;
 use crate::hbox::HBox;
