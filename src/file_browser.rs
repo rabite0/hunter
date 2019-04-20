@@ -264,7 +264,6 @@ impl FileBrowser {
             let selection = cache.get_selection(&main_dir).ok();
 
             files.meta_all();
-            files.meta_all();
 
             let mut list = ListView::new(&core_m.clone(),
                                          files);
