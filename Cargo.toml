@@ -29,7 +29,8 @@ notify = "4.0.9"
 parse-ansi = "0.1.6"
 signal-notify = "0.1.3"
 systemstat = "0.1.4"
-osstrtools = "0.1.0"
+osstrtools = "0.1"
+pathbuftools = "0.1"
 
 
 #[profile.release]
