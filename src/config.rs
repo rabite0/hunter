@@ -5,6 +5,7 @@ use crate::fail::{HError, HResult, ErrorLog};
 pub struct Config {
     pub animation: bool,
     pub show_hidden: bool,
+    pub select_prog: Option<String>,
 }
 
 
@@ -12,7 +13,8 @@ impl Config {
     pub fn new() -> Config {
         Config {
             animation: true,
-            show_hidden: false
+            show_hidden: false,
+            select_prog: None
         }
     }
 
@@ -31,6 +33,10 @@ impl Config {
                 Ok(("animation", "off")) => { config.animation = false; },
                 Ok(("show_hidden", "on")) => { config.show_hidden = true; },
                 Ok(("show_hidden", "off")) => { config.show_hidden = false; },
+                Ok(("select_prog", prog)) => {
+                    let prog = prog.to_string();
+                    config.select_prog = Some(prog);
+                }
                 _ => { HError::config_error::<Config>(line.to_string()).log(); }
             }
             config

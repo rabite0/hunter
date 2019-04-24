@@ -825,6 +825,69 @@ impl FileBrowser {
         Ok(())
     }
 
+    fn external_select(&mut self) -> HResult<()> {
+        let prog = self.core
+            .config.read()?
+            .get()?
+            .select_prog
+            .clone();
+
+        if let Some(prog) = prog {
+            self.core.get_sender().send(Events::InputEnabled(false))?;
+            self.core.screen.cursor_show().log();
+            self.core.screen.drop_screen();
+            self.preview_widget().map(|preview| preview.cancel_animation()).log();
+
+            let cmd_result = std::process::Command::new(&prog).output();
+
+            self.core.screen.reset_screen().log();
+            self.core.get_sender().send(Events::InputEnabled(true))?;
+
+
+            match cmd_result {
+                Ok(cmd_result) => {
+                    if cmd_result.status.success() {
+                        let output = String::from_utf8_lossy(&cmd_result.stdout);
+                        let output = output.trim_end_matches('\n');
+
+                        let path = std::path::PathBuf::from(&output.to_string());
+
+                        if path.exists() {
+                            if path.is_dir() {
+                                let dir = File::new_from_path(&path, None)?;
+
+                                self.main_widget_goto(&dir).log();
+                            } else if path.is_file() {
+                                let file = File::new_from_path(&path, None)?;
+                                let dir = file.parent_as_file()?;
+
+                                self.main_widget_goto(&dir).log();
+
+                                // replace this with on_ready_mut() later
+                                let pause = std::time::Duration::from_millis(10);
+                                while self.main_widget().is_err() {
+                                    self.main_async_widget_mut()?.refresh().log();
+                                    std::thread::sleep(pause);
+                                }
+                                self.main_widget_mut()?.select_file(&file);
+                            }
+                        } else {
+                            let msg = format!("Can't access path: {}!",
+                                              path.to_string_lossy());
+                            self.show_status(&msg).log();
+                        }
+                    } else {
+                        self.show_status("External program failed!").log();
+                    }
+                }
+                Err(_) => self.show_status("Can't run external program!").log()
+            }
+        } else {
+            self.show_status("You have to set an program for this!").log();
+        }
+        Ok(())
+    }
+
     fn exec_cmd(&mut self,
                 tab_dirs: Vec<File>,
                 tab_files: Vec<Vec<File>>) -> HResult<()> {
@@ -1031,6 +1094,7 @@ impl Widget for FileBrowser {
 
     fn on_key(&mut self, key: Key) -> HResult<()> {
         match key {
+            Key::Char('\n') => self.external_select()?,
             Key::Char('/') => { self.turbo_cd()?; },
             Key::Char('Q') => { self.quit_with_dir()?; },
             Key::Right | Key::Char('l') => { self.enter_dir()?; },
@@ -1039,7 +1103,6 @@ impl Widget for FileBrowser {
             Key::Char('-') => { self.goto_prev_cwd()?; },
             Key::Char('`') => { self.goto_bookmark()?; },
             Key::Char('m') => { self.add_bookmark()?; },
-
             Key::Char('w') => { self.show_procview()?; },
             Key::Char('g') => self.show_log()?,
             Key::Char('z') => self.run_subshell()?,
