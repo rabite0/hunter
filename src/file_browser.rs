@@ -439,6 +439,19 @@ impl FileBrowser {
         Ok(())
     }
 
+    pub fn main_widget_goto_wait(&mut self, dir :&File) -> HResult<()> {
+        self.main_widget_goto(&dir)?;
+
+        // replace this with on_ready_mut() later
+        let pause = std::time::Duration::from_millis(10);
+        while self.main_widget().is_err() {
+            self.main_async_widget_mut()?.refresh().log();
+            std::thread::sleep(pause);
+        }
+
+        Ok(())
+    }
+
     pub fn main_widget_goto(&mut self, dir: &File) -> HResult<()> {
         self.cache_files().log();
 
@@ -828,122 +841,106 @@ impl FileBrowser {
     }
 
     fn external_select(&mut self) -> HResult<()> {
-        let prog = self.core
+        let cmd = self.core
             .config.read()?
             .get()?
-            .select_prog
+            .select_cmd
             .clone();
 
-        if let Some(prog) = prog {
-            self.core.get_sender().send(Events::InputEnabled(false))?;
-            self.core.screen.cursor_show().log();
-            self.core.screen.drop_screen();
-            self.preview_widget().map(|preview| preview.cancel_animation()).log();
+        self.core.get_sender().send(Events::InputEnabled(false))?;
+        self.core.screen.drop_screen();
+        self.preview_widget().map(|preview| preview.cancel_animation()).log();
 
-            let cmd_result = std::process::Command::new(&prog)
-                .stdin(std::process::Stdio::inherit())
-                .stdout(std::process::Stdio::piped())
-                .stderr(std::process::Stdio::inherit())
-                .output();
+        let cmd_args = cmd.splitn(2, " ").collect::<Vec<&str>>();
+        let cmd = cmd_args[0];
+        let args = cmd_args.get(1)
+            .map(|args| args.split(" ").collect::<Vec<&str>>())
+            .unwrap_or(vec![]);
 
-            self.core.screen.reset_screen().log();
-            self.core.get_sender().send(Events::InputEnabled(true))?;
+        let cmd_result = std::process::Command::new(&cmd)
+            .args(args)
+            .stdin(std::process::Stdio::inherit())
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::inherit())
+            .output();
 
-            match cmd_result {
-                Ok(cmd_result) => {
-                    if cmd_result.status.success() {
-                        let newline = OsString::from("\n");
-                        let output = cmd_result.stdout;
-                        let output = OsString::from_vec(output);
-                        let output = output.split(&newline);
-                        let cwd = &self.cwd.path;
+        self.core.screen.reset_screen().log();
+        self.core.get_sender().send(Events::InputEnabled(true))?;
 
-                        let paths = output.iter()
-                            .map(|output| {
-                                let path = PathBuf::from(output);
-                                if path.is_absolute() {
-                                    path
-                                } else {
-                                    cwd.join(path)
-                                }
-                            })
-                            .collect::<Vec<PathBuf>>();
-                        // let output = String::from_utf8_lossy(&cmd_result.stdout);
-                        // let output = output.trim_end_matches('\n');
+        match cmd_result {
+            Ok(cmd_result) => {
+                if cmd_result.status.success() {
+                    let cwd = &self.cwd.path;
 
-                        // let path = std::path::PathBuf::from(&output.to_string());
-                        if paths.len() == 1 {
-                            let path = &paths[0];
-                            if path.exists() {
-                                if path.is_dir() {
-                                    let dir = File::new_from_path(&path, None)?;
-
-                                    self.main_widget_goto(&dir).log();
-                                } else if path.is_file() {
-                                    let file = File::new_from_path(&path, None)?;
-                                    let dir = file.parent_as_file()?;
-
-                                    self.main_widget_goto(&dir).log();
-
-                                    // replace this with on_ready_mut() later
-                                    let pause = std::time::Duration::from_millis(10);
-                                    while self.main_widget().is_err() {
-                                        self.main_async_widget_mut()?.refresh().log();
-                                        std::thread::sleep(pause);
-                                    }
-                                    self.main_widget_mut()?.select_file(&file);
-                                }
+                    let paths = OsString::from_vec(cmd_result.stdout)
+                        .split_lines()
+                        .iter()
+                        .map(|output| {
+                            let path = PathBuf::from(output);
+                            if path.is_absolute() {
+                                path
                             } else {
-                                let msg = format!("Can't access path: {}!",
-                                                  path.to_string_lossy());
-                                self.show_status(&msg).log();
+                                cwd.join(path)
                             }
-                        } else {
-                            let mut last_file = None;
-                            for file_path in paths {
-                                let dir_path = file_path.parent()?;
-                                if self.cwd.path != dir_path {
-                                    let file_dir = File::new_from_path(&dir_path, None);
+                        })
+                        .collect::<Vec<PathBuf>>();
 
-                                    self.main_widget_goto(&file_dir?).log();
+                    if paths.len() == 1 {
+                        let path = &paths[0];
+                        if path.exists() {
+                            if path.is_dir() {
+                                let dir = File::new_from_path(&path, None)?;
 
-                                    // replace this with on_ready_mut() later
-                                    let pause = std::time::Duration::from_millis(10);
-                                    while self.main_widget().is_err() {
-                                        self.main_async_widget_mut()?.refresh().log();
-                                        std::thread::sleep(pause);
-                                    }
-                                }
+                                self.main_widget_goto(&dir).log();
+                            } else if path.is_file() {
+                                let file = File::new_from_path(&path, None)?;
+                                let dir = file.parent_as_file()?;
 
-                                match self.main_widget_mut()?
-                                    .content
-                                    .find_file_with_path(&file_path) {
-                                        Some(file) => {
-                                            file.toggle_selection();
-                                            last_file = Some(file.clone());
-                                        }
-                                        None => {
-                                            let msg = format!("Can't find: {}",
-                                                              file_path
-                                                              .to_string_lossy());
-                                            self.show_status(&msg).log();
-                                        }
-                                    }
-                            }
+                                self.main_widget_goto_wait(&dir).log();
 
-                            if let Some(file) = last_file {
                                 self.main_widget_mut()?.select_file(&file);
                             }
-                            self.main_widget_mut()?.content.set_dirty();
+                        } else {
+                            let msg = format!("Can't access path: {}!",
+                                              path.to_string_lossy());
+                            self.show_status(&msg).log();
                         }
                     } else {
-                        self.show_status("External program failed!").log();
+                        let mut last_file = None;
+                        for file_path in paths {
+                            if !file_path.exists() {
+                                let msg = format!("Can't find: {}",
+                                                  file_path .to_string_lossy());
+                                self.show_status(&msg).log();
+                                continue;
+                            }
+
+                            let dir_path = file_path.parent()?;
+                            if self.cwd.path != dir_path {
+                                let file_dir = File::new_from_path(&dir_path, None);
+
+                                self.main_widget_goto_wait(&file_dir?).log();
+                            }
+
+                            self.main_widget_mut()?
+                                .content
+                                .find_file_with_path(&file_path)
+                                .map(|file| {
+                                    file.toggle_selection();
+                                    last_file = Some(file.clone());
+                                });
+                        }
+
+                        self.main_widget_mut().map(|w| {
+                            last_file.map(|f| w.select_file(&f));
+                            w.content.set_dirty();
+                        }).log();
                     }
+                } else {
+                    self.show_status("External program failed!").log();
                 }
-                Err(_) => self.show_status("Can't run external program!").log()
             }
-        } else {
-            self.show_status("You have to set an program for this!").log();
+            Err(_) => self.show_status("Can't run external program!").log()
         }
 
         Ok(())
