@@ -89,7 +89,8 @@ hunter reads $XDG_CONFIG_HOME/hunter/config at startup. On macOS it reads $HOME/
 ```
 animation=on
 show_hidden=off
-select_cmd=fzf -m
+select_cmd=find -type f | fzf -m
+cd_cmd=find -type d | fzf
 ```
 
 ## Drop into hunter cwd on quit
@@ -118,12 +119,12 @@ By default hunter uses vi-style keybindings. If you use a QWERTY-like keyboard l
 | <                   | move to top                        |
 | >                   | move to bottom                     |
 | l/h (holy: f/b)     | open/go back                       |
-| Enter               | select/open with external command  |
 | S                   | search file                        |
 | Alt(s)              | search next                        |
 | Alt(S)              | search prev                        |
 | Ctrl(f)             | filter                             |
 | space               | multi select file                  |
+| Alt(space)          | select with external program       |
 | v                   | invert selections                  |
 | t                   | toggle tag                         |
 | h                   | toggle show hidden                 |
@@ -133,6 +134,7 @@ By default hunter uses vi-style keybindings. If you use a QWERTY-like keyboard l
 | k                   | select prev by mtime               |
 | d                   | toggle dirs first                  |
 | /                   | turbo cd                           |
+| Alt(/)              | enter dir with external program    |
 | Q                   | quit with dir/selections           |
 | L                   | run in background                  |
 | ~                   | goto prev cwd                      |
