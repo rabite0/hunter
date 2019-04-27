@@ -6,6 +6,7 @@ pub struct Config {
     pub animation: bool,
     pub show_hidden: bool,
     pub select_cmd: String,
+    pub cd_cmd: String
 }
 
 
@@ -14,7 +15,8 @@ impl Config {
         Config {
             animation: true,
             show_hidden: false,
-            select_cmd: "fzf -m".to_string()
+            select_cmd: "find -type f | fzf -m".to_string(),
+            cd_cmd: "find -type d | fzf".to_string()
         }
     }
 
@@ -36,6 +38,10 @@ impl Config {
                 Ok(("select_cmd", cmd)) => {
                     let cmd = cmd.to_string();
                     config.select_cmd = cmd;
+                }
+                Ok(("cd_cmd", cmd)) => {
+                    let cmd = cmd.to_string();
+                    config.cd_cmd = cmd;
                 }
                 _ => { HError::config_error::<Config>(line.to_string()).log(); }
             }

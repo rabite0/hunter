@@ -841,6 +841,7 @@ impl FileBrowser {
     }
 
     fn external_select(&mut self) -> HResult<()> {
+        let shell = std::env::var("SHELL").unwrap_or("bash".into());
         let cmd = self.core
             .config.read()?
             .get()?
@@ -851,20 +852,16 @@ impl FileBrowser {
         self.core.screen.drop_screen();
         self.preview_widget().map(|preview| preview.cancel_animation()).log();
 
-        let cmd_args = cmd.splitn(2, " ").collect::<Vec<&str>>();
-        let cmd = cmd_args[0];
-        let args = cmd_args.get(1)
-            .map(|args| args.split(" ").collect::<Vec<&str>>())
-            .unwrap_or(vec![]);
-
-        let cmd_result = std::process::Command::new(&cmd)
-            .args(args)
+        let cmd_result = std::process::Command::new(shell)
+            .arg("-c")
+            .arg(&cmd)
             .stdin(std::process::Stdio::inherit())
             .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::inherit())
             .output();
 
         self.core.screen.reset_screen().log();
+        self.clear().log();
         self.core.get_sender().send(Events::InputEnabled(true))?;
 
         match cmd_result {
@@ -945,6 +942,67 @@ impl FileBrowser {
 
         Ok(())
     }
+
+    fn external_cd(&mut self) -> HResult<()> {
+        let shell = std::env::var("SHELL").unwrap_or("bash".into());
+        let cmd = self.core
+            .config.read()?
+            .get()?
+            .cd_cmd
+            .clone();
+
+        self.core.get_sender().send(Events::InputEnabled(false))?;
+        self.core.screen.drop_screen();
+        self.preview_widget().map(|preview| preview.cancel_animation()).log();
+
+        let cmd_result = std::process::Command::new(shell)
+            .arg("-c")
+            .arg(cmd)
+            .stdin(std::process::Stdio::inherit())
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::inherit())
+            .output();
+
+        self.core.screen.reset_screen().log();
+        self.clear().log();
+        self.core.get_sender().send(Events::InputEnabled(true))?;
+
+        match cmd_result {
+            Ok(cmd_result) => {
+                if cmd_result.status.success() {
+                    let cwd = &self.cwd.path;
+
+                    let path_string = OsString::from_vec(cmd_result.stdout);
+                    let path_string = path_string.trim_end_newlines();
+                    let path = PathBuf::from(path_string);
+                    let path = if path.is_absolute() {
+                        path
+                    } else {
+                        cwd.join(path)
+                    };
+
+                    if path.exists() {
+                        if path.is_dir() {
+                            let dir = File::new_from_path(&path, None)?;
+                            self.main_widget_goto(&dir).log();
+                        }
+                        else {
+                            let msg = format!("Can't access path: {}!",
+                                              path.to_string_lossy());
+                            self.show_status(&msg).log();
+                        }
+
+                    } else {
+                        self.show_status("External program failed!").log();
+                    }
+                }
+            }
+            Err(_) => self.show_status("Can't run external program!").log()
+        }
+
+        Ok(())
+    }
+
 
     fn exec_cmd(&mut self,
                 tab_dirs: Vec<File>,
@@ -1152,7 +1210,8 @@ impl Widget for FileBrowser {
 
     fn on_key(&mut self, key: Key) -> HResult<()> {
         match key {
-            Key::Char('\n') => self.external_select()?,
+            Key::Alt(' ') => self.external_select()?,
+            Key::Alt('/') => self.external_cd()?,
             Key::Char('/') => { self.turbo_cd()?; },
             Key::Char('Q') => { self.quit_with_dir()?; },
             Key::Right | Key::Char('l') => { self.enter_dir()?; },
