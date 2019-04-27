@@ -290,7 +290,7 @@ where
             Key::Char('J') => for _ in 0..10 { self.move_down() },
             Key::Down | Key::Char('j') => self.move_down(),
             Key::Char('t') => self.toggle_fold()?,
-            Key::Char('l') => self.popup_finnished()?,
+            Key::Char('g') => self.popup_finnished()?,
             _ => {}
         }
         Ok(())
