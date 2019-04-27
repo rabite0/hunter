@@ -508,9 +508,9 @@ fn dispatch_events(tx_internal: Sender<Events>,
                 _ => {}
             }
             if let Some(tx_exclusive) =  &tx_exclusive_event {
-                tx_exclusive.send(event).unwrap();
+                tx_exclusive.send(event).ok();
             } else {
-                tx_internal.send(event).unwrap();
+                tx_internal.send(event).ok();
             }
         }
     });
