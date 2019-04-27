@@ -22,6 +22,7 @@ A big thanks to ranger and its developers. Without its inspiration this wouldn't
 * Asynchronous multi-threaded IO
 * Tabs
 * Multi-file selection
+* Enter directories/select files using external command like fzf
 * ranger import for bookmarks/tags
 * minibuffer with completion and filename/selection/tab/directory substitution
 * subprocess viewer that shows output of started subprocesses
@@ -88,6 +89,8 @@ hunter reads $XDG_CONFIG_HOME/hunter/config at startup. On macOS it reads $HOME/
 ```
 animation=on
 show_hidden=off
+select_cmd=find -type f | fzf -m
+cd_cmd=find -type d | fzf
 ```
 
 ## Drop into hunter cwd on quit
@@ -121,6 +124,7 @@ By default hunter uses vi-style keybindings. If you use a QWERTY-like keyboard l
 | Alt(S)              | search prev                        |
 | Ctrl(f)             | filter                             |
 | space               | multi select file                  |
+| Alt(space)          | select with external program       |
 | v                   | invert selections                  |
 | t                   | toggle tag                         |
 | h                   | toggle show hidden                 |
@@ -130,6 +134,7 @@ By default hunter uses vi-style keybindings. If you use a QWERTY-like keyboard l
 | k                   | select prev by mtime               |
 | d                   | toggle dirs first                  |
 | /                   | turbo cd                           |
+| Alt(/)              | enter dir with external program    |
 | Q                   | quit with dir/selections           |
 | L                   | run in background                  |
 | ~                   | goto prev cwd                      |

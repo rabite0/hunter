@@ -5,6 +5,8 @@ use crate::fail::{HError, HResult, ErrorLog};
 pub struct Config {
     pub animation: bool,
     pub show_hidden: bool,
+    pub select_cmd: String,
+    pub cd_cmd: String
 }
 
 
@@ -12,7 +14,9 @@ impl Config {
     pub fn new() -> Config {
         Config {
             animation: true,
-            show_hidden: false
+            show_hidden: false,
+            select_cmd: "find -type f | fzf -m".to_string(),
+            cd_cmd: "find -type d | fzf".to_string()
         }
     }
 
@@ -31,6 +35,14 @@ impl Config {
                 Ok(("animation", "off")) => { config.animation = false; },
                 Ok(("show_hidden", "on")) => { config.show_hidden = true; },
                 Ok(("show_hidden", "off")) => { config.show_hidden = false; },
+                Ok(("select_cmd", cmd)) => {
+                    let cmd = cmd.to_string();
+                    config.select_cmd = cmd;
+                }
+                Ok(("cd_cmd", cmd)) => {
+                    let cmd = cmd.to_string();
+                    config.cd_cmd = cmd;
+                }
                 _ => { HError::config_error::<Config>(line.to_string()).log(); }
             }
             config
