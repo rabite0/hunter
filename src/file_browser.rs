@@ -1032,6 +1032,7 @@ impl Widget for FileBrowser {
     fn on_key(&mut self, key: Key) -> HResult<()> {
         match key {
             Key::Char('/') => { self.turbo_cd()?; },
+            Key::Char('q') => HError::quit()?,
             Key::Char('Q') => { self.quit_with_dir()?; },
             Key::Right | Key::Char('l') => { self.enter_dir()?; },
             Key::Char('L') => { self.open_bg()?; },
