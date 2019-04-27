@@ -33,6 +33,7 @@ osstrtools = "0.1"
 pathbuftools = "0.1"
 
 
-#[profile.release]
-#debug = true
-#lto = false
+# These options increase performance and generate a smaller binary
+[profile.release]
+lto = true
+codegen-units = 1
