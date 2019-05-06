@@ -50,7 +50,7 @@ If it works on a system not mentioned here, please open an issue. Also feel free
 
 ## INSTALLATION:
 
-Compiling hunter currently requires a nighty Rust compiler!
+Compiling hunter currently requires a nightly Rust compiler!
 The easiest way to get a nightly compiler is with [rustup](https://rustup.rs/). If you have rustup installed it will automatically download and use a version that is known to work when you run cargo.
 
 ### Install rustup
@@ -127,6 +127,7 @@ By default hunter uses vi-style keybindings. If you use a QWERTY-like keyboard l
 | ------------------- | :--------------------------------- |
 | j/k (holy: n/p)     | move down/up                       |
 | J/K (holy: N/P)     | 5x move down/5x move up            |
+| ]/[                 | move down/up on left column        |
 | <                   | move to top                        |
 | >                   | move to bottom                     |
 | l/h (holy: f/b)     | open/go back                       |

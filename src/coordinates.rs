@@ -68,6 +68,10 @@ impl Coordinates {
         self.size.xsize()
     }
 
+    pub fn ysize_u(&self) -> usize {
+        (self.ysize() - 1) as usize
+    }
+
     pub fn ysize(&self) -> u16 {
         self.size.ysize()
     }
