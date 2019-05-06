@@ -5,6 +5,7 @@ cache: cargo
 
 branches:
   only:
+    - /^v\d+\.\d+\.\d+.*$/
     - holy
     - master
 
