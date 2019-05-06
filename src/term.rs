@@ -3,14 +3,13 @@ use std::sync::{Arc, Mutex, RwLock};
 
 use termion;
 use termion::screen::AlternateScreen;
-use termion::input::MouseTerminal;
 use termion::raw::{IntoRawMode, RawTerminal};
 
 use parse_ansi::parse_bytes;
 
 use crate::fail::{HResult, ErrorLog};
 
-pub type TermMode = AlternateScreen<MouseTerminal<RawTerminal<BufWriter<Stdout>>>>;
+pub type TermMode = AlternateScreen<RawTerminal<BufWriter<Stdout>>>;
 
 #[derive(Clone)]
 pub struct Screen {
@@ -22,7 +21,6 @@ pub struct Screen {
 impl Screen {
     pub fn new() -> HResult<Screen> {
         let screen = BufWriter::new(std::io::stdout()).into_raw_mode()?;
-        let screen = MouseTerminal::from(screen);
         let mut screen = AlternateScreen::from(screen);
         let terminal = std::env::var("TERM").unwrap_or("xterm".into());
 
