@@ -108,7 +108,7 @@ Keybindings:
 ============
 
 ## holy mode
-By default hunter uses vi-style keybindings. If you use a QWERTY-like keyboard layout this is probably what you want. Most people will want this, so I maed it the default. If you have a different keyboard layout this might not be the best choice. The holy-branch changes the movement keys to the emacs keybindings, which is more ergonomic on e.g. Colemak.
+By default hunter uses vi-style keybindings. If you use a QWERTY-like keyboard layout this is probably what you want. Most people will want this, so I made it the default. If you have a different keyboard layout this might not be the best choice. The holy-branch changes the movement keys to the emacs keybindings, which is more ergonomic on e.g. Colemak.
 
 ## Main view:
 
