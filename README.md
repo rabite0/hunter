@@ -42,12 +42,23 @@ If it works on a system not mentioned here, please open an issue. Also feel free
 
 * gcc
 * libmagic-dev
+* Rust-nighly compiler
 
 ### Debian/Ubuntu
 
 * ```apt install gcc libmagic-dev```
 
 ## INSTALLATION:
+
+Compiling hunter currently requires a nighty Rust compiler!
+The easiest way to get a nightly compiler is with [rustup](https://rustup.rs/). If you have rustup installed it will automatically download and use a version that is known to work when you run cargo.
+
+### Install rustup
+
+```
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+```
+
 
 ### Build with cargo
 
