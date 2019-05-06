@@ -31,13 +31,14 @@ install:
   - command -v cross || cargo install cross
 
 script:
-  - cross build --target $TARGET --release
+  - cross build --target $TARGET ${TRAVIS_TAG:+"--release"}
 
 before_deploy:
   - name="hunter-$TRAVIS_BRANCH-$ARCH"
   - mkdir $name
   - cp target/$TARGET/release/hunter $name/
   - cp README.md LICENSE $name/
+  - cp -r extra $name/
   - GZIP=-9 tar czvf $name.tar.gz $name/*
 
 deploy:
