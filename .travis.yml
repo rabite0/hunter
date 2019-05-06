@@ -5,26 +5,26 @@ cache: cargo
 
 branches:
   only:
-	- holy
-	- master
+    - holy
+    - master
 
 matrix:
   include:
-	# Linux
-	- env: TARGET=armv7-unknown-linux-gnueabihf ARCH=linux-arm-32
-	- env: TARGET=aarch64-unknown-linux-gnu ARCH=linux-arm-64
-	- env: TARGET=i686-unknown-linux-gnu ARCH=linux-intel-32
-	- env: TARGET=x86_64-unknown-linux-gnu ARCH=linux-intel-64
+    # Linux
+    - env: TARGET=armv7-unknown-linux-gnueabihf ARCH=linux-arm-32
+    - env: TARGET=aarch64-unknown-linux-gnu ARCH=linux-arm-64
+    - env: TARGET=i686-unknown-linux-gnu ARCH=linux-intel-32
+    - env: TARGET=x86_64-unknown-linux-gnu ARCH=linux-intel-64
 
-	# OSX
-	- env: TARGET=i686-apple-darwin ARCH=macos-intel-32
-	  os: osx
-	- env: TARGET=x86_64-apple-darwin ARCH=macos-intel-64
-	  os: osx
+    # OSX
+    - env: TARGET=i686-apple-darwin ARCH=macos-intel-32
+      os: osx
+    - env: TARGET=x86_64-apple-darwin ARCH=macos-intel-64
+      os: osx
 
-	# *BSD
-	- env: TARGET=i686-unknown-freebsd ARCH=bsd-intel-32
-	- env: TARGET=x86_64-unknown-freebsd ARCH=bsd-intel-64
+    # *BSD
+    - env: TARGET=i686-unknown-freebsd ARCH=bsd-intel-32
+    - env: TARGET=x86_64-unknown-freebsd ARCH=bsd-intel-64
 
 install:
   - command -v cross || cargo install cross
@@ -42,13 +42,13 @@ before_deploy:
 deploy:
   provider: releases
   api_key:
-	secure: 2syUPZ4SoRnqswtvut5mDcBkV06qcCZSWUnXhyrtIMAEKq+bOd0nqChF5/OfDGNIltmTe+qLBgHQxT/48ZU2TAOgYjjNrbjLou5KgPrcXjBI+eKh3s2RCehhhFtfQ9wuusR+emupq4IuPHAGvkONawFljq4RqR/Sr1med8lWZXFCPJd8xYgEOd/MTvJ5HuH3nPMsJJ98KFBbEp65WFH0EZo9j4vv6q8HjfXz/zq/IrsN9ufqo4ccGHFkc9dhXodJG83IkUqWo0ZlxkFFxhLZ5CncJp2qjwTdulWQVwY3mCV/Pz3BUFXfIPITEJvNDMya/SQb4FGJO54DUsOUFuWk/ZAUddtSDkuMNdN16ohBMfqudYYLL/C8NWW9byzVG/f/pz3NAR2qqKl4RPNOFsJjyXSQJ/thEjm82wKkiQ+G38Ii3Gf6jm4FveGDy3CU2Nm/BWOwpW02cQxDqB71Wdo0dScaikM72UO7/XUrSJkgk654oHk9Hv5kEJlgUpFYgabEruNbZn1lC/WAZQDQBNLV9VcTX966Cm6u7azfSTHtFacCGG1wZkJnVJLSr76j24lwBM0z59bHmlTNyLxHxkRx5cjS/shebEE/cAOyeHGXwWbNoyJZFuytwB3613UJ2Zw3qgc2Y5X+GVpjkBbXdbemtDWNWi3xO+Gy0rbCjKLsYco=
+    secure: 2syUPZ4SoRnqswtvut5mDcBkV06qcCZSWUnXhyrtIMAEKq+bOd0nqChF5/OfDGNIltmTe+qLBgHQxT/48ZU2TAOgYjjNrbjLou5KgPrcXjBI+eKh3s2RCehhhFtfQ9wuusR+emupq4IuPHAGvkONawFljq4RqR/Sr1med8lWZXFCPJd8xYgEOd/MTvJ5HuH3nPMsJJ98KFBbEp65WFH0EZo9j4vv6q8HjfXz/zq/IrsN9ufqo4ccGHFkc9dhXodJG83IkUqWo0ZlxkFFxhLZ5CncJp2qjwTdulWQVwY3mCV/Pz3BUFXfIPITEJvNDMya/SQb4FGJO54DUsOUFuWk/ZAUddtSDkuMNdN16ohBMfqudYYLL/C8NWW9byzVG/f/pz3NAR2qqKl4RPNOFsJjyXSQJ/thEjm82wKkiQ+G38Ii3Gf6jm4FveGDy3CU2Nm/BWOwpW02cQxDqB71Wdo0dScaikM72UO7/XUrSJkgk654oHk9Hv5kEJlgUpFYgabEruNbZn1lC/WAZQDQBNLV9VcTX966Cm6u7azfSTHtFacCGG1wZkJnVJLSr76j24lwBM0z59bHmlTNyLxHxkRx5cjS/shebEE/cAOyeHGXwWbNoyJZFuytwB3613UJ2Zw3qgc2Y5X+GVpjkBbXdbemtDWNWi3xO+Gy0rbCjKLsYco=
   file: hunter-$TRAVIS_BRANCH-$ARCH.tar.gz
   skip_cleanup: yes
   draft: yes
   on:
-	tags: yes
+    tags: yes
 
 notifications:
   email:
-	on_success: never
+  on_success: never
