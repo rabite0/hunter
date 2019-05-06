@@ -420,6 +420,36 @@ impl FileBrowser {
         Ok(())
     }
 
+    pub fn move_down_left_widget(&mut self) -> HResult<()> {
+        let left_files_pos = self.left_widget()?.get_selection();
+
+        let next_dir = self.get_left_files()?.get_files()
+            .iter()
+            .skip(left_files_pos + 1)
+            .find(|file| file.is_dir())
+            .cloned().cloned();
+
+        self.main_widget_goto(&next_dir?).log();
+
+        Ok(())
+    }
+
+    pub fn move_up_left_widget(&mut self) -> HResult<()> {
+        let left_files_pos = self.left_widget()?.get_selection();
+        let skip_files = self.get_left_files()?.len() - left_files_pos;
+
+        let next_dir = self.get_left_files()?.get_files()
+            .iter()
+            .rev()
+            .skip(skip_files)
+            .find(|file| file.is_dir())
+            .cloned().cloned();
+
+        self.main_widget_goto(&next_dir?).log();
+
+        Ok(())
+    }
+
     pub fn open_bg(&mut self) -> HResult<()> {
         let cwd = self.cwd()?;
         let file = self.selected_file()?;
@@ -489,6 +519,13 @@ impl FileBrowser {
     }
 
     pub fn left_widget_goto(&mut self, dir: &File) -> HResult<()> {
+        // Check if we're in the correct directory already and return
+        // if we are
+        let left_dir = &self.left_widget()?.content.directory;
+        if self.left_widget().is_ok() && left_dir == dir {
+            return Ok(());
+        }
+
         let cache = self.fs_cache.clone();
         let dir = dir.clone();
 
@@ -1210,6 +1247,8 @@ impl Widget for FileBrowser {
 
     fn on_key(&mut self, key: Key) -> HResult<()> {
         match key {
+            Key::Char(']') => self.move_down_left_widget()?,
+            Key::Char('[') => self.move_up_left_widget()?,
             Key::Alt(' ') => self.external_select()?,
             Key::Alt('/') => self.external_cd()?,
             Key::Char('/') => { self.turbo_cd()?; },

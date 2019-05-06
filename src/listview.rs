@@ -71,6 +71,8 @@ impl Listable for ListView<Files> {
                 self.move_down();
                 self.refresh()?;
             },
+            Key::PageUp => self.page_up(),
+            Key::PageDown => self.page_down(),
             Key::Char('<') => self.move_top(),
             Key::Char('>') => self.move_bottom(),
             Key::Char('S') => { self.search_file().log(); }
@@ -162,6 +164,22 @@ where
     pub fn move_bottom(&mut self) {
         let lines = self.lines;
         self.set_selection(lines - 1);
+    }
+
+    pub fn page_up(&mut self) {
+        let ysize = self.get_coordinates().unwrap().ysize_u();
+
+        for _ in 0..ysize {
+            self.move_up();
+        }
+    }
+
+    pub fn page_down(&mut self) {
+        let ysize = self.get_coordinates().unwrap().ysize_u();
+
+        for _ in 0..ysize {
+            self.move_down();
+        }
     }
 
     pub fn get_selection(&self) -> usize {
