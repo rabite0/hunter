@@ -1,4 +1,4 @@
-use std::io::{Stdout, Write, BufWriter};
+use std::io::{Stdout, Write, BufWriter, BufRead};
 use std::sync::{Arc, Mutex, RwLock};
 
 use termion;
@@ -141,6 +141,14 @@ pub trait ScreenExt: Write {
 
 impl ScreenExt for Screen {}
 impl ScreenExt for TermMode {}
+
+pub fn flush_stdin() {
+    let stdin = std::io::stdin();
+    let mut stdin = stdin.lock();
+
+    // Not 100% sure if it's OK to just call consume like this
+    stdin.consume(10);
+}
 
 pub fn xsize() -> u16 {
     let (xsize, _) = termion::terminal_size().unwrap();
