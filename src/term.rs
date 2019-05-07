@@ -13,7 +13,7 @@ pub type TermMode = AlternateScreen<RawTerminal<BufWriter<Stdout>>>;
 
 #[derive(Clone)]
 pub struct Screen {
-    screen: Arc<Mutex<Option<TermMode>>>,
+    screen: Arc<Mutex<TermMode>>,
     size: Arc<RwLock<Option<(usize, usize)>>>,
     terminal: String
 }
@@ -26,25 +26,10 @@ impl Screen {
 
         screen.cursor_hide()?;
         Ok(Screen {
-            screen: Arc::new(Mutex::new(Some(screen))),
+            screen: Arc::new(Mutex::new(screen)),
             size: Arc::new(RwLock::new(None)),
             terminal: terminal
         })
-    }
-
-    pub fn drop_screen(&mut self) {
-        self.cursor_show().log();
-        self.to_main_screen().log();
-        self.screen.lock().map(|mut screen| std::mem::drop(screen.take())).ok();
-
-        // Terminal stays fucked without this. Why?
-        Ok(std::process::Command::new("reset").arg("-I").spawn()).log();
-    }
-
-    pub fn reset_screen(&mut self) -> HResult<()> {
-        let screen = Screen::new()?.screen.lock()?.take()?;
-        *self.screen.lock()? = Some(screen);
-        Ok(())
     }
 
     pub fn set_size(&self, size: (usize, usize)) -> HResult<()> {
@@ -82,14 +67,34 @@ impl Screen {
 
 impl Write for Screen {
     fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
-        self.screen.lock().unwrap().as_mut().unwrap().write(buf)
+        self.screen
+            .lock()
+            .map_err(|_| std::io::Error::new(std::io::ErrorKind::Other,
+                                             "Screen Mutex poisoned!"))
+            .and_then(|mut s| s.write(buf))
     }
     fn flush(&mut self) -> std::io::Result<()> {
-        self.screen.lock().unwrap().as_mut().unwrap().flush()
+        self.screen
+            .lock()
+            .map_err(|_| std::io::Error::new(std::io::ErrorKind::Other,
+                                             "Screen Mutex poisoned!"))
+            .and_then(|mut s| s.flush())
     }
 }
 
 pub trait ScreenExt: Write {
+    fn suspend_raw_mode(&mut self) -> HResult<()>;
+    fn activate_raw_mode(&mut self) -> HResult<()>;
+    fn suspend(&mut self) -> HResult<()> {
+        self.cursor_show().log();
+        self.to_main_screen().log();
+        self.suspend_raw_mode()
+    }
+    fn activate(&mut self) -> HResult<()> {
+        self.cursor_hide().log();
+        self.to_alternate_screen().log();
+        self.activate_raw_mode()
+    }
     fn cursor_hide(&mut self) -> HResult<()> {
         write!(self, "{}", termion::cursor::Hide)?;
         self.flush()?;
@@ -137,10 +142,36 @@ pub trait ScreenExt: Write {
         self.flush()?;
         Ok(())
     }
+    fn to_alternate_screen(&mut self) -> HResult<()> {
+        write!(self, "{}", termion::screen::ToAlternateScreen)?;
+        self.flush()?;
+        Ok(())
+    }
 }
 
-impl ScreenExt for Screen {}
-impl ScreenExt for TermMode {}
+impl ScreenExt for Screen {
+    fn suspend_raw_mode(&mut self) -> HResult<()> {
+        self.screen
+            .lock()?
+            .suspend_raw_mode()
+    }
+
+    fn activate_raw_mode(&mut self) -> HResult<()> {
+        self.screen
+            .lock()?
+            .activate_raw_mode()
+    }
+}
+
+impl ScreenExt for TermMode {
+    fn suspend_raw_mode(&mut self) -> HResult<()> {
+        Ok(RawTerminal::suspend_raw_mode(self)?)
+    }
+
+    fn activate_raw_mode(&mut self) -> HResult<()> {
+        Ok(RawTerminal::activate_raw_mode(self)?)
+    }
+}
 
 pub fn flush_stdin() {
     let stdin = std::io::stdin();
