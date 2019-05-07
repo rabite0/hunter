@@ -395,16 +395,16 @@ impl FileBrowser {
             self.columns.insert_widget(1, main_widget);
 
         } else {
+            self.preview_widget().map(|preview| preview.cancel_animation()).log();
             self.core.get_sender().send(Events::InputEnabled(false))?;
-            self.core.screen.drop_screen();
+            self.core.screen.suspend().log();
 
             let status = std::process::Command::new("rifle")
                 .args(file.path.file_name())
                 .status();
 
-            self.core.screen.reset_screen().log();
+            self.core.screen.activate().log();
             self.clear().log();
-            self.core.screen.cursor_hide().log();
 
             self.core.get_sender().send(Events::InputEnabled(true))?;
 
@@ -886,7 +886,7 @@ impl FileBrowser {
             .clone();
 
         self.core.get_sender().send(Events::InputEnabled(false))?;
-        self.core.screen.drop_screen();
+        self.core.screen.suspend().log();
         self.preview_widget().map(|preview| preview.cancel_animation()).log();
 
         let cmd_result = std::process::Command::new(shell)
@@ -897,7 +897,7 @@ impl FileBrowser {
             .stderr(std::process::Stdio::inherit())
             .output();
 
-        self.core.screen.reset_screen().log();
+        self.core.screen.activate().log();
         self.clear().log();
         self.core.get_sender().send(Events::InputEnabled(true))?;
 
@@ -989,7 +989,7 @@ impl FileBrowser {
             .clone();
 
         self.core.get_sender().send(Events::InputEnabled(false))?;
-        self.core.screen.drop_screen();
+        self.core.screen.suspend().log();
         self.preview_widget().map(|preview| preview.cancel_animation()).log();
 
         let cmd_result = std::process::Command::new(shell)
@@ -1000,7 +1000,7 @@ impl FileBrowser {
             .stderr(std::process::Stdio::inherit())
             .output();
 
-        self.core.screen.reset_screen().log();
+        self.core.screen.activate().log();
         self.clear().log();
         self.core.get_sender().send(Events::InputEnabled(true))?;
 
@@ -1082,13 +1082,12 @@ impl FileBrowser {
         self.core.get_sender().send(Events::InputEnabled(false))?;
 
         self.preview_widget().map(|preview| preview.cancel_animation()).log();
-        self.core.screen.cursor_show().log();
-        self.core.screen.drop_screen();
+        self.core.screen.suspend().log();
 
         let shell = std::env::var("SHELL").unwrap_or("bash".into());
         let status = std::process::Command::new(&shell).status();
 
-        self.core.screen.reset_screen().log();
+        self.core.screen.activate().log();
 
 
         self.core.get_sender().send(Events::InputEnabled(true))?;

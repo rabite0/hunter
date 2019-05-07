@@ -350,7 +350,10 @@ pub trait Widget {
             };
             self.set_coordinates(&ani_coords).log();
             let buffer = self.get_drawlist()?;
-            self.write_to_screen(&buffer).log();
+
+            if !animator.as_ref()?.is_stale()? {
+                self.write_to_screen(&buffer).log();
+            }
 
             std::thread::sleep(pause);
         }

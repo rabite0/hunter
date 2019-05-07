@@ -64,9 +64,8 @@ use file_browser::FileBrowser;
 use tabview::TabView;
 
 
-fn drop_screen(core: &mut WidgetCore) -> HResult<()> {
-    core.screen.drop_screen();
-    Ok(())
+fn reset_screen(core: &mut WidgetCore) -> HResult<()> {
+    core.screen.suspend()
 }
 
 fn die_gracefully(core: &WidgetCore) {
@@ -75,7 +74,7 @@ fn die_gracefully(core: &WidgetCore) {
 
     panic::set_hook(Box::new(move |info| {
         let mut core = core.clone();
-        drop_screen(&mut core).ok();
+        reset_screen(&mut core).ok();
         panic_hook(info);
     }));
 }
@@ -87,13 +86,12 @@ fn main() -> HResult<()> {
     let mut core = WidgetCore::new().expect("Can't create WidgetCore!");
 
     // Resets terminal when hunter crashes :(
-    die_gracefully(&mut core);
+    die_gracefully(&core);
 
     match run(core.clone()) {
-        Ok(_) => drop_screen(&mut core),
-        Err(HError::Quit) => drop_screen(&mut core),
+        Ok(_) | Err(HError::Quit) => reset_screen(&mut core),
         Err(err) => {
-            drop_screen(&mut core)?;
+            reset_screen(&mut core)?;
             eprintln!("{:?}\n{:?}", err, err.cause());
             return Err(err);
         }
@@ -109,8 +107,8 @@ fn run(mut core: WidgetCore) -> HResult<()> {
 
     tabview.handle_input()?;
 
-    core.screen.cursor_show()?;
-    core.screen.flush()?;
+    // core.screen.cursor_show()?;
+    // core.screen.flush()?;
 
     Ok(())
 }
