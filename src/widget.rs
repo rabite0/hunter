@@ -23,6 +23,7 @@ pub enum Events {
     InputEvent(Event),
     WidgetReady,
     TerminalResized,
+    InputUpdated(String),
     ExclusiveEvent(Option<Mutex<Option<Sender<Events>>>>),
     InputEnabled(bool),
     RequestInput,
@@ -270,6 +271,7 @@ pub trait Widget {
                         err @ Err(HError::PopupFinnished) |
                         err @ Err(HError::Quit) |
                         err @ Err(HError::MiniBufferCancelledInput) => err?,
+                        err @ Err(HError::MiniBufferInputUpdated(_)) => err?,
                         err @ Err(HError::WidgetResizedError) => err?,
                         err @ Err(_) => err.log(),
                         Ok(_) => {}
@@ -289,6 +291,9 @@ pub trait Widget {
                         err @ Err(HError::TerminalResizedError) => err?,
                         _ => {}
                     }
+                }
+                Events::InputUpdated(input) => {
+                    HError::input_updated(input)?
                 }
                 Events::ConfigLoaded => {
                     self.get_core_mut()?.config.write()?.take_async().log();
@@ -445,7 +450,22 @@ pub trait Widget {
     }
 
     fn minibuffer(&self, query: &str) -> HResult<String> {
-        let answer = self.get_core()?.minibuffer.lock()?.as_mut()?.query(query);
+        let answer = self.get_core()?
+            .minibuffer
+            .lock()?
+            .as_mut()?
+            .query(query, false);
+        let mut screen = self.screen()?;
+        screen.cursor_hide().log();
+        answer
+    }
+
+    fn minibuffer_continuous(&self, query: &str) -> HResult<String> {
+        let answer = self.get_core()?
+            .minibuffer
+            .lock()?
+            .as_mut()?
+            .query(query, true);
         let mut screen = self.screen()?;
         screen.cursor_hide().log();
         answer

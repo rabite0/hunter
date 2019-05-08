@@ -91,6 +91,8 @@ pub enum HError {
     WidgetNoFilesError,
     #[fail(display = "Invalid line in settings file: {}", _0)]
     ConfigLineError(String),
+    #[fail(display = "New input in Minibuffer")]
+    MiniBufferInputUpdated(String),
 }
 
 impl HError {
@@ -176,6 +178,12 @@ impl HError {
     pub fn no_files<T>() -> HResult<T> {
         Err(HError::WidgetNoFilesError)
     }
+
+    pub fn input_updated<T>(input: String) -> HResult<T> {
+        Err(HError::MiniBufferInputUpdated(input))
+    }
+
+
 }
 
 

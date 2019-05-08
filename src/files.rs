@@ -235,8 +235,10 @@ impl Files {
 
         let file = self.files
             .iter_mut()
-            .filter(|f| !(filter.is_some() &&
-                         !f.name.contains(filter.as_ref().unwrap())))
+            .filter(|f|
+                    f.kind == Kind::Placeholder ||
+                    !(filter.is_some() &&
+                      !f.name.contains(filter.as_ref().unwrap())))
             .filter(|f| !(!show_hidden && f.name.starts_with(".")))
             .nth(index);
         file
@@ -245,8 +247,10 @@ impl Files {
     pub fn get_files(&self) -> Vec<&File> {
         self.files
             .iter()
-            .filter(|f| !(self.filter.is_some() &&
-                         !f.name.contains(self.filter.as_ref().unwrap())))
+            .filter(|f|
+                    f.kind == Kind::Placeholder ||
+                    (!(self.filter.is_some() &&
+                      !f.name.contains(self.filter.as_ref().unwrap()))))
             .filter(|f| !(!self.show_hidden && f.name.starts_with(".")))
             .collect()
     }
@@ -256,8 +260,10 @@ impl Files {
         let show_hidden = self.show_hidden;
         self.files
             .iter_mut()
-            .filter(|f| !(filter.is_some() &&
-                         !f.name.contains(filter.as_ref().unwrap())))
+            .filter(|f|
+                    f.kind == Kind::Placeholder ||
+                    !(filter.is_some() &&
+                      !f.name.contains(filter.as_ref().unwrap())))
             .filter(|f| !(!show_hidden && f.name.starts_with(".")))
             .collect()
     }
@@ -344,7 +350,7 @@ impl Files {
         self.show_hidden = !self.show_hidden;
         self.set_dirty();
 
-        if self.show_hidden == true {
+        if self.show_hidden == true && self.len() > 1 {
             self.remove_placeholder();
         }
     }
@@ -433,6 +439,13 @@ impl Files {
         }
     }
 
+    pub fn find_file_with_name(&self, name: &str) -> Option<&File> {
+        self.get_files()
+            .iter()
+            .find(|f| f.name.to_lowercase().contains(name))
+            .cloned()
+    }
+
     pub fn find_file_with_path(&mut self, path: &Path) -> Option<&mut File> {
         self.files.iter_mut().find(|file| file.path == path)
     }
@@ -495,6 +508,15 @@ impl Files {
 
     pub fn set_filter(&mut self, filter: Option<String>) {
         self.filter = filter;
+
+        // Do this first, so we know len() == 0 needs a placeholder
+        self.remove_placeholder();
+
+        if self.len() == 0 {
+            let placeholder = File::new_placeholder(&self.directory.path).unwrap();
+            self.files.push(placeholder);
+        }
+
         self.set_dirty();
     }
 

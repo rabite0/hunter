@@ -135,7 +135,8 @@ pub struct MiniBuffer {
     position: usize,
     history: History,
     completions: Vec<String>,
-    last_completion: Option<String>
+    last_completion: Option<String>,
+    continuous: bool
 }
 
 impl MiniBuffer {
@@ -152,28 +153,41 @@ impl MiniBuffer {
             position: 0,
             history: History::new(),
             completions: vec![],
-            last_completion: None
+            last_completion: None,
+            continuous: false
         }
     }
 
-    pub fn query(&mut self, query: &str) -> HResult<String> {
-        self.query = query.to_string();
-        self.input.clear();
-        self.position = 0;
-        self.history.reset();
-        self.completions.clear();
-        self.last_completion = None;
+    pub fn query(&mut self, query: &str, cont: bool) -> HResult<String> {
+        self.continuous = cont;
+
+        if !cont || self.query != query {
+            self.query = query.to_string();
+
+            self.clear();
+        }
 
         self.screen()?.cursor_hide().log();
 
         match self.popup() {
             Err(HError::MiniBufferCancelledInput) => self.input_cancelled()?,
+            err @ Err(HError::MiniBufferInputUpdated(_)) => err?,
             _ => {}
         };
 
-        if self.input == "" { self.input_empty()?; }
+        if self.input == "" {
+            self.clear();
+            self.input_empty()?; }
 
         Ok(self.input.clone())
+    }
+
+    pub fn clear(&mut self) {
+        self.input.clear();
+        self.position = 0;
+        self.history.reset();
+        self.completions.clear();
+        self.last_completion = None;
     }
 
     pub fn complete(&mut self) -> HResult<()> {
@@ -325,6 +339,10 @@ impl MiniBuffer {
         return HError::minibuffer_cancel()
     }
 
+    pub fn input_updated(&self) -> HResult<()> {
+        return HError::input_updated(self.input.clone())
+    }
+
     pub fn input_empty(&self) -> HResult<()> {
         self.show_status("Empty!").log();
         return HError::minibuffer_empty()
@@ -413,8 +431,11 @@ impl Widget for MiniBuffer {
     }
 
     fn on_key(&mut self, key: Key) -> HResult<()> {
+        let prev_input = self.input.clone();
+
         match key {
             Key::Esc | Key::Ctrl('c') => {
+                self.clear();
                 self.input_cancelled()?;
             },
             Key::Char('\n') => {
@@ -468,6 +489,11 @@ impl Widget for MiniBuffer {
             }
             _ => {  }
         }
+
+        if self.continuous && prev_input != self.input {
+            self.input_updated()?;
+        }
+
         Ok(())
     }
 
