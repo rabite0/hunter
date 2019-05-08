@@ -87,13 +87,13 @@ pub trait ScreenExt: Write {
     fn activate_raw_mode(&mut self) -> HResult<()>;
     fn suspend(&mut self) -> HResult<()> {
         self.cursor_show().log();
-        self.to_main_screen().log();
-        self.suspend_raw_mode()
+        self.suspend_raw_mode().log();
+        self.to_main_screen()
     }
     fn activate(&mut self) -> HResult<()> {
         self.cursor_hide().log();
-        self.to_alternate_screen().log();
-        self.activate_raw_mode()
+        self.activate_raw_mode().log();
+        self.to_alternate_screen()
     }
     fn cursor_hide(&mut self) -> HResult<()> {
         write!(self, "{}", termion::cursor::Hide)?;
