@@ -15,9 +15,20 @@ pub fn ranger_path() -> HResult<PathBuf> {
     Ok(ranger_path)
 }
 
+#[cfg(not(target_os = "macos"))]
 pub fn hunter_path() -> HResult<PathBuf> {
     let mut hunter_path = dirs_2::config_dir()?;
     hunter_path.push("hunter/");
+    Ok(hunter_path)
+}
+
+#[cfg(target_os = "macos")]
+pub fn hunter_path() -> HResult<PathBuf> {
+    dbg!("Finding path for macOS");
+    let mut hunter_path = home_path()?;
+    hunter_path.push(".config/");
+    hunter_path.push("hunter/");
+    dbg!(&hunter_path);
     Ok(hunter_path)
 }
 
