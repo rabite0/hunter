@@ -4,7 +4,7 @@ use unicode_width::UnicodeWidthStr;
 use std::path::{Path, PathBuf};
 
 use crate::files::{File, Files};
-use crate::fail::{HResult, ErrorLog};
+use crate::fail::{HResult, HError, ErrorLog};
 use crate::term;
 use crate::widget::{Widget, WidgetCore};
 use crate::dirty::Dirtyable;
@@ -380,17 +380,35 @@ impl ListView<Files>
     }
 
     fn search_file(&mut self) -> HResult<()> {
-        let name = self.minibuffer("search")?;
-        let file = self.content.files.iter().find(|file| {
-            if file.name.to_lowercase().contains(&name) {
-                true
-            } else {
-                false
-            }
-        })?.clone();
+        let selected_file = self.clone_selected_file();
 
-        self.select_file(&file);
-        self.searching = Some(name);
+        loop {
+            let input = self.minibuffer_continuous("search");
+
+            match input {
+                Ok(input) => {
+                    // Only set this, search is on-the-fly
+                    self.searching = Some(input);
+                }
+                Err(HError::MiniBufferInputUpdated(input)) => {
+                    let file = self.content
+                        .find_file_with_name(&input)
+                        .cloned();
+
+                    file.map(|f| self.select_file(&f));
+
+                    self.draw().log();
+
+                    continue;
+                },
+                Err(HError::MiniBufferEmptyInput) |
+                Err(HError::MiniBufferCancelledInput) => {
+                    self.select_file(&selected_file);
+                }
+                _ => {  }
+            }
+            break;
+        }
         Ok(())
     }
 
@@ -446,6 +464,7 @@ impl ListView<Files>
             }).cloned();
 
         self.reverse_sort();
+        self.clear_status().log();
 
         if let Some(file) = file {
             let file = file.clone();
@@ -453,24 +472,40 @@ impl ListView<Files>
         } else {
             self.show_status("Reached last search result!").log();
         }
+
         Ok(())
     }
 
     fn filter(&mut self) -> HResult<()> {
-        let filter = self.minibuffer("filter").ok();
         let selected_file = self.selected_file().clone();
 
-        let msgstr = filter.clone().unwrap_or(String::from(""));
-        self.show_status(&format!("Filtering with: \"{}\"", msgstr)).log();
+        loop {
+            let filter = self.minibuffer_continuous("filter");
 
-        self.content.set_filter(filter);
+            match filter {
+                Err(HError::MiniBufferInputUpdated(input)) => {
+                    self.content.set_filter(Some(input));
+                    self.refresh().ok();
 
-        if self.content.len() == 0 {
-            self.show_status("No files like that! Resetting filter.").log();
-            self.content.set_filter(Some("".to_string()));
+                    self.select_file(&selected_file);
+                    self.draw().ok();
+
+                    continue;
+                }
+                Err(HError::MiniBufferEmptyInput) |
+                Err(HError::MiniBufferCancelledInput) => {
+                    self.content.set_filter(None);
+                    self.refresh().ok();
+                    self.select_file(&selected_file);
+                }
+                _ => {}
+            }
+
+            let msgstr = filter.clone().unwrap_or(String::from(""));
+            self.show_status(&format!("Filtering with: \"{}\"", msgstr)).log();
+
+            break;
         }
-
-        self.select_file(&selected_file);
 
         Ok(())
     }

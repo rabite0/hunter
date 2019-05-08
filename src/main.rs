@@ -27,7 +27,6 @@ extern crate pathbuftools;
 
 use failure::Fail;
 
-use std::io::Write;
 use std::panic;
 
 mod coordinates;

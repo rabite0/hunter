@@ -583,9 +583,7 @@ impl Previewer {
 
         let files = cached_files.wait()?;
 
-        let len = files.len();
-
-        if len == 0 || is_stale(&stale)? { return Previewer::preview_failed(&file) }
+        if is_stale(&stale)? { return Previewer::preview_failed(&file) }
 
         let mut file_list = ListView::new(&core, files);
         if let Some(selection) = selection {
