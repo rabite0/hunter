@@ -511,8 +511,15 @@ impl ListView<Files>
     }
 
     fn render_line(&self, file: &File) -> String {
-        let name = &file.name;
+        let icon = if self.config().icons {
+            file.icon()
+        } else { "" };
+
+        let name = String::from(icon) + &file.name;
         let (size, unit) = file.calculate_size().unwrap_or((0, "".to_string()));
+
+
+
         let tag = match file.is_tagged() {
             Ok(true) => term::color_red() + "*",
             _ => "".to_string()
@@ -521,7 +528,7 @@ impl ListView<Files>
 
         let selection_gap = "  ".to_string();
         let (name, selection_color) =  if file.is_selected() {
-            (selection_gap + name, crate::term::color_yellow())
+            (selection_gap + &name, crate::term::color_yellow())
         } else { (name.clone(), "".to_string()) };
 
         let (link_indicator, link_indicator_len) = if file.target.is_some() {

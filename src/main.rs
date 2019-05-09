@@ -50,6 +50,7 @@ mod dirty;
 mod fscache;
 mod config;
 mod stats;
+mod icon;
 
 
 

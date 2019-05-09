@@ -24,11 +24,13 @@ use crate::fail::{HResult, HError, ErrorLog};
 use crate::dirty::{AsyncDirtyBit, DirtyBit, Dirtyable};
 use crate::preview::{Async, Stale};
 use crate::widget::Events;
+use crate::icon::Icons;
 
 
 lazy_static! {
     static ref COLORS: LsColors = LsColors::from_env().unwrap_or_default();
     static ref TAGS: RwLock<(bool, Vec<PathBuf>)> = RwLock::new((false, vec![]));
+    static ref ICONS: Icons = Icons::new();
 }
 
 fn make_pool(sender: Option<Sender<Events>>) -> ThreadPool {
@@ -1008,6 +1010,10 @@ impl File {
         let time: chrono::DateTime<chrono::Local>
             = chrono::Local.timestamp(self.meta().unwrap().mtime(), 0);
         Some(time.format("%F %R").to_string())
+    }
+
+    pub fn icon(&self) -> &'static str {
+        ICONS.get(&self.path)
     }
 
     pub fn short_path(&self) -> PathBuf {
