@@ -32,6 +32,8 @@ systemstat = "0.1.4"
 osstrtools = "0.1"
 pathbuftools = "0.1"
 
+[patch.crates-io]
+systemstat = { git = 'https://github.com/myfreeweb/systemstat' }
 
 # These options increase performance and generate a smaller binary
 [profile.release]
