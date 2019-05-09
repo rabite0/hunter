@@ -6,7 +6,8 @@ pub struct Config {
     pub animation: bool,
     pub show_hidden: bool,
     pub select_cmd: String,
-    pub cd_cmd: String
+    pub cd_cmd: String,
+    pub icons: bool
 }
 
 
@@ -16,7 +17,8 @@ impl Config {
             animation: true,
             show_hidden: false,
             select_cmd: "find -type f | fzf -m".to_string(),
-            cd_cmd: "find -type d | fzf".to_string()
+            cd_cmd: "find -type d | fzf".to_string(),
+            icons: false
         }
     }
 
@@ -35,6 +37,8 @@ impl Config {
                 Ok(("animation", "off")) => { config.animation = false; },
                 Ok(("show_hidden", "on")) => { config.show_hidden = true; },
                 Ok(("show_hidden", "off")) => { config.show_hidden = false; },
+                Ok(("icons", "on")) => config.icons = true,
+                Ok(("icons", "off")) => config.icons = false,
                 Ok(("select_cmd", cmd)) => {
                     let cmd = cmd.to_string();
                     config.select_cmd = cmd;
