@@ -9,12 +9,13 @@ use std::os::unix::ffi::OsStringExt;
 use termion::event::Key;
 use unicode_width::UnicodeWidthStr;
 use osstrtools::OsStrTools;
+use async_value::Stale;
 
 use crate::listview::{Listable, ListView};
 use crate::textview::TextView;
 use crate::widget::{Widget, Events, WidgetCore};
 use crate::coordinates::Coordinates;
-use crate::preview::{AsyncWidget, Stale};
+use crate::preview::AsyncWidget;
 use crate::dirty::Dirtyable;
 use crate::hbox::HBox;
 use crate::fail::{HResult, HError, ErrorLog};
@@ -368,10 +369,10 @@ impl ProcView {
     pub fn new(core: &WidgetCore) -> ProcView {
         let tcore = core.clone();
         let listview = ListView::new(&core, vec![]);
-        let textview = AsyncWidget::new(&core, Box::new(move |_| {
+        let textview = AsyncWidget::new(&core, move |_| {
             let textview = TextView::new_blank(&tcore);
             Ok(textview)
-        }));
+        });
         let mut hbox = HBox::new(&core);
         hbox.push_widget(ProcViewWidgets::List(listview));
         hbox.push_widget(ProcViewWidgets::TextView(textview));
@@ -425,12 +426,12 @@ impl ProcView {
         let animator = self.animator.clone();
         animator.set_fresh().log();
 
-        self.get_textview().change_to(Box::new(move |_, core| {
+        self.get_textview().change_to(move |_, core| {
             let mut textview = TextView::new_blank(&core);
             textview.set_text(&output).log();
-            textview.animate_slide_up(Some(animator)).log();
+            textview.animate_slide_up(Some(&animator)).log();
             Ok(textview)
-        })).log();
+        }).log();
 
         self.viewing = Some(self.get_listview_mut().get_selection());
         Ok(())

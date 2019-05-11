@@ -19,10 +19,10 @@ use notify::DebouncedEvent;
 use rayon::{ThreadPool, ThreadPoolBuilder};
 use alphanumeric_sort::compare_str;
 use pathbuftools::PathBufTools;
+use async_value::{Async, Stale};
 
 use crate::fail::{HResult, HError, ErrorLog};
 use crate::dirty::{AsyncDirtyBit, DirtyBit, Dirtyable};
-use crate::preview::{Async, Stale};
 use crate::widget::Events;
 use crate::icon::Icons;
 
@@ -186,7 +186,7 @@ impl Files {
         let files: Vec<_> = direntries?
             .iter()
             .map(|file| {
-                if crate::preview::is_stale(&stale).unwrap() {
+                if stale.is_stale().ok()? {
                     None
                 } else {
                     let name = file.file_name();
@@ -202,7 +202,7 @@ impl Files {
             .flatten()
             .collect();
 
-        if crate::preview::is_stale(&stale).unwrap() {
+        if stale.is_stale()? {
             return Err(crate::fail::HError::StalePreviewError {
                 file: path.to_string_lossy().to_string()
             })?;
@@ -580,8 +580,15 @@ impl Hash for File {
 
 impl Eq for File {}
 
+impl std::fmt::Debug for File {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> Result<(), std::fmt::Error> {
+        write!(formatter, "{:?}", self.path)
+    }
+}
 
-#[derive(Clone, Debug)]
+
+
+#[derive(Clone)]
 pub struct File {
     pub name: String,
     pub path: PathBuf,
@@ -682,23 +689,20 @@ impl File {
                            stale_preview: Option<Stale>) -> Async<Metadata> {
         let path = path.clone();
 
-        let meta_closure = Box::new(move |stale: Stale| {
+        let mut meta = Async::new(move |stale: &Stale| {
             if stale.is_stale()? { HError::stale()? }
             Ok(std::fs::symlink_metadata(&path)?)
         });
 
-        let mut meta = match stale_preview {
-            Some(stale) => Async::new_with_stale(meta_closure, stale),
-            None => Async::new(meta_closure)
-        };
-        if let Some(dirty_meta) = dirty_meta {
-            meta.on_ready(Box::new(move || {
-                let mut dirty_meta = dirty_meta.clone();
-                dirty_meta.set_dirty();
+        stale_preview.map(|s| meta.put_stale(s));
+
+        dirty_meta.map(|mut d|
+            meta.on_ready(move |_,_| {
+                d.set_dirty();
 
                 Ok(())
-            }));
-        }
+            }).log()
+        );
         meta
     }
 
@@ -707,29 +711,25 @@ impl File {
                               stale_preview: Option<Stale>) -> Async<usize> {
         let path = path.clone();
 
-        let dirsize_closure = Box::new(move |stale: Stale| {
+        let mut dirsize = Async::new(move |stale: &Stale| {
             if stale.is_stale()? { HError::stale()? }
             Ok(std::fs::read_dir(&path)?.count())
         });
 
-        let mut dirsize = match stale_preview {
-            Some(stale) => Async::new_with_stale(dirsize_closure, stale),
-            None => Async::new(dirsize_closure)
-        };
+        stale_preview.map(|s| dirsize.put_stale(s));
 
-        if let Some(dirty_meta) = dirty_meta {
-            dirsize.on_ready(Box::new(move || {
-                let mut dirty_meta = dirty_meta.clone();
-                dirty_meta.set_dirty();
+        dirty_meta.map(|mut d|
+            dirsize.on_ready(move |_,_| {
+                d.set_dirty();
 
                 Ok(())
-            }));
-        }
+            }).log()
+        );
         dirsize
     }
 
     pub fn meta(&self) -> HResult<&Metadata> {
-        self.meta.get()
+        Ok(self.meta.get()?)
     }
 
     fn take_dirsize(&mut self,
@@ -738,13 +738,15 @@ impl File {
         let dirsize = self.dirsize.as_mut()?;
         if let Ok(_) = dirsize.value { return Ok(()) }
 
-        match dirsize.take_async() {
-            Ok(_) => { *meta_updated = true; },
-            Err(HError::AsyncNotReadyError) => { dirsize.run_pooled(&*pool).ok(); },
-            Err(HError::AsyncAlreadyTakenError) => {},
-            Err(HError::NoneError) => {},
-            err @ Err(_) => { err?; }
+        if !dirsize.is_running() {
+            dirsize.run_pooled(Some(&*pool))?;
         }
+
+        if dirsize.is_ready() {
+            dirsize.pull_async()?;
+            *meta_updated = true;
+        }
+
         Ok(())
     }
 
@@ -753,15 +755,15 @@ impl File {
                      meta_updated: &mut bool) -> HResult<()> {
         if self.meta_processed { return Ok(()) }
 
-        match self.meta.take_async() {
-            Ok(_) => { *meta_updated = true; },
-            Err(HError::AsyncNotReadyError) => { self.meta.run_pooled(&*pool).ok(); },
-            Err(HError::AsyncAlreadyTakenError) => {},
-            Err(HError::NoneError) => {},
-            err @ Err(_) => { err?; }
+        if !self.meta.is_running() {
+            self.meta.run_pooled(Some(&*pool))?;
         }
 
-        self.process_meta()?;
+        if self.meta.is_ready() {
+            self.meta.pull_async()?;
+            self.process_meta()?;
+            *meta_updated = true;
+        }
 
         Ok(())
     }
@@ -785,12 +787,13 @@ impl File {
         self.meta = File::make_async_meta(&self.path,
                                           self.dirty_meta.clone(),
                                           None);
-        self.meta.run().log();
+        self.meta.run()?;
 
         if self.dirsize.is_some() {
-            self.dirsize
-                = Some(File::make_async_dirsize(&self.path, self.dirty_meta.clone(), None));
-            self.dirsize.as_mut()?.run().log();
+            self.dirsize = Some(File::make_async_dirsize(&self.path,
+                                                         self.dirty_meta.clone(),
+                                                         None));
+            self.dirsize.as_mut()?.run()?;
         }
         Ok(())
     }

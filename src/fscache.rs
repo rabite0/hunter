@@ -1,12 +1,13 @@
 use notify::{RecommendedWatcher, Watcher, DebouncedEvent, RecursiveMode};
 
+use async_value::{Async, Stale};
+
 use std::sync::{Arc, RwLock};
 use std::sync::mpsc::{channel, Sender, Receiver};
 use std::collections::{HashMap, HashSet};
 use std::time::Duration;
 use std::path::PathBuf;
 
-use crate::preview::{Async, Stale};
 use crate::files::{Files, File, SortBy};
 use crate::widget::Events;
 use crate::fail::{HResult, HError, ErrorLog};
@@ -116,11 +117,11 @@ impl FsCache {
             let dir = dir.clone();
             let selection = self.get_selection(&dir).ok();
             let cache = self.clone();
-            let files = Async::new(Box::new(move |_| {
+            let files = Async::new(move |_| {
                 let mut files = Files::new_from_path_cancellable(&dir.path, stale)?;
                 FsCache::apply_settingss(&cache, &mut files).ok();
                 Ok(files)
-            }));
+            });
             Ok((selection, files))
         }
     }
@@ -128,7 +129,7 @@ impl FsCache {
     pub fn get_files_sync(&self, dir: &File) -> HResult<Files> {
         self.add_watch(&dir).log();
         let files = self.get_files(&dir, Stale::new())?.1;
-        let mut files = files.wait()?;
+        let mut files = files.run_sync()?;
         FsCache::apply_settingss(&self, &mut files).ok();
         let files = FsCache::ensure_not_empty(files)?;
         Ok(files)
@@ -210,8 +211,12 @@ impl FsCache {
         let file_cache = self.files.clone();
         let dir = dir.clone();
 
-        let files = Async::new(Box::new(move |_| {
-            let mut files = file_cache.read()?.get(&dir)?.clone();
+        let files = Async::new(move |_| {
+            let mut files = file_cache.read()
+                .map_err(|e| HError::from(e))?
+                .get(&dir)
+                .ok_or(HError::NoneError)?
+                .clone();
             let tab_settings = &tab_settings;
 
             files.sort = tab_settings.dir_settings.sort;
@@ -233,7 +238,7 @@ impl FsCache {
             files.sort();
             let files = FsCache::ensure_not_empty(files)?;
             Ok(files)
-        }));
+        });
 
         Ok((selection, files))
     }
@@ -301,7 +306,7 @@ fn watch_fs(rx_fs_events: Receiver<DebouncedEvent>,
         for event in rx_fs_events.iter() {
             apply_event(&fs_cache, &fs_changes, event).log();
 
-            Ok(sender.send(Events::WidgetReady)?).log();
+            sender.send(Events::WidgetReady).ok();
         }
         Ok(())
     });

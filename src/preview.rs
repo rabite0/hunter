@@ -1,7 +1,6 @@
-use std::sync::{Arc, Mutex, RwLock};
-use std::boxed::FnBox;
+use std::sync::{Arc, Mutex};
 
-use rayon::ThreadPool;
+use async_value::{Async, Stale};
 
 use crate::files::{File, Files, Kind};
 use crate::fscache::FsCache;
@@ -13,14 +12,8 @@ use crate::fail::{HResult, HError, ErrorLog};
 use crate::dirty::Dirtyable;
 
 
-pub type AsyncValueFn<T> = Box<dyn FnBox(Stale) -> HResult<T> + Send + Sync>;
-pub type AsyncValue<T> = Arc<Mutex<Option<HResult<T>>>>;
-pub type AsyncReadyFn = Box<dyn FnBox() -> HResult<()> + Send + Sync>;
-pub type AsyncWidgetFn<W> = Box<dyn FnBox(Stale, WidgetCore)
-                                          -> HResult<W> + Send + Sync>;
-
-
-type WidgetO = Box<dyn Widget + Send>;
+pub type AsyncWidgetFn<W> = FnOnce(&Stale, WidgetCore)
+                                   -> HResult<W> + Send + Sync;
 
 lazy_static! {
     static ref SUBPROC: Arc<Mutex<Option<u32>>> = { Arc::new(Mutex::new(None)) };
@@ -35,231 +28,8 @@ fn kill_proc() -> HResult<()> {
     Ok(())
 }
 
-#[derive(Clone, Debug)]
-pub struct Stale(Arc<RwLock<bool>>);
-
-impl Stale {
-    pub fn new() -> Stale {
-        Stale(Arc::new(RwLock::new(false)))
-    }
-    pub fn is_stale(&self) -> HResult<bool> {
-        Ok(*self.0.read()?)
-    }
-    pub fn set_stale(&self) -> HResult<()> {
-        *self.0.write()? = true;
-        Ok(())
-    }
-    pub fn set_fresh(&self) -> HResult<()> {
-        *self.0.write()? = false;
-        Ok(())
-    }
-}
 
 
-
-pub fn is_stale(stale: &Stale) -> HResult<bool> {
-    let stale = stale.is_stale()?;
-    Ok(stale)
-}
-
-use std::fmt::{Debug, Formatter};
-
-impl<T: Send + Debug> Debug for Async<T> {
-    fn fmt(&self, formatter: &mut Formatter) -> Result<(), std::fmt::Error> {
-        write!(formatter,
-               "{:?}, {:?} {:?}",
-               self.value,
-               self.async_value,
-               self.stale)
-    }
-}
-
-
-#[derive(Clone)]
-pub struct Async<T: Send> {
-    pub value: HResult<T>,
-    async_value: AsyncValue<T>,
-    async_closure: Arc<Mutex<Option<AsyncValueFn<T>>>>,
-    on_ready: Arc<Mutex<Option<AsyncReadyFn>>>,
-    started: bool,
-    stale: Stale,
-}
-
-
-
-impl<T: Send + 'static> Async<T> {
-    pub fn new(closure: AsyncValueFn<T>)
-                  -> Async<T> {
-        let async_value = Async {
-            value: HError::async_not_ready(),
-            async_value: Arc::new(Mutex::new(None)),
-            async_closure: Arc::new(Mutex::new(Some(closure))),
-            on_ready: Arc::new(Mutex::new(None)),
-            started: false,
-            stale: Stale::new() };
-
-        async_value
-    }
-
-    pub fn new_with_stale(closure: AsyncValueFn<T>,
-                          stale: Stale)
-                  -> Async<T> {
-        let async_value = Async {
-            value: HError::async_not_ready(),
-            async_value: Arc::new(Mutex::new(None)),
-            async_closure: Arc::new(Mutex::new(Some(closure))),
-            on_ready: Arc::new(Mutex::new(None)),
-            started: false,
-            stale: stale };
-
-        async_value
-    }
-
-    pub fn new_with_value(val: T) -> Async<T> {
-        Async {
-            value: Ok(val),
-            async_value: Arc::new(Mutex::new(None)),
-            async_closure: Arc::new(Mutex::new(None)),
-            on_ready: Arc::new(Mutex::new(None)),
-            started: false,
-            stale: Stale::new()
-        }
-    }
-
-    pub fn run_async(async_fn: Arc<Mutex<Option<AsyncValueFn<T>>>>,
-                     async_value: AsyncValue<T>,
-                     on_ready_fn: Arc<Mutex<Option<AsyncReadyFn>>>,
-                     stale: Stale) -> HResult<()> {
-        let value_fn = async_fn.lock()?.take()?;
-        let value = value_fn.call_box((stale.clone(),));
-        async_value.lock()?.replace(value);
-        on_ready_fn.lock()?
-            .take()
-            .map(|on_ready| on_ready.call_box(()).log());
-        Ok(())
-    }
-
-    pub fn run(&mut self) -> HResult<()> {
-        if self.started {
-            HError::async_started()?
-        }
-
-        let closure = self.async_closure.clone();
-        let async_value = self.async_value.clone();
-        let stale = self.stale.clone();
-        let on_ready_fn = self.on_ready.clone();
-        self.started = true;
-
-        std::thread::spawn(move || {
-            Async::run_async(closure,
-                             async_value,
-                             on_ready_fn,
-                             stale).log();
-        });
-        Ok(())
-    }
-
-    pub fn run_pooled(&mut self, pool: &ThreadPool) -> HResult<()> {
-        if self.started {
-            HError::async_started()?
-        }
-
-        let closure = self.async_closure.clone();
-        let async_value = self.async_value.clone();
-        let stale = self.stale.clone();
-        let on_ready_fn = self.on_ready.clone();
-        self.started = true;
-
-        pool.spawn(move || {
-            Async::run_async(closure,
-                             async_value,
-                             on_ready_fn,
-                             stale).log();
-        });
-
-        Ok(())
-    }
-
-
-    pub fn wait(self) -> HResult<T> {
-        Async::run_async(self.async_closure,
-                         self.async_value.clone(),
-                         self.on_ready,
-                         self.stale).log();
-        let value = self.async_value.lock()?.take()?;
-        value
-    }
-
-    pub fn set_stale(&mut self) -> HResult<()> {
-        self.stale.set_stale()?;
-        Ok(())
-    }
-
-    pub fn set_fresh(&self) -> HResult<()> {
-        self.stale.set_fresh()?;
-        Ok(())
-    }
-
-    pub fn is_stale(&self) -> HResult<bool> {
-        self.stale.is_stale()
-    }
-
-    pub fn get_stale(&self) -> Stale {
-        self.stale.clone()
-    }
-
-    pub fn put_stale(&mut self, stale: Stale) {
-        self.stale = stale;
-    }
-
-    pub fn is_started(&self) -> bool {
-        self.started
-    }
-
-    pub fn set_unstarted(&mut self) {
-        self.started = false;
-    }
-
-    pub fn take_async(&mut self) -> HResult<()> {
-        if self.value.is_ok() { HError::async_taken()? }
-
-        let mut async_value = self.async_value.lock()?;
-        match async_value.as_ref() {
-            Some(Ok(_)) => {
-                let value = async_value.take()?;
-                self.value = value;
-            }
-            Some(Err(HError::AsyncAlreadyTakenError)) => HError::async_taken()?,
-            Some(Err(_)) => {
-                let value = async_value.take()?;
-                self.value = value;
-            }
-            None => HError::async_not_ready()?,
-        }
-        Ok(())
-    }
-
-    pub fn get(&self) -> HResult<&T> {
-        match self.value {
-            Ok(ref value) => Ok(value),
-            Err(ref err) => HError::async_error(err)
-        }
-    }
-
-    pub fn get_mut(&mut self) -> HResult<&mut T> {
-        self.take_async().ok();
-
-        match self.value {
-            Ok(ref mut value) => Ok(value),
-            Err(ref err) => HError::async_error(err)
-        }
-    }
-
-    pub fn on_ready(&mut self,
-                    fun: AsyncReadyFn) {
-        *self.on_ready.lock().unwrap() = Some(fun);
-    }
-}
 
 impl<W: Widget + Send + 'static> PartialEq for AsyncWidget<W> {
     fn eq(&self, other: &AsyncWidget<W>) -> bool {
@@ -274,19 +44,21 @@ impl<W: Widget + Send + 'static> PartialEq for AsyncWidget<W> {
 
 
 pub struct AsyncWidget<W: Widget + Send + 'static> {
-    widget: Async<W>,
+    pub widget: Async<W>,
     core: WidgetCore
 }
 
 impl<W: Widget + Send + 'static> AsyncWidget<W> {
-    pub fn new(core: &WidgetCore, closure: AsyncValueFn<W>) -> AsyncWidget<W> {
-        let sender = Mutex::new(core.get_sender());
-        let mut widget = Async::new(Box::new(move |stale|
-                                             closure.call_box((stale,))));
-        widget.on_ready(Box::new(move || {
-            sender.lock()?.send(crate::widget::Events::WidgetReady)?;
+    pub fn new(core: &WidgetCore,
+               closure: impl FnOnce(&Stale) -> HResult<W> + Send + Sync + 'static)
+               -> AsyncWidget<W> {
+        let sender = Arc::new(Mutex::new(core.get_sender()));
+        let mut widget = Async::new(move |stale|
+                                    closure(stale).map_err(|e| e.into()));
+        widget.on_ready(move |_, _| {
+            sender.lock().map(|s| s.send(crate::widget::Events::WidgetReady)).ok();
             Ok(())
-        }));
+        }).log();
         widget.run().log();
 
         AsyncWidget {
@@ -294,20 +66,24 @@ impl<W: Widget + Send + 'static> AsyncWidget<W> {
             core: core.clone()
         }
     }
-    pub fn change_to(&mut self, closure: AsyncWidgetFn<W>) -> HResult<()> {
+    pub fn change_to(&mut self,
+                     closure: impl FnOnce(&Stale,
+                                          WidgetCore)
+                                          -> HResult<W> + Send + Sync + 'static)
+                     -> HResult<()> {
         self.set_stale().log();
 
         let sender = Mutex::new(self.get_core()?.get_sender());
         let core = self.get_core()?.clone();
 
-        let mut widget = Async::new(Box::new(move |stale| {
-            closure.call_box((stale, core.clone(),))
-        }));
+        let mut widget = Async::new(move |stale| {
+            Ok(closure(stale, core.clone())?)
+        });
 
-        widget.on_ready(Box::new(move || {
-            sender.lock()?.send(crate::widget::Events::WidgetReady)?;
+        widget.on_ready(move |_, _| {
+            sender.lock().map(|s| s.send(crate::widget::Events::WidgetReady)).ok();
             Ok(())
-        }));
+        }).log();
 
         widget.run().log();
 
@@ -316,11 +92,11 @@ impl<W: Widget + Send + 'static> AsyncWidget<W> {
     }
 
     pub fn set_stale(&mut self) -> HResult<()> {
-        self.widget.set_stale()
+        Ok(self.widget.set_stale()?)
     }
 
     pub fn is_stale(&self) -> HResult<bool> {
-        self.widget.is_stale()
+        Ok(self.widget.is_stale()?)
     }
 
     pub fn get_stale(&self) -> Stale {
@@ -328,11 +104,11 @@ impl<W: Widget + Send + 'static> AsyncWidget<W> {
     }
 
     pub fn widget(&self) -> HResult<&W> {
-        self.widget.get()
+        Ok(self.widget.get()?)
     }
 
     pub fn widget_mut(&mut self) -> HResult<&mut W> {
-        self.widget.get_mut()
+        Ok(self.widget.get_mut()?)
     }
 
     pub fn take_widget(self) -> HResult<W> {
@@ -363,7 +139,7 @@ impl<T: Widget + Send + 'static> Widget for AsyncWidget<T> {
     }
 
     fn refresh(&mut self) -> HResult<()> {
-        self.widget.take_async().ok();
+        self.widget.pull_async().ok();
 
         let coords = self.get_coordinates()?.clone();
         if let Ok(widget) = self.widget_mut() {
@@ -415,7 +191,6 @@ enum PreviewWidget {
 }
 
 
-
 pub struct Previewer {
     widget: AsyncWidget<PreviewWidget>,
     core: WidgetCore,
@@ -428,11 +203,12 @@ pub struct Previewer {
 impl Previewer {
     pub fn new(core: &WidgetCore, cache: FsCache) -> Previewer {
         let core_ = core.clone();
-        let widget = AsyncWidget::new(&core, Box::new(move |_| {
+        let widget = AsyncWidget::new(&core, move |_| {
             let blank = TextView::new_blank(&core_);
             let blank = PreviewWidget::TextView(blank);
             Ok(blank)
-        }));
+        });
+
         Previewer { widget: widget,
                     core: core.clone(),
                     file: None,
@@ -457,16 +233,16 @@ impl Previewer {
     }
 
     pub fn cancel_animation(&self) -> HResult<()> {
-        self.animator.set_stale()
+        Ok(self.animator.set_stale()?)
     }
 
     pub fn take_files(&mut self) -> HResult<Files> {
         let core = self.core.clone();
-        let mut widget = AsyncWidget::new(&core.clone(), Box::new(move |_| {
+        let mut widget = AsyncWidget::new(&core.clone(), move |_| {
             let widget = TextView::new_blank(&core);
             let widget = PreviewWidget::TextView(widget);
             Ok(widget)
-        }));
+        });
         std::mem::swap(&mut self.widget, &mut widget);
 
         match widget.take_widget() {
@@ -501,19 +277,24 @@ impl Previewer {
         let cache = self.cache.clone();
         self.file = Some(dir);
 
-        self.widget = AsyncWidget::new(&self.core, Box::new(move |_| {
+        self.widget = AsyncWidget::new(&self.core, move |_| {
             let selected_file = cache.get_selection(&files.directory);
             let mut filelist = ListView::new(&core, files);
 
             selected_file.map(|file| filelist.select_file(&file)).log();
 
             Ok(PreviewWidget::FileList(filelist))
-        }));
+        });
     }
 
     pub fn set_file(&mut self,
                     file: &File) -> HResult<()> {
         if Some(file) == self.file.as_ref() && !self.widget.is_stale()? { return Ok(()) }
+
+        let same_dir = self.file
+            .as_ref()
+            .map(|f| f.path.parent() == file.path.parent())
+            .unwrap_or(true);
         self.file = Some(file.clone());
 
         let coordinates = self.get_coordinates().unwrap().clone();
@@ -523,41 +304,46 @@ impl Previewer {
         let animator = self.animator.clone();
 
         self.widget.set_stale().ok();
-        self.animator.set_fresh().log();
+
+        if same_dir {
+            self.animator.set_fresh().ok();
+        } else {
+            self.animator.set_stale().ok();
+        }
 
         self.become_preview(Ok(AsyncWidget::new(&self.core,
-                                                Box::new(move |stale: Stale| {
+                                                move |stale: &Stale| {
             kill_proc().unwrap();
 
             if file.kind == Kind::Directory  {
                 let preview = Previewer::preview_dir(&file,
                                                      cache,
                                                      &core,
-                                                     stale,
-                                                     animator);
-                return preview;
+                                                     &stale,
+                                                     &animator);
+                return Ok(preview?);
             }
 
             if file.is_text() {
-                return Previewer::preview_text(&file,
+                return Ok(Previewer::preview_text(&file,
                                                &core,
-                                               stale,
-                                               animator);
+                                               &stale,
+                                               &animator)?);
             }
 
             let preview = Previewer::preview_external(&file,
                                                       &core,
-                                                      stale,
-                                                      animator.clone());
-            if preview.is_ok() { return preview; }
+                                                      &stale,
+                                                      &animator);
+            if preview.is_ok() { return Ok(preview?); }
             else {
                 let mut blank = TextView::new_blank(&core);
                 blank.set_coordinates(&coordinates).log();
                 blank.refresh().log();
-                blank.animate_slide_up(Some(animator)).log();
+                blank.animate_slide_up(Some(&animator)).log();
                 return Ok(PreviewWidget::TextView(blank))
             }
-        }))))
+        })))
     }
 
     pub fn reload(&mut self) {
@@ -576,14 +362,14 @@ impl Previewer {
     fn preview_dir(file: &File,
                    cache: FsCache,
                    core: &WidgetCore,
-                   stale: Stale,
-                   animator: Stale)
+                   stale: &Stale,
+                   animator: &Stale)
                    -> HResult<PreviewWidget> {
         let (selection, cached_files) = cache.get_files(&file, stale.clone())?;
 
-        let files = cached_files.wait()?;
+        let files = cached_files.run_sync()?;
 
-        if is_stale(&stale)? { return Previewer::preview_failed(&file) }
+        if stale.is_stale()? { return Previewer::preview_failed(&file) }
 
         let mut file_list = ListView::new(&core, files);
         if let Some(selection) = selection {
@@ -591,27 +377,27 @@ impl Previewer {
         }
         file_list.set_coordinates(&core.coordinates)?;
         file_list.refresh()?;
-        if is_stale(&stale)? { return Previewer::preview_failed(&file) }
+        if stale.is_stale()? { return Previewer::preview_failed(&file) }
         file_list.animate_slide_up(Some(animator))?;
         Ok(PreviewWidget::FileList(file_list))
     }
 
     fn preview_text(file: &File,
                     core: &WidgetCore,
-                    stale: Stale,
-                    animator: Stale)
+                    stale: &Stale,
+                    animator: &Stale)
                     -> HResult<PreviewWidget> {
         let lines = core.coordinates.ysize() as usize;
         let mut textview
             = TextView::new_from_file_limit_lines(&core,
                                                   &file,
                                                   lines)?;
-        if is_stale(&stale)? { return Previewer::preview_failed(&file) }
+        if stale.is_stale()? { return Previewer::preview_failed(&file) }
 
         textview.set_coordinates(&core.coordinates)?;
         textview.refresh()?;
 
-        if is_stale(&stale)? { return Previewer::preview_failed(&file) }
+        if stale.is_stale()? { return Previewer::preview_failed(&file) }
 
         textview.animate_slide_up(Some(animator))?;
         Ok(PreviewWidget::TextView(textview))
@@ -619,8 +405,8 @@ impl Previewer {
 
     fn preview_external(file: &File,
                         core: &WidgetCore,
-                        stale: Stale,
-                        animator: Stale)
+                        stale: &Stale,
+                        animator: &Stale)
                         -> HResult<PreviewWidget> {
         let process =
             std::process::Command::new("scope.sh")
@@ -640,11 +426,11 @@ impl Previewer {
             *pid_ = Some(pid);
         }
 
-        if is_stale(&stale)? { return Previewer::preview_failed(&file) }
+        if stale.is_stale()? { return Previewer::preview_failed(&file) }
 
         let output = process.wait_with_output()?;
 
-        if is_stale(&stale)? { return Previewer::preview_failed(&file) }
+        if stale.is_stale()? { return Previewer::preview_failed(&file) }
         {
             let mut pid_ = SUBPROC.lock()?;
             *pid_ = None;
@@ -652,7 +438,7 @@ impl Previewer {
 
         //let status = output.status.code()?;
 
-        if !is_stale(&stale)? {
+        if stale.is_stale()? {
             let output = std::str::from_utf8(&output.stdout)
                 .unwrap()
                 .to_string();

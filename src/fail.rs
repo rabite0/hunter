@@ -1,6 +1,8 @@
 use failure;
 use failure::Fail;
 //use failure::Backtrace;
+use async_value::AError;
+
 
 use termion::event::Key;
 
@@ -47,6 +49,8 @@ pub enum HError {
     AsyncAlreadyStartedError,
     #[fail(display = "Async Error: {}", _0)]
     AsyncError(String),
+    #[fail(display = "Async Error: {}", _0)]
+    AError(async_value::AError),
     #[fail(display = "No widget found")]
     NoWidgetError,
     #[fail(display = "Path: {:?} not in this directory: {:?}", path, dir)]
@@ -209,7 +213,6 @@ pub trait ErrorLog where Self: Sized {
 impl<T> ErrorLog for HResult<T> {
     fn log(self) {
         if let Err(err) = self {
-            // eprintln!("{:?}", err);
             put_log(&err).ok();
         }
     }
@@ -223,101 +226,97 @@ impl<T> ErrorLog for HResult<T> {
 }
 
 
+impl<T> ErrorLog for Result<T, AError> {
+    fn log(self) {
+        if let Err(err) = self {
+            put_log(&err.into()).ok();
+        }
+    }
+
+    fn log_and(self) -> Self {
+        if let Err(err) = &self {
+            put_log(&err.clone().into()).ok();
+        }
+        self
+    }
+}
 
 
-// impl From<&HError> for HError {
-//     fn from(error: &HError) -> Self {
-//         dbg!(&error);
-//         (error.clone())
-//     }
-// }
+
 
 impl From<std::io::Error> for HError {
     fn from(error: std::io::Error) -> Self {
-        // dbg!(&error);
         let err = HError::IoError(format!("{}", error));
-        put_log(&err).ok();
         err
     }
 }
 
 impl From<failure::Error> for HError {
     fn from(error: failure::Error) -> Self {
-        // dbg!(&error);
         let err = HError::Error(format!("{}", error));
-        put_log(&err).ok();
         err
     }
 }
 
 impl From<std::sync::mpsc::TryRecvError> for HError {
     fn from(error: std::sync::mpsc::TryRecvError) -> Self {
-        // dbg!(&error);
         let err = HError::ChannelTryRecvError { error: error };
-        put_log(&err).ok();
         err
     }
 }
 
 impl From<std::sync::mpsc::RecvError> for HError {
     fn from(error: std::sync::mpsc::RecvError) -> Self {
-        // dbg!(&error);
         let err = HError::ChannelRecvError { error: error };
-        put_log(&err).ok();
         err
     }
 }
 
 impl<T> From<std::sync::mpsc::SendError<T>> for HError {
-    fn from(error: std::sync::mpsc::SendError<T>) -> Self {
-        dbg!(&error);
+    fn from(_error: std::sync::mpsc::SendError<T>) -> Self {
         let err = HError::ChannelSendError;
-        put_log(&err).ok();
         err
     }
 }
 
 impl<T> From<std::sync::PoisonError<T>> for HError {
     fn from(_: std::sync::PoisonError<T>) -> Self {
-        // dbg!("Poisoned Mutex");
         let err = HError::MutexError;
-        put_log(&err).ok();
         err
     }
 }
 
 impl<T> From<std::sync::TryLockError<T>> for HError {
     fn from(_error: std::sync::TryLockError<T>) -> Self {
-        // dbg!(&error);
         let err = HError::TryLockError;
-        put_log(&err).ok();
         err
     }
 }
 
 impl From<std::option::NoneError> for HError {
     fn from(_error: std::option::NoneError) -> Self {
-        //dbg!(&error);
         let err = HError::NoneError;
-        //put_log(&err).ok();
         err
     }
 }
 
 impl From<std::path::StripPrefixError> for HError {
     fn from(error: std::path::StripPrefixError) -> Self {
-        // dbg!(&error);
         let err = HError::StripPrefixError{error: error };
-        put_log(&err).ok();
         err
     }
 }
 
 impl From<notify::Error> for HError {
     fn from(error: notify::Error) -> Self {
-        // dbg!(&error);
         let err = HError::INotifyError(format!("{}", error));
-        put_log(&err).ok();
+        err
+    }
+}
+
+impl From<async_value::AError> for HError {
+    fn from(error: async_value::AError) -> Self {
+        let err = HError::AError(error);
         err
     }
 }
