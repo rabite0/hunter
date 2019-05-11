@@ -10,7 +10,7 @@ use std::path::PathBuf;
 
 use crate::files::{Files, File, SortBy};
 use crate::widget::Events;
-use crate::fail::{HResult, HError, ErrorLog};
+use crate::fail::{HResult, HError, ErrorLog, Backtrace, ArcBacktrace};
 
 
 #[derive(Debug, Clone)]
@@ -113,12 +113,12 @@ impl FsCache {
         if self.files.read()?.contains_key(dir) {
             self.get_cached_files(dir)
         } else {
-            self.add_watch(&dir).log();
             let dir = dir.clone();
             let selection = self.get_selection(&dir).ok();
             let cache = self.clone();
             let files = Async::new(move |_| {
                 let mut files = Files::new_from_path_cancellable(&dir.path, stale)?;
+                cache.add_watch(&dir).log();
                 FsCache::apply_settingss(&cache, &mut files).ok();
                 Ok(files)
             });
@@ -127,11 +127,11 @@ impl FsCache {
     }
 
     pub fn get_files_sync(&self, dir: &File) -> HResult<Files> {
-        self.add_watch(&dir).log();
         let files = self.get_files(&dir, Stale::new())?.1;
         let mut files = files.run_sync()?;
         FsCache::apply_settingss(&self, &mut files).ok();
         let files = FsCache::ensure_not_empty(files)?;
+        self.add_watch(&dir).log();
         Ok(files)
     }
 
@@ -188,8 +188,8 @@ impl FsCache {
 
     fn add_watch(&self, dir: &File) -> HResult<()> {
         if !self.watched_dirs.read()?.contains(&dir) {
+            self.watcher.write()?.watch(&dir.path, RecursiveMode::NonRecursive)?;
             self.watched_dirs.write()?.insert(dir.clone());
-            self.watcher.write()?.watch(&dir.path, RecursiveMode::NonRecursive)?
         }
         Ok(())
     }
@@ -215,7 +215,7 @@ impl FsCache {
             let mut files = file_cache.read()
                 .map_err(|e| HError::from(e))?
                 .get(&dir)
-                .ok_or(HError::NoneError)?
+                .ok_or(HError::NoneError(Backtrace::new_arced()))?
                 .clone();
             let tab_settings = &tab_settings;
 
@@ -373,9 +373,11 @@ impl PathFromEvent for DebouncedEvent {
             DebouncedEvent::NoticeRemove(path)  => Ok(path),
             DebouncedEvent::Rename(old_path, _) => Ok(old_path),
             DebouncedEvent::Error(err, path)
-                => Err(HError::INotifyError(format!("{}, {:?}", err, path))),
+                => Err(HError::INotifyError(format!("{}, {:?}", err, path),
+                                            Backtrace::new_arced())),
             DebouncedEvent::Rescan
-                => Err(HError::INotifyError("Need to rescan".to_string()))
+                => Err(HError::INotifyError("Need to rescan".to_string(),
+                                            Backtrace::new_arced()))
 
         }
     }

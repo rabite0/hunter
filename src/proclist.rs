@@ -548,9 +548,11 @@ impl Widget for ProcView {
     fn refresh(&mut self) -> HResult<()> {
         self.hbox.refresh().log();
 
-        self.show_output().log();
-        self.get_listview_mut().refresh().log();
-        self.get_textview().refresh().log();
+        if self.get_listview().len() > 0 {
+            self.show_output().log();
+            self.get_listview_mut().refresh().log();
+            self.get_textview().refresh().log();
+        }
 
         Ok(())
     }

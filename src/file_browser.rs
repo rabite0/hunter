@@ -718,10 +718,12 @@ impl FileBrowser {
     }
 
     pub fn cache_files(&mut self) -> HResult<()> {
-        let files = self.get_files()?;
-        let selected_file = self.selected_file().ok();
-        self.fs_cache.put_files(files, selected_file).log();
-        self.main_widget_mut()?.content.meta_updated = false;
+        if self.main_widget().is_ok() {
+            let files = self.get_files()?;
+            let selected_file = self.selected_file().ok();
+            self.fs_cache.put_files(files, selected_file).log();
+            self.main_widget_mut()?.content.meta_updated = false;
+        }
 
 
         // if self.cwd.parent().is_some() {
