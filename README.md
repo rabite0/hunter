@@ -104,6 +104,7 @@ animation=on
 show_hidden=off
 select_cmd=find -type f | fzf -m
 cd_cmd=find -type d | fzf
+icons=off
 ```
 
 ## Drop into hunter cwd on quit
