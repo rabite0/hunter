@@ -7,16 +7,28 @@ use async_value::AError;
 use termion::event::Key;
 
 use std::path::PathBuf;
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 
 use crate::foldview::LogEntry;
 
 pub type HResult<T> = Result<T, HError>;
 
+pub type Backtrace = Arc<failure::Backtrace>;
+
+pub trait ArcBacktrace {
+    fn new_arced() -> Backtrace;
+}
+
+impl ArcBacktrace for Backtrace {
+    fn new_arced() -> Backtrace {
+        Arc::new(failure::Backtrace::new())
+    }
+}
+
 #[derive(Fail, Debug, Clone)]
 pub enum HError {
     #[fail(display = "IO error: {} ", _0)]
-    IoError(String),
+    IoError(String, Backtrace),
     #[fail(display = "Mutex failed")]
     MutexError,
     #[fail(display = "Can't lock!")]
@@ -34,23 +46,11 @@ pub enum HError {
     #[fail(display = "Accessed stale value")]
     StaleError,
     #[fail(display = "Failed: {}", _0)]
-    Error(String),
+    Error(String, Backtrace),
     #[fail(display = "Was None!")]
-    NoneError,
-    #[fail(display = "Not ready yet!")]
-    WillBeNotReady,
-    #[fail(display = "Not ready yet!")]
-    AsyncNotReadyError,
-    #[fail(display = "Async is stale!")]
-    AsyncStaleError,
-    #[fail(display = "Value has already been taken!")]
-    AsyncAlreadyTakenError,
-    #[fail(display = "Async has already been started!")]
-    AsyncAlreadyStartedError,
+    NoneError(Backtrace),
     #[fail(display = "Async Error: {}", _0)]
-    AsyncError(String),
-    #[fail(display = "Async Error: {}", _0)]
-    AError(async_value::AError),
+    AError(async_value::AError, Backtrace),
     #[fail(display = "No widget found")]
     NoWidgetError,
     #[fail(display = "Path: {:?} not in this directory: {:?}", path, dir)]
@@ -74,7 +74,7 @@ pub enum HError {
     #[fail(display = "Strip Prefix Error: {}", error)]
     StripPrefixError{#[cause] error: std::path::StripPrefixError},
     #[fail(display = "INofify failed: {}", _0)]
-    INotifyError(String),
+    INotifyError(String, Backtrace),
     #[fail(display = "Tags not loaded yet")]
     TagsNotLoadedYetError,
     #[fail(display = "Input cancelled!")]
@@ -159,22 +159,6 @@ impl HError {
         Err(HError::ConfigLineError(line))
     }
 
-    pub fn async_not_ready<T>() -> HResult<T> {
-        Err(HError::AsyncNotReadyError)
-    }
-
-    pub fn async_taken<T>() -> HResult<T> {
-        Err(HError::AsyncAlreadyTakenError)
-    }
-
-    pub fn async_error<T>(error: &HError) -> HResult<T> {
-        Err(HError::AsyncError(format!("{}", error)))
-    }
-
-    pub fn async_started<T>() -> HResult<T> {
-        Err(HError::AsyncAlreadyStartedError)
-    }
-
     pub fn metadata_processed<T>() -> HResult<T> {
         Err(HError::MetadataProcessedError)
     }
@@ -246,14 +230,16 @@ impl<T> ErrorLog for Result<T, AError> {
 
 impl From<std::io::Error> for HError {
     fn from(error: std::io::Error) -> Self {
-        let err = HError::IoError(format!("{}", error));
+        let err = HError::IoError(format!("{}", error),
+                                  Backtrace::new_arced());
         err
     }
 }
 
 impl From<failure::Error> for HError {
     fn from(error: failure::Error) -> Self {
-        let err = HError::Error(format!("{}", error));
+        let err = HError::Error(format!("{}", error),
+                                Backtrace::new_arced());
         err
     }
 }
@@ -295,7 +281,7 @@ impl<T> From<std::sync::TryLockError<T>> for HError {
 
 impl From<std::option::NoneError> for HError {
     fn from(_error: std::option::NoneError) -> Self {
-        let err = HError::NoneError;
+        let err = HError::NoneError(Backtrace::new_arced());
         err
     }
 }
@@ -309,14 +295,16 @@ impl From<std::path::StripPrefixError> for HError {
 
 impl From<notify::Error> for HError {
     fn from(error: notify::Error) -> Self {
-        let err = HError::INotifyError(format!("{}", error));
+        let err = HError::INotifyError(format!("{}", error),
+                                       Backtrace::new_arced());
         err
     }
 }
 
 impl From<async_value::AError> for HError {
     fn from(error: async_value::AError) -> Self {
-        let err = HError::AError(error);
+        let err = HError::AError(error,
+                                 Backtrace::new_arced());
         err
     }
 }
