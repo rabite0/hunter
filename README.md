@@ -24,11 +24,13 @@ A big thanks to ranger and its developers. Without its inspiration this wouldn't
 * Multi-file selection
 * Enter directories/select files using external command like fzf
 * ranger import for bookmarks/tags
-* minibuffer with completion and filename/selection/tab/directory substitution
-* subprocess viewer that shows output of started subprocesses
-* exit and cd into last directory and put selected files into shell variables
-* slide up animation for previews for a smoother experience (configurable)
-* fffast
+* Minibuffer with completion and filename/selection/tab/directory substitution
+* Subprocess viewer that shows output of started subprocesses
+* Exit and cd into last directory and put selected files into shell variables
+* Slide up animation for previews for a smoother experience (configurable)
+* Can show icons with the [right fonts](https://github.com/ryanoasis/nerd-fonts)
+
+
 
 ## Known to work on:
 
@@ -102,6 +104,7 @@ animation=on
 show_hidden=off
 select_cmd=find -type f | fzf -m
 cd_cmd=find -type d | fzf
+icons=off
 ```
 
 ## Drop into hunter cwd on quit
