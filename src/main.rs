@@ -1,7 +1,6 @@
 #![feature(vec_remove_item)]
 #![feature(trivial_bounds)]
 #![feature(try_trait)]
-#![feature(fnbox)]
 #![allow(dead_code)]
 
 extern crate termion;
@@ -24,6 +23,7 @@ extern crate tree_magic;
 extern crate systemstat;
 extern crate osstrtools;
 extern crate pathbuftools;
+extern crate async_value;
 
 use failure::Fail;
 

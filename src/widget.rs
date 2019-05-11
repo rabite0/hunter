@@ -4,6 +4,8 @@ use std::io::{Write, stdin};
 
 use termion::event::{Event, Key, MouseEvent};
 use termion::input::TermRead;
+use async_value::{Async, Stale};
+
 
 use crate::coordinates::{Coordinates, Position, Size};
 use crate::fail::{HResult, HError, ErrorLog};
@@ -11,10 +13,8 @@ use crate::minibuffer::MiniBuffer;
 use crate::term;
 use crate::term::{Screen, ScreenExt};
 use crate::dirty::{Dirtyable, DirtyBit};
-use crate::preview::Stale;
 use crate::signal_notify::{notify, Signal};
 use crate::config::Config;
-use crate::preview::Async;
 
 
 
@@ -75,12 +75,12 @@ impl WidgetCore {
         let (sender, receiver) = channel();
         let status_bar_content = Arc::new(Mutex::new(None));
 
-        let mut config = Async::new(Box::new(|_| Config::load()));
+        let mut config = Async::new(|_| Ok(Config::load()?));
         let confsender = Arc::new(Mutex::new(sender.clone()));
-        config.on_ready(Box::new(move || {
-            confsender.lock()?.send(Events::ConfigLoaded).ok();
+        config.on_ready(move |_, _| {
+            confsender.lock().map(|s| s.send(Events::ConfigLoaded)).ok();
             Ok(())
-        }));
+        }).log();
         config.run().log();
 
         let core = WidgetCore {
@@ -296,7 +296,7 @@ pub trait Widget {
                     HError::input_updated(input)?
                 }
                 Events::ConfigLoaded => {
-                    self.get_core_mut()?.config.write()?.take_async().log();
+                    self.get_core_mut()?.config.write()?.pull_async()?;
                 }
                 _ => {}
             }
@@ -320,7 +320,7 @@ pub trait Widget {
             .unwrap_or(Config::new())
     }
 
-    fn animate_slide_up(&mut self, animator: Option<Stale>) -> HResult<()> {
+    fn animate_slide_up(&mut self, animator: Option<&Stale>) -> HResult<()> {
         if !self.config().animate() { return Ok(()); }
 
         self.config();
@@ -398,7 +398,7 @@ pub trait Widget {
                     self.screen()?.clear().log();
                 }
                 Events::ConfigLoaded => {
-                    self.get_core_mut()?.config.write()?.take_async().log();
+                    self.get_core_mut()?.config.write()?.pull_async()?;
                     self.config_loaded().log();
                 }
                 _ => {}
@@ -555,7 +555,7 @@ fn input_thread(tx: Sender<Events>, rx_input_request: Receiver<()>) {
             input.map(|input| {
                 tx.send(Events::InputEvent(input)).unwrap();
                 rx_input_request.recv().unwrap();
-            }).map_err(|e| e.into()).log();
+            }).map_err(|e| HError::from(e)).log();
         }
     });
 }
