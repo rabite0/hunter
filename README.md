@@ -29,6 +29,7 @@ A big thanks to ranger and its developers. Without its inspiration this wouldn't
 * Exit and cd into last directory and put selected files into shell variables
 * Slide up animation for previews for a smoother experience (configurable)
 * Can show icons with the [right fonts](https://github.com/ryanoasis/nerd-fonts)
+* Optional support for previews of image/video/audio files using Unicode half-block drawing
 
 
 
@@ -45,15 +46,20 @@ If it works on a system not mentioned here, please open an issue. Also feel free
 * gcc
 * libmagic-dev
 * Rust-nighly compiler
+* GStreamer for video/audio previews
 
 ### Debian/Ubuntu
 
-* ```apt install gcc libmagic-dev```
+* ```apt install gcc libmagic-dev gstreamer1.0-devel gst-plugins-base gst-plugins-good```
 
 ## INSTALLATION:
 
 Compiling hunter currently requires a nightly Rust compiler!
 The easiest way to get a nightly compiler is with [rustup](https://rustup.rs/). If you have rustup installed it will automatically download and use a version that is known to work when you run cargo.
+
+By default it will install a full-featured version with support for media-previews. You can control this using the feature flags ```img```, and ```video```. These can be disabled by calling cargo with ```--features ""```, if you want to disable all media previews, or ```--features=img"``` if you only want to disable video/audio previews.
+
+Note that this only works if hunter can find the "preview-gen" tool somewhere in $PATH!
 
 ### Install rustup
 
@@ -65,33 +71,25 @@ curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 ### Build with cargo
 
 ```
-cargo install hunter
+cargo install (--features=...) hunter
 ```
 
 
 ### Build from source
 
 ```
-// Clone the git repo 
-git clone https://github.com/rabite0/hunter.git 
+// Clone the git repo
+git clone https://github.com/rabite0/hunter.git
 
 // Go into the repos directory
 cd {source_dir}/hunter/
 
-// Note: if you want vim bindings you will have to switch to the evil branch.
-// git checkout evil
+// (Optional) Build
+// cargo build --release (--features=...)
 
-// Build
-cargo build --release
+// Install
+cargo install (--features=...) --path .
 ```
-
-### 
-
-This will create a binary in {source_dir}/hunter/target/release/hunter. If you want to call this like any other terminal app you have to put this binary in your path. 
-
-```ln -s {source_dir}/hunter/target/release/hunter /usr/bin/local/hunter```
-
-This will link the the binary to your local bin file. You can call hunter from anywhere. To update repeat the process, but you will **not** need to redo the binary link. 
 
 ## NOTE:
 hunter uses [ranger's rifle](https://github.com/ranger/ranger/blob/master/ranger/ext/rifle.py) to open files if rifle is in your $PATH. If it can't find rifle it uses xdg-open. It also uses ranger's scope.sh to generate previews for non-text files. A slightly modified version is included in the "extra" directory. Put it in your $PATH somewhere if you want previews for non-text files.
@@ -105,6 +103,8 @@ show_hidden=off
 select_cmd=find -type f | fzf -m
 cd_cmd=find -type d | fzf
 icons=off
+media_autostart=off
+media_mute=off
 ```
 
 ## Drop into hunter cwd on quit
@@ -160,6 +160,10 @@ By default hunter uses vi-style keybindings. If you use a QWERTY-like keyboard l
 | z                   | open subshell in cwd               |
 | c                   | toggle columns                     |
 | F(n)                | switch to tab                      |
+| Alt(m)              | toggle media pause and autoplay    |
+| Alt(M)              | toggle media mute                  |
+| Alt(>)              | seek media +5s                     |
+| Alt(<)              | seek media -5s                     |
 
 
 

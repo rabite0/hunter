@@ -18,6 +18,8 @@ use failure::Error;
 use notify::DebouncedEvent;
 use rayon::{ThreadPool, ThreadPoolBuilder};
 use alphanumeric_sort::compare_str;
+use mime_guess;
+
 use pathbuftools::PathBufTools;
 use async_value::{Async, Stale};
 
@@ -830,9 +832,12 @@ impl File {
         Ok((size, unit))
     }
 
-    // pub fn get_mime(&self) -> String {
-    //     tree_magic::from_filepath(&self.path)
-    // }
+    pub fn get_mime(&self) -> Option<mime_guess::Mime> {
+        if let Some(ext) = self.path.extension() {
+            let mime = mime_guess::get_mime_type(&ext.to_string_lossy());
+            Some(mime)
+        } else { None }
+    }
 
     pub fn is_text(&self) -> bool {
          tree_magic::match_filepath("text/plain", &self.path)

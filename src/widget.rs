@@ -159,7 +159,7 @@ pub trait Widget {
 
     fn on_key(&mut self, key: Key) -> HResult<()> {
         match key {
-            _ => { self.bad(Event::Key(key)).unwrap() },
+            _ => { self.bad(Event::Key(key))? },
         }
         Ok(())
     }
@@ -179,7 +179,10 @@ pub trait Widget {
     }
 
     fn bad(&mut self, event: Event) -> HResult<()> {
-        self.show_status(&format!("Stop it!! {:?} does nothing!", event))
+        self.show_status(&format!("Stop it!! {:?} does nothing!", event)).log();
+        if let Event::Key(key) = event {
+            HError::undefined_key(key)
+        } else { Ok(()) }
     }
 
     fn get_header_drawlist(&mut self) -> HResult<String> {

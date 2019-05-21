@@ -7,7 +7,9 @@ pub struct Config {
     pub show_hidden: bool,
     pub select_cmd: String,
     pub cd_cmd: String,
-    pub icons: bool
+    pub icons: bool,
+    pub media_autoplay: bool,
+    pub media_mute: bool,
 }
 
 
@@ -18,7 +20,9 @@ impl Config {
             show_hidden: false,
             select_cmd: "find -type f | fzf -m".to_string(),
             cd_cmd: "find -type d | fzf".to_string(),
-            icons: false
+            icons: false,
+            media_autoplay: false,
+            media_mute: false
         }
     }
 
@@ -47,6 +51,10 @@ impl Config {
                     let cmd = cmd.to_string();
                     config.cd_cmd = cmd;
                 }
+                Ok(("media_autoplay", "on")) => { config.media_autoplay = true; },
+                Ok(("media_autoplay", "off")) => { config.media_autoplay = false; },
+                Ok(("media_mute", "on")) => { config.media_mute = true; },
+                Ok(("media_mute", "off")) => { config.media_mute = false; },
                 _ => { HError::config_error::<Config>(line.to_string()).log(); }
             }
             config

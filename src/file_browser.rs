@@ -1280,7 +1280,12 @@ impl Widget for FileBrowser {
             Key::Char('g') => self.show_log()?,
             Key::Char('z') => self.run_subshell()?,
             Key::Char('c') => self.toggle_colums(),
-            _ => { self.main_widget_mut()?.on_key(key)?; },
+            _ => {
+                let main_widget_result = self.main_widget_mut()?.on_key(key);
+                if let Err(HError::WidgetUndefinedKeyError{..}) = main_widget_result {
+                    self.preview_widget_mut()?.on_key(key)?;
+                }
+            },
         }
         if !self.columns.zoom_active { self.update_preview().log(); }
         Ok(())

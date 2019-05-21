@@ -21,6 +21,8 @@ extern crate parse_ansi;
 extern crate signal_notify;
 extern crate tree_magic;
 extern crate systemstat;
+extern crate mime_guess;
+
 extern crate osstrtools;
 extern crate pathbuftools;
 extern crate async_value;
@@ -51,6 +53,11 @@ mod fscache;
 mod config;
 mod stats;
 mod icon;
+
+#[cfg(feature = "img")]
+mod imgview;
+#[cfg(feature = "video")]
+mod mediaview;
 
 
 

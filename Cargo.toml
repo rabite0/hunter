@@ -29,9 +29,35 @@ notify = "4.0.9"
 parse-ansi = "0.1.6"
 signal-notify = "0.1.3"
 systemstat = "0.1.4"
+mime_guess = "2.0.0-alpha.6"
+
 osstrtools = "0.1"
 pathbuftools = "0.1"
-async_value = "0.2.2"
+
+
+
+image = { version = "0.21.1", optional = true }
+gstreamer = { version = "0.11.2", optional = true }
+gstreamer-app = { version = "0.11.2", optional = true }
+
+[dependencies.async_value]
+path = "../async_value/"
+
+[features]
+default = ["img", "video"]
+img = ["image"]
+video = ["img", "gstreamer", "gstreamer-app"]
+
+
+[[bin]]
+name = "hunter"
+path = "src/main.rs"
+
+[[bin]]
+name = "preview-gen"
+path = "src/media_preview.rs"
+required-features = ["img"]
+
 
 [patch.crates-io]
 systemstat = { git = 'https://github.com/myfreeweb/systemstat' }
