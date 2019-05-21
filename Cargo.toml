@@ -55,7 +55,7 @@ path = "src/main.rs"
 
 [[bin]]
 name = "preview-gen"
-path = "src/media_preview.rs"
+path = "src/preview-gen.rs"
 required-features = ["img"]
 
 
