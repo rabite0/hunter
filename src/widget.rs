@@ -554,10 +554,10 @@ fn event_thread(rx_global: Receiver<Events>,
 fn input_thread(tx: Sender<Events>, rx_input_request: Receiver<()>) {
     std::thread::spawn(move || {
         for input in stdin().events() {
-            term::flush_stdin();
             input.map(|input| {
                 tx.send(Events::InputEvent(input)).unwrap();
                 rx_input_request.recv().unwrap();
+                term::flush_stdin();
             }).map_err(|e| HError::from(e)).log();
         }
     });
