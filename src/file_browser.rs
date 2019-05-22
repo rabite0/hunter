@@ -1,4 +1,4 @@
-use termion::event::Key;
+use termion::event::{Event, Key};
 use pathbuftools::PathBufTools;
 use osstrtools::OsStrTools;
 use async_value::Stale;
@@ -1283,7 +1283,13 @@ impl Widget for FileBrowser {
             _ => {
                 let main_widget_result = self.main_widget_mut()?.on_key(key);
                 if let Err(HError::WidgetUndefinedKeyError{..}) = main_widget_result {
-                    self.preview_widget_mut()?.on_key(key)?;
+                    match self.preview_widget_mut()?.on_key(key) {
+                        Ok(()) => {}
+                        Err(HError::WidgetUndefinedKeyError{key}) => {
+                            self.bad(Event::Key(key))?;
+                        }
+                        err @ Err(_)  => { err?; }
+                    }
                 }
             },
         }

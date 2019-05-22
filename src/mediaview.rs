@@ -1,5 +1,5 @@
 use lazy_static;
-use termion::event::{Event, Key};
+use termion::event::Key;
 
 use crate::widget::{Widget, WidgetCore};
 use crate::async_value::Stale;
@@ -427,7 +427,7 @@ impl Widget for MediaView {
             Key::Alt('<') => self.seek_backward(),
             Key::Alt('m') => self.toggle_pause(),
             Key::Alt('M') => Ok(self.toggle_mute()),
-            _ => self.bad(Event::Key(key))
+            _ => HError::undefined_key(key)
         }
     }
 }

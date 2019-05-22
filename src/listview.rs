@@ -1,4 +1,4 @@
-use termion::event::{Event, Key};
+use termion::event::Key;
 use unicode_width::UnicodeWidthStr;
 
 use std::path::{Path, PathBuf};
@@ -90,7 +90,7 @@ impl Listable for ListView<Files> {
             Key::Char('N') => self.select_next_mtime(),
             Key::Char('n') => self.select_prev_mtime(),
             Key::Char('d') => self.toggle_dirs_first(),
-            _ => { self.bad(Event::Key(key))?; }
+            _ => { HError::undefined_key(key)? }
         }
         Ok(())
     }
