@@ -88,8 +88,12 @@ impl<W: Widget + Send + 'static> AsyncWidget<W> {
             Ok(closure(stale, core.clone())?)
         });
 
-        widget.on_ready(move |mut w, stale| {
-            sender.lock().map(|s| s.send(crate::widget::Events::WidgetReady)).ok();
+        widget.on_ready(move |_, stale| {
+            if !stale.is_stale()? {
+                sender.lock()
+                    .map(|s| s.send(crate::widget::Events::WidgetReady))
+                    .ok();
+            }
             Ok(())
         }).log();
 
