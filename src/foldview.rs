@@ -298,12 +298,12 @@ where
         let result = FoldableWidgetExt::on_key(self, key);
         if let Err(HError::WidgetUndefinedKeyError{key}) = result {
             match key {
-                Key::Up | Key::Char('k') => self.move_up(),
-                Key::Char('K') => for _ in 0..10 { self.move_up() },
-                Key::Char('J') => for _ in 0..10 { self.move_down() },
-                Key::Down | Key::Char('j') => self.move_down(),
+                Key::Up | Key::Char('p') => self.move_up(),
+                Key::Char('P') => for _ in 0..10 { self.move_up() },
+                Key::Char('N') => for _ in 0..10 { self.move_down() },
+                Key::Down | Key::Char('n') => self.move_down(),
                 Key::Char('t') => self.toggle_fold()?,
-                Key::Char('g') | Key::Esc => self.popup_finnished()?,
+                Key::Char('l') => self.popup_finnished()?,
                 _ =>  { HError::undefined_key(key)?; },
             }
             // Key was defined, or _ match would have returned undefined key
