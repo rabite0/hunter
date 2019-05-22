@@ -285,12 +285,12 @@ where
 
     fn on_key(&mut self, key: Key) -> HResult<()> {
         match key {
-            Key::Up | Key::Char('k') => self.move_up(),
-            Key::Char('K') => for _ in 0..10 { self.move_up() },
-            Key::Char('J') => for _ in 0..10 { self.move_down() },
-            Key::Down | Key::Char('j') => self.move_down(),
+            Key::Up | Key::Char('p') => self.move_up(),
+            Key::Char('P') => for _ in 0..10 { self.move_up() },
+            Key::Char('N') => for _ in 0..10 { self.move_down() },
+            Key::Down | Key::Char('n') => self.move_down(),
             Key::Char('t') => self.toggle_fold()?,
-            Key::Char('g') => self.popup_finnished()?,
+            Key::Char('l') => self.popup_finnished()?,
             _ => {}
         }
         Ok(())
