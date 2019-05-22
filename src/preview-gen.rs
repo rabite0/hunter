@@ -3,8 +3,9 @@
 
 use image::{Pixel, FilterType, DynamicImage, GenericImageView};
 
-use termion::{color::{Bg, Fg, Rgb},
-              input::TermRead,
+use termion::color::{Bg, Fg, Rgb};
+#[cfg(feature = "video")]
+use termion::{input::TermRead,
               event::Key};
 
 #[cfg(feature = "video")]
@@ -12,7 +13,9 @@ use gstreamer::{self, prelude::*};
 #[cfg(feature = "video")]
 use gstreamer_app;
 
-use failure::{Error, format_err};
+use failure::Error;
+#[cfg(feature = "video")]
+use failure::format_err;
 
 use rayon::prelude::*;
 
@@ -30,14 +33,17 @@ fn main() -> MResult<()> {
         .expect("provide ysize")
         .parse()
         .unwrap();
+    #[cfg(feature = "video")]
     let preview_type = args.get(3)
         .expect("Provide preview type")
         .parse::<String>()
         .unwrap();
+    #[cfg(feature = "video")]
     let autoplay = args.get(4)
         .expect("Autoplay?")
         .parse::<bool>()
         .unwrap();
+    #[cfg(feature = "video")]
     let mute = args.get(5)
         .expect("Muted?")
         .parse::<bool>()
@@ -80,6 +86,7 @@ fn image_preview(path: &str,
     Ok(())
 }
 
+#[cfg(feature = "video")]
 fn video_preview(path: &String,
                  xsize: usize,
                  ysize: usize,
@@ -159,6 +166,7 @@ fn video_preview(path: &String,
     Ok(())
 }
 
+#[cfg(feature = "video")]
 pub fn read_keys(player: gstreamer::Element) -> MResult<()> {
     let seek_time = gstreamer::ClockTime::from_seconds(5);
     for key in std::io::stdin().keys() {
@@ -216,6 +224,7 @@ pub fn read_keys(player: gstreamer::Element) -> MResult<()> {
     Ok(())
 }
 
+#[cfg(feature = "video")]
 pub fn audio_preview(path: &String,
                      autoplay: bool,
                      mute: bool)
@@ -271,6 +280,7 @@ pub fn audio_preview(path: &String,
     Ok(())
 }
 
+#[cfg(feature = "video")]
 pub fn make_gstreamer() -> MResult<(gstreamer::Element,
                                     gstreamer_app::AppSink)> {
     gstreamer::init()?;
@@ -330,7 +340,7 @@ impl Renderer {
         Ok(())
     }
 
-
+    #[cfg(feature = "video")]
     fn send_frame(&self,
                   frame: &gstreamer::sample::SampleRef,
                   position: u64,
