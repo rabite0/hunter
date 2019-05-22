@@ -1,7 +1,7 @@
 hunter
 ======
 
-![hunter](https://raw.githubusercontent.com/rabite0/hunter/master/docs/hunter.png)
+![hunter](https://raw.githubusercontent.com/rabite0/hunter-stuff/master/player.png)
 
 hunter is a fast and lag-free file browser/manager for the terminal. It features a heavily asynchronous and multi-threaded design and all disk IO happens off the main thread in a non-blocking fashion, so that hunter will always stay responsive, even under heavy load on a slow spinning rust disk, even with all the previews enabled.
 
