@@ -22,12 +22,14 @@ extern crate signal_notify;
 extern crate tree_magic;
 extern crate systemstat;
 extern crate mime_guess;
+extern crate clap;
 
 extern crate osstrtools;
 extern crate pathbuftools;
 extern crate async_value;
 
 use failure::Fail;
+use clap::{App, Arg};
 
 use std::panic;
 
@@ -90,6 +92,8 @@ fn main() -> HResult<()> {
     // do this early so it might be ready when needed
     crate::files::load_tags().ok();
 
+    parse_args().ok();
+
     let mut core = WidgetCore::new().expect("Can't create WidgetCore!");
 
     // Resets terminal when hunter crashes :(
@@ -117,5 +121,50 @@ fn run(mut core: WidgetCore) -> HResult<()> {
     // core.screen.cursor_show()?;
     // core.screen.flush()?;
 
+    Ok(())
+}
+
+
+fn parse_args() -> HResult<()> {
+    let args = App::new("Lag-free terminal file browser")
+        .version(clap::crate_version!())
+        .author(clap::crate_authors!("\n"))
+        .about("Hunt your files at light-speed, armed with full $SHELL integration")
+        .arg(
+            Arg::with_name("animation-off")
+                .short("a")
+                .long("animation-off")
+                .help("Turn off animations")
+                .takes_value(false),
+        )
+        .arg(
+            Arg::with_name("show-hidden")
+                .short("h")
+                .long("show-hidden")
+                .help("Show hidden files")
+                .takes_value(false),
+        )
+        .arg(
+            Arg::with_name("icons")
+                .short("i")
+                .long("icons")
+                .help("Show icons for different file types")
+                .takes_value(false),
+        )
+        .arg(
+            Arg::with_name("path")
+                .index(1)
+                .help("Start in <path>")
+        )
+        .get_matches();
+
+
+    let path = args.value_of("path");
+
+    if let Some(path) = path {
+        std::env::set_current_dir(&path).ok();
+    }
+
+    crate::config::set_argv_config(args).ok();
     Ok(())
 }

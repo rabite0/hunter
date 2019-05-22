@@ -1,5 +1,71 @@
+use lazy_static;
+use clap;
+
+use std::sync::RwLock;
+
 use crate::paths;
+
 use crate::fail::{HError, HResult, ErrorLog};
+
+#[derive(Clone)]
+// These are options, so we know if they have been set or not
+struct ArgvConfig {
+    animation: Option<bool>,
+    show_hidden: Option<bool>,
+    icons: Option<bool>
+}
+
+impl ArgvConfig {
+    fn new() -> Self {
+        ArgvConfig {
+            animation: None,
+            show_hidden: None,
+            icons: None
+        }
+    }
+}
+
+lazy_static! {
+    static ref ARGV_CONFIG: RwLock<ArgvConfig>  = RwLock::new(ArgvConfig::new());
+}
+
+
+pub fn set_argv_config(args: clap::ArgMatches) -> HResult<()> {
+    let animation = args.is_present("animation-off");
+    let show_hidden = args.is_present("show-hidden");
+    let icons = args.is_present("icons");
+
+    let mut config = ArgvConfig::new();
+
+    if animation == true {
+        config.animation = Some(false);
+    }
+
+    if show_hidden == true {
+        config.show_hidden = Some(true);
+    }
+
+    if icons == true {
+        config.icons = Some(true)
+    }
+
+    *ARGV_CONFIG.write()? = config;
+    Ok(())
+}
+
+fn get_argv_config() -> HResult<ArgvConfig> {
+        Ok(ARGV_CONFIG.try_read()?.clone())
+}
+
+fn infuse_argv_config(mut config: Config) -> Config {
+    let argv_config = get_argv_config().unwrap_or(ArgvConfig::new());
+
+    argv_config.animation.map(|val| config.animation = val);
+    argv_config.show_hidden.map(|val| config.show_hidden = val);
+    argv_config.icons.map(|val| config.icons = val);
+
+    config
+}
 
 #[derive(Debug, Clone)]
 pub struct Config {
@@ -15,6 +81,12 @@ pub struct Config {
 
 impl Config {
     pub fn new() -> Config {
+        let config = Config::default();
+
+        infuse_argv_config(config)
+    }
+
+    pub fn default() -> Config {
         Config {
             animation: true,
             show_hidden: false,
@@ -30,7 +102,7 @@ impl Config {
         let config_path = paths::config_path()?;
 
         if !config_path.exists() {
-            return Ok(Config::new());
+            return Ok(infuse_argv_config(Config::new()));
         }
 
         let config_string = std::fs::read_to_string(config_path)?;
@@ -59,6 +131,9 @@ impl Config {
             }
             config
         });
+
+        let config = infuse_argv_config(config);
+
         Ok(config)
     }
 

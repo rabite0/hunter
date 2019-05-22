@@ -107,6 +107,21 @@ media_autostart=off
 media_mute=off
 ```
 
+## Startup options
+You can set a few options when hunter starts. These override the configuration file. You can also tell hunter to start in a certain directory.
+
+**USAGE: hunter [FLAGS] [path]**
+**FLAGS: **
+| -a, --animation-off   | Turn off animations                 |
+| --help                | Prints help information             |
+| -i, --icons           | Show icons for different file types |
+| -h, --show-hiddenn    | Show hidden files                   |
+| -V, --version         | Prints version information          |
+
+**ARGS:**
+|<path>                |  Start in <path>                     |
+
+
 ## Drop into hunter cwd on quit
 To change the directory of your shell when quitting hunter with Q you need to source extra/hunter_cd.sh, which is a wrapper that runs hunter and checks for ~/.hunter_cwd after hunter exits and cd's into the contained directory if it exists.
 
