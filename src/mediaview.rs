@@ -2,6 +2,7 @@ use lazy_static;
 use termion::event::Key;
 
 use crate::widget::{Widget, WidgetCore};
+use crate::coordinates::Coordinates;
 use crate::async_value::Stale;
 use crate::fail::{HResult, HError, ErrorLog};
 use crate::imgview::ImgView;
@@ -95,7 +96,7 @@ impl MediaView {
                 let mut previewer = std::process::Command::new("preview-gen")
                     .arg(format!("{}", (xsize)))
                     // Leave space for position/seek bar
-                    .arg(format!("{}", (ysize-3)))
+                    .arg(format!("{}", (ysize-1)))
                     .arg(format!("{}", ctype.to_str()))
                     .arg(format!("{}", auto))
                     .arg(format!("{}", mute))
@@ -190,19 +191,23 @@ impl MediaView {
 
     pub fn start_video(&mut self) -> HResult<()> {
         let runner = self.preview_runner.take();
-        let stale = self.stale.clone();
-        let autoplay = self.autoplay();
-        let mute = self.mute();
-        let position = self.position.clone();
-        let duration = self.duration.clone();
 
         if runner.is_some() {
-            self.clear().log();
+            let stale = self.stale.clone();
+            let autoplay = self.autoplay();
+            let mute = self.mute();
+            let position = self.position.clone();
+            let duration = self.duration.clone();
+            let clear = self.get_clearlist()?;
+
             std::thread::spawn(move || -> HResult<()> {
+                // Sleep a bit to avoid overloading the system when scrolling
                 let sleeptime = std::time::Duration::from_millis(50);
                 std::thread::sleep(sleeptime);
 
                 if !stale.is_stale()? {
+                    print!("{}", clear);
+
                     runner.map(|runner| runner(autoplay,
                                                mute,
                                                position,
@@ -295,7 +300,7 @@ impl MediaView {
         let auto = AUTOPLAY.read()?.clone();
         let pos = self.position.lock()?.clone();
 
-        // This combination means only first frame show, since
+        // This combination means only first frame is shown, since
         // self.paused will be false, even with autoplay off
         if pos == 0 && auto == false && self.paused == false {
             self.toggle_autoplay();
@@ -394,6 +399,24 @@ impl Widget for MediaView {
 
     fn get_core_mut(&mut self) -> HResult<&mut WidgetCore> {
         Ok(&mut self.core)
+    }
+
+    fn set_coordinates(&mut self, coordinates: &Coordinates) -> HResult<()> {
+        if &self.core.coordinates == coordinates { return Ok(()); }
+
+        self.core.coordinates = coordinates.clone();
+
+        let mut imgview = self.imgview.lock()?;
+        imgview.set_coordinates(&coordinates)?;
+
+        let xsize = self.core.coordinates.xsize_u();
+        let ysize = self.core.coordinates.ysize_u() - 1;
+
+        let xystring = format!("xy\n{}\n{}\n", xsize, ysize);
+
+        self.controller.send(xystring)?;
+
+        Ok(())
     }
 
     fn refresh(&mut self) -> HResult<()> {

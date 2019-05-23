@@ -1,4 +1,5 @@
 use crate::widget::{Widget, WidgetCore};
+use crate::coordinates::Coordinates;
 use crate::fail::HResult;
 
 use std::path::{Path, PathBuf};
@@ -18,7 +19,19 @@ pub struct ImgView {
 
 impl ImgView {
     pub fn new_from_file(core: WidgetCore, file: &Path) -> HResult<ImgView> {
-        let (xsize, ysize) = core.coordinates.size_u();
+        let mut view = ImgView {
+            core: core,
+            buffer: vec![],
+            file: file.to_path_buf()
+        };
+
+        view.encode_file()?;
+        Ok(view)
+    }
+
+    pub fn encode_file(&mut self) -> HResult<()> {
+        let (xsize, ysize) = self.core.coordinates.size_u();
+        let file = &self.file;
 
         let output = std::process::Command::new("preview-gen")
             .arg(format!("{}", (xsize)))
@@ -35,11 +48,9 @@ impl ImgView {
             .map(|l| l.to_string())
             .collect();
 
-        Ok(ImgView {
-            core: core,
-            buffer: output,
-            file: file.to_path_buf()
-        })
+        self.buffer = output;
+
+        Ok(())
     }
 
     pub fn set_image_data(&mut self, img_data: Vec<String>) {
@@ -59,6 +70,15 @@ impl Widget for ImgView {
 
     fn get_core_mut(&mut self) -> HResult<&mut WidgetCore> {
         Ok(&mut self.core)
+    }
+
+    fn set_coordinates(&mut self, coordinates: &Coordinates) -> HResult<()> {
+        if &self.core.coordinates == coordinates { return Ok(()) }
+
+        self.core.coordinates = coordinates.clone();
+        self.encode_file()?;
+
+        Ok(())
     }
 
     fn refresh(&mut self) -> HResult<()> {

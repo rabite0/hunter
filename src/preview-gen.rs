@@ -5,8 +5,8 @@ use image::{Pixel, FilterType, DynamicImage, GenericImageView};
 
 use termion::color::{Bg, Fg, Rgb};
 #[cfg(feature = "video")]
-use termion::{input::TermRead,
-              event::Key};
+use termion::input::TermRead;
+
 
 #[cfg(feature = "video")]
 use gstreamer::{self, prelude::*};
@@ -20,6 +20,8 @@ use failure::format_err;
 use rayon::prelude::*;
 
 use std::io::Write;
+#[cfg(feature = "video")]
+use std::sync::{Arc, RwLock};
 
 pub type MResult<T> = Result<T, Error>;
 
@@ -77,12 +79,9 @@ fn image_preview(path: &str,
                  ysize: usize) -> MResult<()> {
     let img = image::open(&path)?;
 
-    let renderer = Renderer {
-        xsize,
-        ysize
-    };
+    let renderer = Renderer::new(xsize, ysize);
 
-    renderer.send_image(img)?;
+    renderer.send_image(&img)?;
     Ok(())
 }
 
@@ -93,6 +92,7 @@ fn video_preview(path: &String,
                  autoplay: bool,
                  mute: bool)
                  -> MResult<()> {
+
     let (player, appsink) = make_gstreamer()?;
 
     let uri = format!("file://{}", &path);
@@ -100,10 +100,12 @@ fn video_preview(path: &String,
     player.set_property("uri", &uri)?;
 
 
-    let renderer = Renderer {
-        xsize,
-        ysize
-    };
+    let renderer = Renderer::new(xsize, ysize);
+    let renderer = Arc::new(RwLock::new(renderer));
+    let crenderer = renderer.clone();
+
+
+
 
     let p = player.clone();
 
@@ -124,26 +126,28 @@ fn video_preview(path: &String,
                         .map(|d| d.seconds().unwrap_or(0))
                         .unwrap_or(0);
 
-                    match renderer.send_frame(&*sample,
-                                              position,
-                                              duration) {
-                        Ok(()) => {
-                            if autoplay == false {
-                                // Just render first frame to get a static image
-                                match p.set_state(gstreamer::State::Paused)
-                                    .into_result() {
-                                        Ok(_) => gstreamer::FlowReturn::Eos,
-                                        Err(_) => gstreamer::FlowReturn::Error
-                                    }
-                            } else {
-                                gstreamer::FlowReturn::Ok
+                    if let Ok(mut renderer) = crenderer.write() {
+                        match renderer.send_frame(&*sample,
+                                                  position,
+                                                  duration) {
+                            Ok(()) => {
+                                if autoplay == false {
+                                    // Just render first frame to get a static image
+                                    match p.set_state(gstreamer::State::Paused)
+                                        .into_result() {
+                                            Ok(_) => gstreamer::FlowReturn::Eos,
+                                            Err(_) => gstreamer::FlowReturn::Error
+                                        }
+                                } else {
+                                    gstreamer::FlowReturn::Ok
+                                }
+                            }
+                            Err(err) => {
+                                println!("{:?}", err);
+                                gstreamer::FlowReturn::Error
                             }
                         }
-                        Err(err) => {
-                            println!("{:?}", err);
-                            gstreamer::FlowReturn::Error
-                        }
-                    }
+                    } else { gstreamer::FlowReturn::Error }
 
                 }
             })
@@ -161,67 +165,95 @@ fn video_preview(path: &String,
     player.set_state(gstreamer::State::Playing).into_result()?;
 
 
-    read_keys(player)?;
+
+
+
+    read_keys(player, Some(renderer))?;
 
     Ok(())
 }
 
 #[cfg(feature = "video")]
-pub fn read_keys(player: gstreamer::Element) -> MResult<()> {
+fn read_keys(player: gstreamer::Element,
+             renderer: Option<Arc<RwLock<Renderer>>>) -> MResult<()> {
     let seek_time = gstreamer::ClockTime::from_seconds(5);
-    for key in std::io::stdin().keys() {
-        match key {
-            Ok(Key::Char('q')) => std::process::exit(0),
-            Ok(Key::Char('>')) => {
-                if let Some(mut time) = player.query_position::<gstreamer::ClockTime>() {
-                    time += seek_time;
 
-                    player.seek_simple(
-                        gstreamer::SeekFlags::FLUSH,
-                        gstreamer::format::GenericFormattedValue::from_time(time)
-                    )?;
-                }
-            },
-            Ok(Key::Char('<')) => {
-                if let Some(mut time) = player.query_position::<gstreamer::ClockTime>() {
-                    if time >= seek_time {
-                        time -= seek_time;
-                    } else {
-                        time = gstreamer::ClockTime(Some(0));
+    let stdin = std::io::stdin();
+    let mut stdin = stdin.lock();
+
+    loop {
+        let input = stdin
+            .read_line()?
+            .unwrap_or_else(|| String::from("q"));
+
+
+        match input.as_str() {
+            "q" => std::process::exit(0),
+            ">" => {
+                if let Some(mut time) = player
+                    .query_position::<gstreamer::ClockTime>() {
+                        time += seek_time;
+
+                        player.seek_simple(
+                            gstreamer::SeekFlags::FLUSH,
+                            gstreamer::format::GenericFormattedValue::from_time(time)
+                        )?;
                     }
+            },
+            "<" => {
+                if let Some(mut time) = player
+                    .query_position::<gstreamer::ClockTime>() {
+                        if time >= seek_time {
+                            time -= seek_time;
+                        } else {
+                            time = gstreamer::ClockTime(Some(0));
+                        }
 
-                    player.seek_simple(
-                        gstreamer::SeekFlags::FLUSH,
-                        gstreamer::format::GenericFormattedValue::from_time(time)
-                    )?;
-                }
+                        player.seek_simple(
+                            gstreamer::SeekFlags::FLUSH,
+                            gstreamer::format::GenericFormattedValue::from_time(time)
+                        )?;
+                    }
             }
-            Ok(Key::Char('p')) => {
+            "p" => {
                 player.set_state(gstreamer::State::Playing).into_result()?;
 
                 // To actually start playing again
-                if let Some(time) = player.query_position::<gstreamer::ClockTime>() {
-                    player.seek_simple(
-                        gstreamer::SeekFlags::FLUSH,
-                        gstreamer::format::GenericFormattedValue::from_time(time)
-                    )?;
-                }
+                if let Some(time) = player
+                    .query_position::<gstreamer::ClockTime>() {
+                        player.seek_simple(
+                            gstreamer::SeekFlags::FLUSH,
+                            gstreamer::format::GenericFormattedValue::from_time(time)
+                        )?;
+                    }
             }
-            Ok(Key::Char('a')) => {
+            "a" => {
                 player.set_state(gstreamer::State::Paused).into_result()?;
             }
-            Ok(Key::Char('m')) => {
+            "m" => {
                 player.set_property("volume", &0.0)?;
             }
-            Ok(Key::Char('u')) => {
+            "u" => {
                 player.set_property("volume", &1.0)?;
             }
+            "xy" => {
+                if let Some(ref renderer) = renderer {
+                    let xsize = stdin.read_line()?;
+                    let ysize = stdin.read_line()?;
 
+                    let xsize = xsize.unwrap_or(String::from("0")).parse::<usize>()?;
+                    let ysize = ysize.unwrap_or(String::from("0")).parse::<usize>()?;
 
+                    let mut renderer = renderer
+                        .write()
+                        .map_err(|_| format_err!("Renderer RwLock failed!"))?;
+
+                    renderer.set_size(xsize, ysize)?;
+                }
+            }
             _ => {}
         }
     }
-    Ok(())
 }
 
 #[cfg(feature = "video")]
@@ -275,7 +307,7 @@ pub fn audio_preview(path: &String,
         player.set_state(gstreamer::State::Playing).into_result()?;
     }
 
-    read_keys(player)?;
+    read_keys(player, None)?;
 
     Ok(())
 }
@@ -326,22 +358,66 @@ pub fn make_gstreamer() -> MResult<(gstreamer::Element,
 
 struct Renderer {
     xsize: usize,
-    ysize: usize
+    ysize: usize,
+    #[cfg(feature = "video")]
+    last_frame: Option<DynamicImage>,
+    #[cfg(feature = "video")]
+    position: Option<usize>,
+    #[cfg(feature = "video")]
+    duration: Option<usize>
 }
 
 impl Renderer {
-    fn send_image(&self, image: DynamicImage) -> MResult<()> {
+    fn new(xsize: usize, ysize: usize) -> Renderer {
+        Renderer {
+            xsize,
+            ysize,
+            #[cfg(feature = "video")]
+            last_frame: None,
+            #[cfg(feature = "video")]
+            position: None,
+            #[cfg(feature = "video")]
+            duration: None
+        }
+    }
+
+
+    #[cfg(feature = "video")]
+    fn set_size(&mut self, xsize: usize, ysize: usize) -> MResult<()> {
+        self.xsize = xsize;
+        self.ysize = ysize;
+
+        if let Some(ref frame) =  self.last_frame {
+            let pos = self.position.unwrap_or(0);
+            let dur = self.duration.unwrap_or(0);
+
+            // Use send_image, because send_frame takes SampleRef
+            self.send_image(frame)?;
+
+            let stdout = std::io::stdout();
+            let mut stdout = stdout.lock();
+
+            writeln!(stdout, "")?;
+            writeln!(stdout, "{}", pos)?;
+            writeln!(stdout, "{}", dur)?;
+        }
+        Ok(())
+    }
+
+    fn send_image(&self, image: &DynamicImage) -> MResult<()> {
         let rendered_img = self.render_image(image);
+        let stdout = std::io::stdout();
+        let mut stdout = stdout.lock();
 
         for line in rendered_img {
-            write!(std::io::stdout(), "{}\n", line)?;
+            writeln!(stdout, "{}", line)?;
         }
 
         Ok(())
     }
 
     #[cfg(feature = "video")]
-    fn send_frame(&self,
+    fn send_frame(&mut self,
                   frame: &gstreamer::sample::SampleRef,
                   position: u64,
                   duration: u64)
@@ -354,23 +430,30 @@ impl Renderer {
         let img = image::load_from_memory_with_format(&map,
                                                       image::ImageFormat::PNM)?;
 
-        let rendered_img = self.render_image(img);
+        let rendered_img = self.render_image(&img);
+
+        self.last_frame = Some(img);
+        self.position = Some(position as usize);
+        self.duration = Some(duration as usize);
+
+        let stdout = std::io::stdout();
+        let mut stdout = stdout.lock();
 
         for line in rendered_img {
-            writeln!(std::io::stdout(), "{}", line)?;
+            writeln!(stdout, "{}", line)?;
         }
 
         // Empty line means end of frame
-        writeln!(std::io::stdout(), "")?;
+        writeln!(stdout, "")?;
 
         // Send position and duration
-        writeln!(std::io::stdout(), "{}", position)?;
-        writeln!(std::io::stdout(), "{}", duration)?;
+        writeln!(stdout, "{}", position)?;
+        writeln!(stdout, "{}", duration)?;
 
         Ok(())
     }
 
-    pub fn render_image(&self, image: DynamicImage) -> Vec<String> {
+    pub fn render_image(&self, image: &DynamicImage) -> Vec<String> {
         let (xsize, ysize) = self.max_size(&image);
 
         let img = image.resize_exact(xsize as u32,
@@ -405,18 +488,37 @@ impl Renderer {
     pub fn max_size(&self, image: &DynamicImage) -> (usize, usize)
     {
         let xsize = self.xsize;
+        let ysize = self.ysize;
         let img_xsize = image.width();
         let img_ysize = image.height();
         let img_ratio = img_xsize as f32 / img_ysize as f32;
 
-        let mut new_y = if img_ratio < 1 as f32 {
-            xsize as f32 * img_ratio
+        let mut new_x = xsize;
+        let mut new_y;
+
+        new_y = if img_ratio < 1 as f32 {
+            (xsize as f32 * img_ratio) as usize
         } else {
-            xsize as f32 / img_ratio
+            (xsize as f32 / img_ratio) as usize
         };
-        if new_y as u32 % 2 == 1 {
-            new_y += 1 as f32;
+
+        // Multiply by two because of half-block
+        if new_y > ysize*2 {
+            new_y = self.ysize * 2;
+
+            new_x = if img_ratio < 1 as f32 {
+                (ysize as f32 / img_ratio) as usize * 2
+            } else {
+                (ysize as f32 * img_ratio) as usize * 2
+            };
         }
-        (xsize, new_y as usize)
+
+        // To make half-block encoding easier, y should be divisible by 2
+        if new_y as u32 % 2 == 1 {
+            new_y += 1;
+        }
+
+
+        (new_x as usize, new_y as usize)
     }
 }
