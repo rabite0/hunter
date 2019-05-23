@@ -79,6 +79,6 @@ impl FsExt for Filesystem {
     }
 
     fn get_free(&self) -> String {
-        self.free.to_string(false)
+        self.avail.to_string(false)
     }
 }
