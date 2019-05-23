@@ -1,6 +1,6 @@
 [package]
 name = "hunter"
-version = "1.2.0"
+version = "1.2.1"
 authors = ["rabite0"]
 edition = "2018"
 description = "Fast, lag-free terminal file browser"
