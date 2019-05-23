@@ -488,7 +488,7 @@ impl Previewer {
 
         //let status = output.status.code()?;
 
-        if stale.is_stale()? {
+        if !stale.is_stale()? {
             let output = std::str::from_utf8(&output.stdout)
                 .unwrap()
                 .to_string();
