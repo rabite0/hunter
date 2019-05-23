@@ -198,7 +198,7 @@ impl MediaView {
             let mute = self.mute();
             let position = self.position.clone();
             let duration = self.duration.clone();
-            let clear = self.get_clearlist()?;
+            let clear = self.get_core()?.get_clearlist()?;
 
             std::thread::spawn(move || -> HResult<()> {
                 // Sleep a bit to avoid overloading the system when scrolling
@@ -460,6 +460,6 @@ impl Drop for MediaView {
         self.stale.set_stale().ok();
         self.kill().log();
 
-        self.clear().log();
+        self.core.clear().log();
     }
 }

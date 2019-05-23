@@ -152,7 +152,7 @@ impl Widget for TextView {
         let (xsize, ysize) = self.get_coordinates()?.size().size();
         let (xpos, ypos) = self.get_coordinates()?.position().position();
 
-        let output = self.get_clearlist()? +
+        let output = self.core.get_clearlist()? +
             &self
             .lines
             .iter()

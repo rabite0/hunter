@@ -166,14 +166,14 @@ impl<T: Widget + Send + 'static> Widget for AsyncWidget<T> {
     }
     fn get_drawlist(&self) -> HResult<String> {
         if self.widget().is_err() {
-            let clear = self.get_clearlist()?;
+            let clear = self.core.get_clearlist()?;
             let (xpos, ypos) = self.get_coordinates()?.u16position();
             let pos = crate::term::goto_xy(xpos, ypos);
             return Ok(clear + &pos + "...")
         }
 
         if self.is_stale()? {
-            return self.get_clearlist()
+            return self.core.get_clearlist()
         }
 
         self.widget()?.get_drawlist()
@@ -517,7 +517,7 @@ impl Widget for Previewer {
     }
 
     fn config_loaded(&mut self) -> HResult<()> {
-        let show_hidden = self.config().show_hidden();
+        let show_hidden = self.core.config().show_hidden();
         if let PreviewWidget::FileList(filelist) = self.widget.widget_mut()? {
             filelist.content.show_hidden = show_hidden;
             filelist.content.dirty_meta.set_dirty();

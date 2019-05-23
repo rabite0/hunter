@@ -102,7 +102,7 @@ impl BMPopup {
             err @ Err(HError::WidgetResizedError) => err?,
             err @ Err(_) => err?,
         }
-        self.clear()?;
+        self.get_core()?.clear()?;
 
         let bookmark = self.bookmark_path.take();
         Ok(bookmark?)
@@ -112,9 +112,9 @@ impl BMPopup {
         self.add_mode = true;
         self.bookmark_path = Some(path.to_string());
         self.refresh()?;
-        self.clear()?;
+        self.get_core()?.clear()?;
         self.popup()?;
-        self.clear()?;
+        self.get_core()?.clear()?;
         Ok(())
     }
 

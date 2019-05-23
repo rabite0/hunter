@@ -36,7 +36,7 @@ pub trait Tabbable {
 pub struct TabView<T> where T: Widget, TabView<T>: Tabbable {
     pub widgets: Vec<T>,
     pub active: usize,
-    core: WidgetCore
+    pub core: WidgetCore
 }
 
 impl<T> TabView<T> where T: Widget, TabView<T>: Tabbable {

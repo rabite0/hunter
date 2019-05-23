@@ -212,7 +212,7 @@ impl ListView<Vec<Process>> {
             .to_string_lossy()
             .to_string();
 
-        self.show_status(&format!("Running: {}", &short_cmd)).log();
+        self.core.show_status(&format!("Running: {}", &short_cmd)).log();
 
         let shell_args = cmd_args.concat();
         let shell_args = vec![OsString::from("-c"), shell_args.clone()];
@@ -232,7 +232,7 @@ impl ListView<Vec<Process>> {
                        .to_string());
         let args = cmd.args.unwrap_or(vec![]);
 
-        self.show_status(&format!("Running: {}", &short_cmd)).log();
+        self.core.show_status(&format!("Running: {}", &short_cmd)).log();
 
         let handle = std::process::Command::new(real_cmd)
             .args(args)
@@ -411,7 +411,7 @@ impl ProcView {
     pub fn remove_proc(&mut self) -> HResult<()> {
         if self.get_listview_mut().content.len() == 0 { return Ok(()) }
         self.get_listview_mut().remove_proc()?;
-        self.get_textview().clear().log();
+        self.get_textview().get_core()?.clear().log();
         self.get_textview().widget_mut()?.set_text("").log();
         self.viewing = None;
         Ok(())
@@ -563,7 +563,7 @@ impl Widget for ProcView {
         match key {
             Key::Char('w') => {
                 self.animator.set_stale().log();
-                self.clear().log();
+                self.get_core()?.clear().log();
                 return Err(HError::PopupFinnished) }
             Key::Char('d') => { self.remove_proc()? }
             Key::Char('K') => { self.get_listview_mut().kill_proc()? }

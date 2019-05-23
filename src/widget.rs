@@ -102,6 +102,100 @@ impl WidgetCore {
     pub fn get_sender(&self) -> Sender<Events> {
         self.event_sender.lock().unwrap().clone()
     }
+
+    pub fn draw_status(&self) -> HResult<()> {
+        let xsize = term::xsize_u();
+        let status = match self.status_bar_content.lock()?.as_ref() {
+            Some(status) => status.to_string(),
+            None => "".to_string(),
+        };
+        let sized_status = term::sized_string_u(&status, xsize);
+
+        self.write_to_screen(
+            &format!(
+                "{}{}{}",
+                term::move_bottom(),
+                term::status_bg(),
+                sized_status
+            )).log();
+
+        Ok(())
+    }
+
+    pub fn show_status(&self, status: &str) -> HResult<()> {
+        HError::log::<()>(status.to_string()).log();
+        {
+            let mut status_content = self.status_bar_content.lock()?;
+            *status_content = Some(status.to_string());
+        }
+        self.draw_status()?;
+        Ok(())
+    }
+
+    pub fn clear_status(&self) -> HResult<()> {
+        if self.status_bar_content.lock()?.take().is_some() {
+            self.draw_status().log();
+        }
+        Ok(())
+    }
+
+    pub fn minibuffer(&self, query: &str) -> HResult<String> {
+        let answer = self.minibuffer
+            .lock()?
+            .as_mut()?
+            .query(query, false);
+        let mut screen = self.screen()?;
+        screen.cursor_hide().log();
+        answer
+    }
+
+    pub fn minibuffer_continuous(&self, query: &str) -> HResult<String> {
+        let answer = self.minibuffer
+            .lock()?
+            .as_mut()?
+            .query(query, true);
+        let mut screen = self.screen()?;
+        screen.cursor_hide().log();
+        answer
+    }
+
+    pub fn screen(&self) -> HResult<Screen> {
+        Ok(self.screen.clone())
+    }
+
+    pub fn clear(&self) -> HResult<()> {
+        let clearlist = self.get_clearlist()?;
+        self.write_to_screen(&clearlist)
+    }
+
+    pub fn get_clearlist(&self) -> HResult<String> {
+        let (xpos, ypos) = self.coordinates.u16position();
+        let (xsize, ysize) = self.coordinates.u16size();
+        let endpos = ypos + ysize;
+
+        Ok((ypos..endpos)
+           .map(|line| {
+               format!(
+                    "{}{}{:xsize$}",
+                    crate::term::reset(),
+                    crate::term::goto_xy(xpos, line),
+                    " ",
+                    xsize = xsize as usize
+                )
+            })
+            .collect())
+    }
+
+    pub fn write_to_screen(&self, s: &str) -> HResult<()> {
+        let mut screen = self.screen()?;
+        screen.write_str(s)
+    }
+
+    pub fn config(&self) -> Config {
+        self.config.read().unwrap().get()
+            .map(|config| config.clone())
+            .unwrap_or(Config::new())
+    }
 }
 
 impl Dirtyable for WidgetCore {
@@ -149,7 +243,7 @@ pub trait Widget {
 
 
     fn on_event(&mut self, event: Event) -> HResult<()> {
-        self.clear_status().log();
+        self.get_core()?.clear_status().log();
         match event {
             Event::Key(key) => self.on_key(key),
             Event::Mouse(button) => self.on_mouse(button),
@@ -179,7 +273,8 @@ pub trait Widget {
     }
 
     fn bad(&mut self, event: Event) -> HResult<()> {
-        self.show_status(&format!("Stop it!! {:?} does nothing!", event)).log();
+        self.get_core()?.show_status(&format!("Stop it!! {:?} does nothing!",
+                                              event)).log();
         if let Event::Key(key) = event {
             HError::undefined_key(key)
         } else { Ok(()) }
@@ -210,23 +305,7 @@ pub trait Widget {
             xsize = xsize as usize))
     }
 
-    fn get_clearlist(&self) -> HResult<String> {
-        let (xpos, ypos) = self.get_coordinates()?.u16position();
-        let (xsize, ysize) = self.get_coordinates()?.u16size();
-        let endpos = ypos + ysize;
 
-        Ok((ypos..endpos)
-           .map(|line| {
-               format!(
-                    "{}{}{:xsize$}",
-                    crate::term::reset(),
-                    crate::term::goto_xy(xpos, line),
-                    " ",
-                    xsize = xsize as usize
-                )
-            })
-            .collect())
-    }
 
     fn get_redraw_empty_list(&self, lines: usize) -> HResult<String> {
         let (xpos, ypos) = self.get_coordinates()?.u16position();
@@ -247,7 +326,7 @@ pub trait Widget {
 
     fn popup(&mut self) -> HResult<()> {
         let result = self.run_widget();
-        self.clear().log();
+        self.get_core()?.clear().log();
         self.get_core()?.get_sender().send(Events::ExclusiveEvent(None))?;
         result
     }
@@ -263,7 +342,7 @@ pub trait Widget {
             .send(Events::ExclusiveEvent(Some(Mutex::new(Some(tx_event)))))?;
         self.get_core()?.get_sender().send(Events::RequestInput)?;
 
-        self.clear()?;
+        self.get_core()?.clear()?;
         self.refresh().log();
         self.draw()?;
 
@@ -286,10 +365,10 @@ pub trait Widget {
                     self.draw().log();
                 }
                 Events::Status(status) => {
-                    self.show_status(&status).log();
+                    self.get_core()?.show_status(&status).log();
                 }
                 Events::TerminalResized => {
-                    self.screen()?.clear().log();
+                    self.get_core()?.screen()?.clear().log();
                     match self.resize() {
                         err @ Err(HError::TerminalResizedError) => err?,
                         _ => {}
@@ -310,30 +389,16 @@ pub trait Widget {
         Ok(())
     }
 
-    fn clear(&self) -> HResult<()> {
-        let clearlist = self.get_clearlist()?;
-        self.write_to_screen(&clearlist)
-    }
-
-    fn config(&self) -> Config {
-        self.get_core()
-            .unwrap()
-            .config.read().unwrap().get()
-            .map(|config| config.clone())
-            .unwrap_or(Config::new())
-    }
 
     fn animate_slide_up(&mut self, animator: Option<&Stale>) -> HResult<()> {
-        if !self.config().animate() { return Ok(()); }
-
-        self.config();
+        if !self.get_core()?.config().animate() { return Ok(()); }
 
         let coords = self.get_coordinates()?.clone();
         let xpos = coords.position().x();
         let ypos = coords.position().y();
         let xsize = coords.xsize();
         let ysize = coords.ysize();
-        let clear = self.get_clearlist()?;
+        let clear = self.get_core()?.get_clearlist()?;
         let pause = std::time::Duration::from_millis(5);
 
         if let Some(ref animator) = animator {
@@ -342,7 +407,7 @@ pub trait Widget {
             }
         }
 
-        self.write_to_screen(&clear).log();
+        self.get_core()?.write_to_screen(&clear).log();
 
         for i in (0..10).rev() {
             if let Some(ref animator) = animator {
@@ -360,7 +425,7 @@ pub trait Widget {
             let buffer = self.get_drawlist()?;
 
             if !animator.as_ref()?.is_stale()? {
-                self.write_to_screen(&buffer).log();
+                self.get_core()?.write_to_screen(&buffer).log();
             }
 
             std::thread::sleep(pause);
@@ -374,8 +439,8 @@ pub trait Widget {
             self.get_drawlist().unwrap_or("".to_string()) +
             &self.get_header_drawlist().unwrap_or("".to_string()) +
             &self.get_footer_drawlist().unwrap_or("".to_string());
-        self.write_to_screen(&output).log();
-        self.screen()?.flush().ok();
+        self.get_core()?.write_to_screen(&output).log();
+        self.get_core()?.screen()?.flush().ok();
         Ok(())
     }
 
@@ -383,7 +448,7 @@ pub trait Widget {
         let (tx_internal_event, rx_internal_event) = channel();
         let rx_global_event = self.get_core()?.event_receiver.lock()?.take()?;
 
-        dispatch_events(tx_internal_event, rx_global_event, self.screen()?);
+        dispatch_events(tx_internal_event, rx_global_event, self.get_core()?.screen()?);
 
         for event in rx_internal_event.iter() {
             match event {
@@ -395,10 +460,10 @@ pub trait Widget {
                     self.get_core()?.get_sender().send(Events::RequestInput)?;
                 }
                 Events::Status(status) => {
-                    self.show_status(&status).log();
+                    self.get_core()?.show_status(&status).log();
                 }
                 Events::TerminalResized => {
-                    self.screen()?.clear().log();
+                    self.get_core()?.screen()?.clear().log();
                 }
                 Events::ConfigLoaded => {
                     self.get_core_mut()?.config.write()?.pull_async()?;
@@ -407,8 +472,8 @@ pub trait Widget {
                 _ => {}
             }
             self.resize().log();
-            if self.screen()?.is_resized()? {
-                self.screen()?.take_size().ok();
+            if self.get_core()?.screen()?.is_resized()? {
+                self.get_core()?.screen()?.take_size().ok();
             }
             self.refresh().ok();
             self.draw().ok();
@@ -416,76 +481,9 @@ pub trait Widget {
         Ok(())
     }
 
-    fn draw_status(&self) -> HResult<()> {
-        let xsize = term::xsize_u();
-        let status = match self.get_core()?.status_bar_content.lock()?.as_ref() {
-            Some(status) => status.to_string(),
-            None => "".to_string(),
-        };
-        let sized_status = term::sized_string_u(&status, xsize);
-
-        self.write_to_screen(
-            &format!(
-                "{}{}{}",
-                term::move_bottom(),
-                term::status_bg(),
-                sized_status
-            )).log();
-
-        Ok(())
-    }
-
-    fn show_status(&self, status: &str) -> HResult<()> {
-        HError::log::<()>(status.to_string()).log();
-        {
-            let mut status_content = self.get_core()?.status_bar_content.lock()?;
-            *status_content = Some(status.to_string());
-        }
-        self.draw_status()?;
-        Ok(())
-    }
-
-    fn clear_status(&self) -> HResult<()> {
-        if self.get_core()?.status_bar_content.lock()?.take().is_some() {
-            self.draw_status().log();
-        }
-        Ok(())
-    }
-
-    fn minibuffer(&self, query: &str) -> HResult<String> {
-        let answer = self.get_core()?
-            .minibuffer
-            .lock()?
-            .as_mut()?
-            .query(query, false);
-        let mut screen = self.screen()?;
-        screen.cursor_hide().log();
-        answer
-    }
-
-    fn minibuffer_continuous(&self, query: &str) -> HResult<String> {
-        let answer = self.get_core()?
-            .minibuffer
-            .lock()?
-            .as_mut()?
-            .query(query, true);
-        let mut screen = self.screen()?;
-        screen.cursor_hide().log();
-        answer
-    }
-
-    fn screen(&self) -> HResult<Screen> {
-        Ok(self.get_core()?.screen.clone())
-    }
-
-    fn write_to_screen(&self, s: &str) -> HResult<()> {
-        let mut screen = self.screen()?;
-        screen.write_str(s)
-    }
-
     fn resize(&mut self) -> HResult<()> {
-        if let Ok(true) = self.screen()?.is_resized() {
-            let (xsize, ysize) = self.screen()?.get_size()?;
+        if let Ok(true) = self.get_core()?.screen()?.is_resized() {
+            let (xsize, ysize) = self.get_core()?.screen()?.get_size()?;
             let mut coords = self.get_core()?.coordinates.clone();
             coords.set_size_u(xsize, ysize-2);
             self.set_coordinates(&coords)?;

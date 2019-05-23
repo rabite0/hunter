@@ -72,7 +72,7 @@ impl<T> HBox<T> where T: Widget + PartialEq {
     }
 
     pub fn toggle_zoom(&mut self) -> HResult<()> {
-        self.clear().log();
+        self.core.clear().log();
         self.zoom_active = !self.zoom_active;
         self.resize_children()
     }

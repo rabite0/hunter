@@ -197,7 +197,7 @@ impl Tabbable for TabView<FileBrowser> {
     }
 
     fn on_config_loaded(&mut self) -> HResult<()> {
-        let show_hidden = self.config().show_hidden();
+        let show_hidden = self.core.config().show_hidden();
 
         for tab in self.widgets.iter_mut() {
             tab.left_async_widget_mut().map(|async_w| {
@@ -366,7 +366,7 @@ impl FileBrowser {
                     let status =
                         format!("{}Stop right there, cowboy! Check your permisions!",
                                 term::color_red());
-                    self.show_status(&status).log();
+                    self.core.show_status(&status).log();
                     return Ok(());
                 }
                 err @ Err(_) => err.log()
@@ -414,17 +414,17 @@ impl FileBrowser {
                 .status();
 
             self.core.screen.activate().log();
-            self.clear().log();
+            self.core.clear().log();
 
             self.core.get_sender().send(Events::InputEnabled(true))?;
 
             match status {
                 Ok(status) =>
-                    self.show_status(&format!("\"{}\" exited with {}",
-                                              "rifle", status)).log(),
+                    self.core.show_status(&format!("\"{}\" exited with {}",
+                                                   "rifle", status)).log(),
                 Err(err) =>
-                    self.show_status(&format!("Can't run this \"{}\": {}",
-                                              "rifle", err)).log()
+                    self.core.show_status(&format!("Can't run this \"{}\": {}",
+                                                   "rifle", err)).log()
             }
         }
         Ok(())
@@ -648,7 +648,7 @@ impl FileBrowser {
     pub fn set_title(&self) -> HResult<()> {
         let path = self.cwd.short_string();
 
-        self.screen()?.set_title(&path)?;
+        self.core.screen()?.set_title(&path)?;
         Ok(())
     }
 
@@ -880,7 +880,7 @@ impl FileBrowser {
     }
 
     pub fn turbo_cd(&mut self) -> HResult<()> {
-        let dir = self.minibuffer("cd")?;
+        let dir = self.core.minibuffer("cd")?;
 
         let path = std::path::PathBuf::from(&dir);
         let dir = File::new_from_path(&path.canonicalize()?, None)?;
@@ -910,7 +910,7 @@ impl FileBrowser {
             .output();
 
         self.core.screen.activate().log();
-        self.clear().log();
+        self.core.clear().log();
         self.core.get_sender().send(Events::InputEnabled(true))?;
 
         match cmd_result {
@@ -954,7 +954,7 @@ impl FileBrowser {
                         } else {
                             let msg = format!("Can't access path: {}!",
                                               path.to_string_lossy());
-                            self.show_status(&msg).log();
+                            self.core.show_status(&msg).log();
                         }
                     } else {
                         let mut last_file = None;
@@ -962,7 +962,7 @@ impl FileBrowser {
                             if !file_path.exists() {
                                 let msg = format!("Can't find: {}",
                                                   file_path .to_string_lossy());
-                                self.show_status(&msg).log();
+                                self.core.show_status(&msg).log();
                                 continue;
                             }
 
@@ -988,10 +988,10 @@ impl FileBrowser {
                         }).log();
                     }
                 } else {
-                    self.show_status("External program failed!").log();
+                    self.core.show_status("External program failed!").log();
                 }
             }
-            Err(_) => self.show_status("Can't run external program!").log()
+            Err(_) => self.core.show_status("Can't run external program!").log()
         }
 
         Ok(())
@@ -1018,7 +1018,7 @@ impl FileBrowser {
             .output();
 
         self.core.screen.activate().log();
-        self.clear().log();
+        self.core.clear().log();
         self.core.get_sender().send(Events::InputEnabled(true))?;
 
         match cmd_result {
@@ -1043,15 +1043,15 @@ impl FileBrowser {
                         else {
                             let msg = format!("Can't access path: {}!",
                                               path.to_string_lossy());
-                            self.show_status(&msg).log();
+                            self.core.show_status(&msg).log();
                         }
 
                     } else {
-                        self.show_status("External program failed!").log();
+                        self.core.show_status("External program failed!").log();
                     }
                 }
             }
-            Err(_) => self.show_status("Can't run external program!").log()
+            Err(_) => self.core.show_status("Can't run external program!").log()
         }
 
         Ok(())
@@ -1066,7 +1066,7 @@ impl FileBrowser {
         let selected_file = self.selected_file().ok();
         let selected_files = self.selected_files().ok();
 
-        let cmd = self.minibuffer("exec")?.trim_start().to_string() + " ";
+        let cmd = self.core.minibuffer("exec")?.trim_start().to_string() + " ";
 
         let cwd_files = selected_files.map(|selected_files| {
             if selected_files.len() == 0 {
@@ -1111,10 +1111,10 @@ impl FileBrowser {
 
         match status {
             Ok(status) =>
-                self.show_status(&format!("\"{}\" exited with {}",
+                self.core.show_status(&format!("\"{}\" exited with {}",
                                           shell, status)).log(),
             Err(err) =>
-                self.show_status(&format!("Can't run this \"{}\": {}",
+                self.core.show_status(&format!("Can't run this \"{}\": {}",
                                           shell, err)).log()
         }
 

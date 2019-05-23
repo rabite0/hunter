@@ -167,7 +167,7 @@ impl MiniBuffer {
             self.clear();
         }
 
-        self.screen()?.cursor_hide().log();
+        self.core.screen()?.cursor_hide().log();
 
         match self.popup() {
             Err(HError::MiniBufferCancelledInput) => self.input_cancelled()?,
@@ -335,7 +335,7 @@ impl MiniBuffer {
     }
 
     pub fn input_cancelled(&self) -> HResult<()> {
-        self.show_status("Input cancelled").log();
+        self.core.show_status("Input cancelled").log();
         return HError::minibuffer_cancel()
     }
 
@@ -344,7 +344,7 @@ impl MiniBuffer {
     }
 
     pub fn input_empty(&self) -> HResult<()> {
-        self.show_status("Empty!").log();
+        self.core.show_status("Empty!").log();
         return HError::minibuffer_empty()
     }
 }
@@ -502,7 +502,7 @@ impl Widget for MiniBuffer {
                          ": ".len() +
                          self.position;
 
-        let mut screen = self.screen()?;
+        let mut screen = self.core.screen()?;
         let ysize = screen.ysize()?;
 
         screen.goto_xy(cursor_pos, ysize).log();

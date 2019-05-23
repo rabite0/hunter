@@ -29,7 +29,7 @@ impl Listable for ListView<Files> {
     }
 
     fn on_new(&mut self) -> HResult<()> {
-        let show_hidden = self.config().show_hidden();
+        let show_hidden = self.core.config().show_hidden();
         self.content.show_hidden = show_hidden;
         Ok(())
     }
@@ -226,7 +226,7 @@ impl ListView<Files>
     pub fn goto_grand_parent(&mut self) -> HResult<()> {
         match self.grand_parent() {
             Some(grand_parent) => self.goto_path(&grand_parent),
-            None => { self.show_status("Can't go further!") },
+            None => { self.core.show_status("Can't go further!") },
         }
     }
 
@@ -245,7 +245,7 @@ impl ListView<Files>
                 self.refresh()
             }
             Err(err) => {
-                self.show_status(&format!("Can't open this path: {}", err))
+                self.core.show_status(&format!("Can't open this path: {}", err))
             }
         }
     }
@@ -266,7 +266,7 @@ impl ListView<Files>
         self.content.sort();
         self.select_file(&file);
         self.refresh().log();
-        self.show_status(&format!("Sorting by: {}", self.content.sort)).log();
+        self.core.show_status(&format!("Sorting by: {}", self.content.sort)).log();
     }
 
     fn reverse_sort(&mut self) {
@@ -275,7 +275,8 @@ impl ListView<Files>
         self.content.sort();
         self.select_file(&file);
         self.refresh().log();
-        self.show_status(&format!("Reversed sorting by: {}", self.content.sort)).log();
+        self.core.show_status(&format!("Reversed sorting by: {}",
+                                       self.content.sort)).log();
     }
 
     fn select_next_mtime(&mut self) {
@@ -346,8 +347,8 @@ impl ListView<Files>
         self.content.sort();
         self.select_file(&file);
         self.refresh().log();
-        self.show_status(&format!("Direcories first: {}",
-                                  self.content.dirs_first)).log();
+        self.core.show_status(&format!("Direcories first: {}",
+                                        self.content.dirs_first)).log();
     }
 
     fn multi_select_file(&mut self) {
@@ -383,7 +384,7 @@ impl ListView<Files>
         let selected_file = self.clone_selected_file();
 
         loop {
-            let input = self.minibuffer_continuous("search");
+            let input = self.core.minibuffer_continuous("search");
 
             match input {
                 Ok(input) => {
@@ -414,7 +415,7 @@ impl ListView<Files>
 
     fn search_next(&mut self) -> HResult<()> {
         if self.searching.is_none() {
-            self.show_status("No search pattern set!").log();
+            self.core.show_status("No search pattern set!").log();
         }
         let prev_search = self.searching.clone()?;
         let selection = self.get_selection();
@@ -435,14 +436,14 @@ impl ListView<Files>
             let file = file.clone();
             self.select_file(&file);
         } else {
-            self.show_status("Reached last search result!").log();
+            self.core.show_status("Reached last search result!").log();
         }
         Ok(())
     }
 
     fn search_prev(&mut self) -> HResult<()> {
         if self.searching.is_none() {
-            self.show_status("No search pattern set!").log();
+            self.core.show_status("No search pattern set!").log();
         }
         let prev_search = self.searching.clone()?;
 
@@ -464,13 +465,13 @@ impl ListView<Files>
             }).cloned();
 
         self.reverse_sort();
-        self.clear_status().log();
+        self.core.clear_status().log();
 
         if let Some(file) = file {
             let file = file.clone();
             self.select_file(&file);
         } else {
-            self.show_status("Reached last search result!").log();
+            self.core.show_status("Reached last search result!").log();
         }
 
         Ok(())
@@ -480,7 +481,7 @@ impl ListView<Files>
         let selected_file = self.selected_file().clone();
 
         loop {
-            let filter = self.minibuffer_continuous("filter");
+            let filter = self.core.minibuffer_continuous("filter");
 
             match filter {
                 Err(HError::MiniBufferInputUpdated(input)) => {
@@ -502,7 +503,7 @@ impl ListView<Files>
             }
 
             let msgstr = filter.clone().unwrap_or(String::from(""));
-            self.show_status(&format!("Filtering with: \"{}\"", msgstr)).log();
+            self.core.show_status(&format!("Filtering with: \"{}\"", msgstr)).log();
 
             break;
         }
@@ -511,7 +512,7 @@ impl ListView<Files>
     }
 
     fn render_line(&self, file: &File) -> String {
-        let icon = if self.config().icons {
+        let icon = if self.core.config().icons {
             file.icon()
         } else { "" };
 
