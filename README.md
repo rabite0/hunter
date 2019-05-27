@@ -3,8 +3,10 @@ hunter
 
 ![hunter](https://raw.githubusercontent.com/rabite0/hunter-stuff/master/player.png)
 
-***NEW***
-	* [Quick Actions] Run specific actions based on file type
+NEW 
+- [Quick Actions] Run specific actions based on file type
+
+
 
 hunter is a fast and lag-free file browser/manager for the terminal. It features a heavily asynchronous and multi-threaded design and all disk IO happens off the main thread in a non-blocking fashion, so that hunter will always stay responsive, even under heavy load on a slow spinning rust disk, even with all the previews enabled.
 
@@ -27,6 +29,7 @@ A big thanks to ranger and its developers. Without its inspiration this wouldn't
 * Asynchronous multi-threaded IO
 * Tabs
 * Multi-file selection
+* Customizable Quick Actions based on file type
 * Enter directories/select files using external command like fzf
 * ranger import for bookmarks/tags
 * Minibuffer with completion and filename/selection/tab/directory substitution
@@ -113,17 +116,31 @@ media_mute=off
 ```
 
 ## Quick Actions
-These are executables you can run by pressing ```a```. Which actions you can see depends on the MIME type of the files you have selected. If you have multiple files selected, hunter will try to use the most specific MIME type possible. For example, if you have selected a bunch of images with different types you will see actions for "image/*". You can see the computed MIME type in the header bar.
+These are executables you can run by pressing ```a```. Which actions you can see depends on the MIME type of the files you have selected. If you have multiple files selected, hunter will try to use the most specific MIME type possible. For example, if you have selected a bunch of images with different types you will see actions for "image/". You can see the computed MIME type in the header bar.
 
-There are "universal", "base-type", and "sub-type" actions. These are stored in ~/.config/hunter/actions/<base-type>/<sub-type>/. Universal actions are always available. These are stored right in the "actions" directory. "Base-type" actions are stored in directories like "text", "image", "video". These correspond to the part left of the "/" in a full MIME-type like "image/png". These will be available to all "text", "image", or "video" files. This list is not exhaustive, there are a lot more base-types. In addition to that you can create a directory in those base-type directories to store "sub-type" actions, which are only available to a specific file type..
+There are "universal", "base-type", and "sub-type" actions. These are stored in 
 
-For example, if you want to define an action only available to PNG images, you can store that in "~/.config/hunter/actions/image/png/custom_pngcrush.sh".
+```~/.config/hunter/actions/<base-type>/<sub-type>/```
+
+Universal actions are always available. These are stored right in the "actions" directory. "Base-type" actions are stored in directories like "text", "image", "video". These correspond to the part left of the "/" in a full MIME-type like "image/png". These will be available to all "text", "image", or "video" files. This list is not exhaustive, there are a lot more base-types. In addition to that you can create a directory in those base-type directories to store "sub-type" actions, which are only available to a specific file type..
+
+For example, if you want to define an action only available to PNG images, you can store that in 
+
+```~/.config/hunter/actions/image/png/custom_pngcrush.sh```
 
 You can also ask for input before those actions are run. This input will be entered through hunter's minibuffer. To ask for input append "?question" to the file name, but before the extension. hunter will then set an environment variable named after whatever you put after the question mark. You can also ask for multiple things to be entered.
 
-For example, you could name an action "download_stuff?url?destination.sh". hunter will ask for the "url" and the "destination" before running your script. The values will be available through the $url and $destination environment variables.
+For example, you could name an action 
 
-You can also make the action run in the foreground, so that it will take over the terminal while it runs. To do that simply append "!" to the file name before the extension. It should look like this: "action?query1?query2!.sh". This will ask two questions and then run the script in the foreground until it quits.
+```download_stuff?url?destination.sh```
+
+hunter will ask for the "url" and the "destination" before running your script. The values will be available through the $url and $destination environment variables.
+
+You can also make the action run in the foreground, so that it will take over the terminal while it runs. To do that simply append "!" to the file name before the extension. It should look like this: 
+
+```action?query1?query2!.sh```
+
+This will ask two questions and then run the script in the foreground until it quits.
 
 There are a few examples in extras/actions. You can copy the whole directory into ~/.config/hunter/ and try it out.
 
@@ -139,10 +156,6 @@ You can set a few options when hunter starts. These override the configuration f
 | -i, --icons           | Show icons for different file types |
 | -h, --show-hiddenn    | Show hidden files                   |
 | -V, --version         | Prints version information          |
-
-| **ARGS:**            |                                      |
-|----------------------|--------------------------------------|
-| [path]               |  Start in [path]                     |
 
 
 ## Drop into hunter cwd on quit
