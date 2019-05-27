@@ -157,10 +157,6 @@ You can set a few options when hunter starts. These override the configuration f
 | -h, --show-hiddenn    | Show hidden files                   |
 | -V, --version         | Prints version information          |
 
-| **ARGS:**            |                                      |
-|----------------------|--------------------------------------|
-| [path]               |  Start in [path]                     |
-
 
 ## Drop into hunter cwd on quit
 To change the directory of your shell when quitting hunter with Q you need to source extra/hunter_cd.sh, which is a wrapper that runs hunter and checks for ~/.hunter_cwd after hunter exits and cd's into the contained directory if it exists.
