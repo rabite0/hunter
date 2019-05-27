@@ -4,7 +4,7 @@ use crate::widget::{Widget, WidgetCore};
 use crate::coordinates::{Coordinates, Size, Position};
 use crate::fail::{HResult, HError, ErrorLog};
 
-#[derive(PartialEq)]
+#[derive(Debug, PartialEq)]
 pub struct HBox<T: Widget> {
     pub core: WidgetCore,
     pub widgets: Vec<T>,

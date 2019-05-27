@@ -48,7 +48,7 @@ impl<W: Widget + Send + 'static> PartialEq for AsyncWidget<W> {
     }
 }
 
-
+#[derive(Debug)]
 pub struct AsyncWidget<W: Widget + Send + 'static> {
     pub widget: Async<W>,
     core: WidgetCore

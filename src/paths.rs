@@ -55,3 +55,9 @@ pub fn history_path() -> HResult<PathBuf> {
     history_path.push("history");
     Ok(history_path)
 }
+
+pub fn actions_path() -> HResult<PathBuf> {
+    let mut actions_path = hunter_path()?;
+    actions_path.push("actions");
+    Ok(actions_path)
+}

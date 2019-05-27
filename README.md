@@ -3,6 +3,9 @@ hunter
 
 ![hunter](https://raw.githubusercontent.com/rabite0/hunter-stuff/master/player.png)
 
+***NEW***
+	* [Quick Actions] Run specific actions based on file type
+
 hunter is a fast and lag-free file browser/manager for the terminal. It features a heavily asynchronous and multi-threaded design and all disk IO happens off the main thread in a non-blocking fashion, so that hunter will always stay responsive, even under heavy load on a slow spinning rust disk, even with all the previews enabled.
 
 It's heavily inspired by the excellent ranger, but a little more Emacs-flavoured, and written in Rust to make sure it starts up quickly and to take advantage of its strong guarantees around concurrency. It's so fast I actually built in animations for some parts as a joke, but in fact it turned out to look really nice and makes it look much smoother. YMMV, of course, and this can be disabled.
@@ -12,6 +15,8 @@ Most things you would expect are implemented, among them tabs, bookmarks (with r
 To speed up the loading of directories metadata in the preview/backview is only loaded for files you can see, except in the main view. Still, metadata is also loaded asynchronously, so you can sometimes see it updating file listings while browsing through your files. I think this is better than waiting though :).
 
 Technically hunter is not a file "manager" itself. It has no built in primitives for file manipulation like delete, rename, move, and so on. Instead it relies on its easy and extensive integration with the standard cli tools to do its job. For that purpose there are various file name/path substitution patterns and an auto-completing for executables you want to run.
+
+It also features a "quick action" mode in which you can execute customizable actions based on the file's MIME type. These can be shell-scripts or other executables. It's possible to to make hunter ask for input before these are run. The input will be put in an environment variable for the process to use. For example, you can select a few files, run a "create archive" action and you will be asked for a name for the resulting archive. You can find a more detailed explanation below.
 
 This is a young project and probably (definitely) has some bugs and edge cases. It hasn't been tested on a lot of terminals, but at least alacritty, kitty and urxvt work fine. It should work on most Unix-flavoured systems supported by Rust, but was only tested on GNU/Linux. I haven't lost any files so far, at least.
 
@@ -107,6 +112,21 @@ media_autostart=off
 media_mute=off
 ```
 
+## Quick Actions
+These are executables you can run by pressing ```a```. Which actions you can see depends on the MIME type of the files you have selected. If you have multiple files selected, hunter will try to use the most specific MIME type possible. For example, if you have selected a bunch of images with different types you will see actions for "image/*". You can see the computed MIME type in the header bar.
+
+There are "universal", "base-type", and "sub-type" actions. These are stored in ~/.config/hunter/actions/<base-type>/<sub-type>/. Universal actions are always available. These are stored right in the "actions" directory. "Base-type" actions are stored in directories like "text", "image", "video". These correspond to the part left of the "/" in a full MIME-type like "image/png". These will be available to all "text", "image", or "video" files. This list is not exhaustive, there are a lot more base-types. In addition to that you can create a directory in those base-type directories to store "sub-type" actions, which are only available to a specific file type..
+
+For example, if you want to define an action only available to PNG images, you can store that in "~/.config/hunter/actions/image/png/custom_pngcrush.sh".
+
+You can also ask for input before those actions are run. This input will be entered through hunter's minibuffer. To ask for input append "?question" to the file name, but before the extension. hunter will then set an environment variable named after whatever you put after the question mark. You can also ask for multiple things to be entered.
+
+For example, you could name an action "download_stuff?url?destination.sh". hunter will ask for the "url" and the "destination" before running your script. The values will be available through the $url and $destination environment variables.
+
+You can also make the action run in the foreground, so that it will take over the terminal while it runs. To do that simply append "!" to the file name before the extension. It should look like this: "action?query1?query2!.sh". This will ask two questions and then run the script in the foreground until it quits.
+
+There are a few examples in extras/actions. You can copy the whole directory into ~/.config/hunter/ and try it out.
+
 ## Startup options
 You can set a few options when hunter starts. These override the configuration file. You can also tell hunter to start in a certain directory.
 
@@ -175,6 +195,7 @@ By default hunter uses vi-style keybindings. If you use a QWERTY-like keyboard l
 | m                   | add bookmark                       |
 | w                   | show processes                     |
 | g holy(l)           | show log                           |
+| a                   | show quick actions                 |
 | z                   | open subshell in cwd               |
 | c                   | toggle columns                     |
 | F(n)                | switch to tab                      |

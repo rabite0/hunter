@@ -6,7 +6,7 @@ use crate::widget::{Widget, WidgetCore};
 use crate::fail::HResult;
 use crate::dirty::Dirtyable;
 
-#[derive(PartialEq)]
+#[derive(Debug, PartialEq)]
 pub struct TextView {
     pub lines: Vec<String>,
     pub core: WidgetCore,

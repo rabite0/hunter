@@ -468,6 +468,7 @@ impl FileBrowser {
             cmd: OsString::from(file.strip_prefix(&cwd)),
             short_cmd: None,
             args: None,
+            vars: None,
             cwd: cwd.clone(),
             cwd_files: None,
             tab_files: None,
@@ -1084,6 +1085,7 @@ impl FileBrowser {
             cmd: OsString::from(cmd),
             short_cmd: None,
             args: None,
+            vars: None,
             cwd: cwd,
             cwd_files: cwd_files,
             tab_files: Some(tab_files),
@@ -1132,6 +1134,22 @@ impl FileBrowser {
     pub fn show_log(&mut self) -> HResult<()> {
         self.preview_widget().map(|preview| preview.cancel_animation()).log();
         self.log_view.lock()?.popup()?;
+        Ok(())
+    }
+
+    pub fn quick_action(&self) -> HResult<()> {
+        let files = self.selected_files()?;
+        let files = if files.len() > 0 { files }
+        else { vec![self.selected_file()?.clone()] };
+
+        let sender = self.core.get_sender();
+        let core = self.preview_widget()?.get_core()?.clone();
+        let proc_view = self.proc_view.clone();
+
+        crate::quick_actions::open(files,
+                                   sender,
+                                   core,
+                                   proc_view)?;
         Ok(())
     }
 
@@ -1263,6 +1281,7 @@ impl Widget for FileBrowser {
 
     fn on_key(&mut self, key: Key) -> HResult<()> {
         match key {
+            Key::Char('a') => self.quick_action()?,
             Key::Char(']') => self.move_down_left_widget()?,
             Key::Char('[') => self.move_up_left_widget()?,
             Key::Alt(' ') => self.external_select()?,

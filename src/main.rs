@@ -22,6 +22,7 @@ extern crate signal_notify;
 extern crate tree_magic;
 extern crate systemstat;
 extern crate mime_guess;
+extern crate mime;
 extern crate clap;
 
 extern crate osstrtools;
@@ -55,6 +56,7 @@ mod fscache;
 mod config;
 mod stats;
 mod icon;
+mod quick_actions;
 
 #[cfg(feature = "img")]
 mod imgview;

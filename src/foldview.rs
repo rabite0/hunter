@@ -21,7 +21,7 @@ pub struct LogEntry {
 
 
 impl Foldable for LogEntry {
-    fn description(&self) -> &String {
+    fn description(&self) -> &str {
         &self.description
     }
     fn content(&self) -> Option<&String> {
@@ -87,6 +87,8 @@ pub trait FoldableWidgetExt {
     fn on_refresh(&mut self) -> HResult<()> { Ok(()) }
     fn render_header(&self) -> HResult<String> { Ok("".to_string()) }
     fn render_footer(&self) -> HResult<String> { Ok("".to_string()) }
+    fn on_key(&mut self, _key: Key) -> HResult<()> { Ok(()) }
+    fn render(&self) -> Vec<String> { vec![] }
 }
 
 impl FoldableWidgetExt for  ListView<Vec<LogEntry>> {
@@ -162,16 +164,18 @@ impl LogList for Vec<LogEntry> {
 
 
 pub trait Foldable {
-    fn description(&self) -> &String;
+    fn description(&self) -> &str;
     fn content(&self) -> Option<&String>;
     fn lines(&self) -> usize;
     fn toggle_fold(&mut self);
     fn is_folded(&self) -> bool;
 
-    fn text(&self) -> &String {
+    fn text(&self) -> &str {
         if !self.is_folded() && self.content().is_some() {
             self.content().unwrap()
-        } else { self.description() }
+        } else {
+            &self.description()
+        }
     }
 
     fn render_description(&self) -> String {
@@ -200,7 +204,7 @@ impl<F: Foldable> ListView<Vec<F>>
 where
     ListView<Vec<F>>: FoldableWidgetExt {
 
-    fn toggle_fold(&mut self) -> HResult<()> {
+    pub fn toggle_fold(&mut self) -> HResult<()> {
         let fold = self.current_fold()?;
         let fold_pos = self.fold_start_pos(fold);
 
@@ -214,7 +218,7 @@ where
         Ok(())
     }
 
-    fn fold_start_pos(&self, fold: usize) -> usize {
+    pub fn fold_start_pos(&self, fold: usize) -> usize {
         self.content
             .iter()
             .take(fold)
@@ -223,7 +227,7 @@ where
             })
     }
 
-    fn current_fold(&self) -> Option<usize> {
+    pub fn current_fold(&self) -> Option<usize> {
         let pos = self.get_selection();
 
         let fold_lines = self
@@ -258,6 +262,10 @@ where
     }
 
     fn render(&self) -> Vec<String> {
+        let rendering = FoldableWidgetExt::render(self);
+        // HACK to check if no custom renderer
+        if rendering.len() > 0 { return rendering; }
+
         let (xsize, _) = self.core.coordinates.size_u();
         self.content
             .iter()
@@ -284,15 +292,18 @@ where
     }
 
     fn on_key(&mut self, key: Key) -> HResult<()> {
-        match key {
-            Key::Up | Key::Char('k') => self.move_up(),
-            Key::Char('K') => for _ in 0..10 { self.move_up() },
-            Key::Char('J') => for _ in 0..10 { self.move_down() },
-            Key::Down | Key::Char('j') => self.move_down(),
-            Key::Char('t') => self.toggle_fold()?,
-            Key::Char('g') => self.popup_finnished()?,
-            _ => {}
+        let result = FoldableWidgetExt::on_key(self, key);
+        if let Err(HError::WidgetUndefinedKeyError{key}) = result {
+            match key {
+                Key::Up | Key::Char('k') => self.move_up(),
+                Key::Char('K') => for _ in 0..10 { self.move_up() },
+                Key::Char('J') => for _ in 0..10 { self.move_down() },
+                Key::Down | Key::Char('j') => self.move_down(),
+                Key::Char('t') => self.toggle_fold()?,
+                Key::Char('g') => self.popup_finnished()?,
+                _ =>  { HError::undefined_key(key)?; },
+            }
         }
-        Ok(())
+        result
     }
 }

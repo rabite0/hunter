@@ -36,6 +36,7 @@ struct Process {
 pub struct Cmd {
     pub cmd: OsString,
     pub args: Option<Vec<OsString>>,
+    pub vars: Option<Vec<(OsString, OsString)>>,
     pub short_cmd: Option<String>,
     pub cwd: File,
     pub cwd_files: Option<Vec<File>>,
@@ -304,7 +305,7 @@ impl ListView<Vec<Process>> {
     }
 }
 
-#[derive(PartialEq)]
+#[derive(Debug, PartialEq)]
 enum ProcViewWidgets {
     List(ListView<Vec<Process>>),
     TextView(AsyncWidget<TextView>),
@@ -337,6 +338,7 @@ impl Widget for ProcViewWidgets {
     }
 }
 
+#[derive(Debug)]
 pub struct ProcView {
     core: WidgetCore,
     hbox: HBox<ProcViewWidgets>,

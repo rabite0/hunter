@@ -96,7 +96,7 @@ impl Listable for ListView<Files> {
     }
 }
 
-#[derive(PartialEq)]
+#[derive(Debug, PartialEq)]
 pub struct ListView<T> where ListView<T>: Listable
 {
     pub content: T,
