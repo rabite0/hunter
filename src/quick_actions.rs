@@ -68,13 +68,14 @@ impl FoldableWidgetExt for ListView<Vec<QuickActions>> {
     fn on_key(&mut self, key: Key) -> HResult<()> {
         match key {
             Key::Char('a') |
-            Key::Char('h') |
             Key::Ctrl('c') |
-            Key::Esc => HError::popup_finnished()?,
+            Key::Esc       |
+            Key::Char('b') => HError::popup_finnished()?,
             // undefined key causes parent to handle move up/down
-            Key::Char('j') => HError::undefined_key(key)?,
-            Key::Char('k') => HError::undefined_key(key)?,
-            Key::Char('l') => self.run_action(None),
+            Key::Char('n') => HError::undefined_key(key)?,
+            Key::Char('p') => HError::undefined_key(key)?,
+            Key::Char('f') => self.run_action(None),
+
             key @ Key::Char(_) => {
                 let chr = match key {
                     Key::Char(key) => key,
@@ -194,7 +195,7 @@ impl ListView<Vec<QuickActions>> {
 }
 
 // shouldn't contain keys used for navigation/activation
-static CHARS: &str = "bcdefgimoqrstuvxyz";
+static CHARS: &str = "bcdeghijklmoqrstuvxyz";
 
 impl QuickActions {
     pub fn new(files: Vec<File>,
