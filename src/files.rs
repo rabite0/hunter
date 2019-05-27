@@ -6,6 +6,7 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, RwLock};
 use std::sync::mpsc::Sender;
 use std::hash::{Hash, Hasher};
+use std::str::FromStr;
 
 use lscolors::LsColors;
 use tree_magic;
@@ -836,11 +837,14 @@ impl File {
         if let Some(ext) = self.path.extension() {
             let mime = mime_guess::get_mime_type(&ext.to_string_lossy());
             Some(mime)
-        } else { None }
+        } else {
+            let mime = tree_magic::from_filepath(&self.path);
+            mime::Mime::from_str(&mime).ok()
+        }
     }
 
     pub fn is_text(&self) -> bool {
-         tree_magic::match_filepath("text/plain", &self.path)
+        tree_magic::match_filepath("text/plain", &self.path)
     }
 
 
