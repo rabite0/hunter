@@ -838,8 +838,15 @@ impl File {
             let mime = mime_guess::get_mime_type(&ext.to_string_lossy());
             Some(mime)
         } else {
-            let mime = tree_magic::from_filepath(&self.path);
-            mime::Mime::from_str(&mime).ok()
+            // Fix crash in tree_magic when called on non-regular file
+            self.meta()
+                .ok()
+                .and_then(|meta| {
+                    if meta.is_file() {
+                        let mime = tree_magic::from_filepath(&self.path);
+                        mime::Mime::from_str(&mime).ok()
+                    } else { None }
+                })
         }
     }
 
