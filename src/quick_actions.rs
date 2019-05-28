@@ -64,9 +64,6 @@ impl FoldableWidgetExt for ListView<Vec<QuickActions>> {
         let mime = &self.content.get(0)?.mime;
         Ok(format!("QuickActions for MIME: {}", mime))
     }
-    fn render_footer(&self) -> HResult<String> {
-        Ok(String::from(""))
-    }
 
     fn on_key(&mut self, key: Key) -> HResult<()> {
         match key {
