@@ -87,7 +87,9 @@ pub trait FoldableWidgetExt {
     fn on_refresh(&mut self) -> HResult<()> { Ok(()) }
     fn render_header(&self) -> HResult<String> { Ok("".to_string()) }
     fn render_footer(&self) -> HResult<String> { Ok("".to_string()) }
-    fn on_key(&mut self, _key: Key) -> HResult<()> { Ok(()) }
+    fn on_key(&mut self, key: Key) -> HResult<()> {
+        HError::undefined_key(key)?
+    }
     fn render(&self) -> Vec<String> { vec![] }
 }
 
