@@ -1184,7 +1184,7 @@ impl FileBrowser {
         let dev = fs.get_dev();
         let free_space = fs.get_free();
         let total_space = fs.get_total();
-        let space = format!("{}: {} / {}",
+        let space = format!("{}{} / {}",
                             dev,
                             free_space,
                             total_space);

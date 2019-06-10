@@ -66,10 +66,9 @@ pub trait FsExt {
 impl FsExt for Filesystem {
     fn get_dev(&self) -> String {
         let path = PathBuf::from(&self.fs_mounted_from);
-        let dev = path.components().last().unwrap();
-        let dev = match dev {
-            Component::Normal(dev) => dev.to_string_lossy().to_string(),
-            _ => "wtf".to_string()
+        let dev = match path.components().last() {
+            Some(Component::Normal(dev)) => dev.to_string_lossy().to_string() + ": ",
+            _ => "".to_string()
         };
         dev
     }
