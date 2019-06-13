@@ -154,7 +154,7 @@ You can set a few options when hunter starts. These override the configuration f
 | -a, --animation-off   | Turn off animations                 |
 | --help                | Prints help information             |
 | -i, --icons           | Show icons for different file types |
-| -h, --show-hiddenn    | Show hidden files                   |
+| -h, --show-hidden     | Show hidden files                   |
 | -V, --version         | Prints version information          |
 
 
