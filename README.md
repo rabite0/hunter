@@ -3,7 +3,8 @@ hunter
 
 ![hunter](https://raw.githubusercontent.com/rabite0/hunter-stuff/master/player.png)
 
-NEW 
+NEW
+- [**[IRC channel](https://webchat.freenode.net/?channels=hunter)**] Problems? Bugs? Praise? Chat with us: [#hunter @ Freenode](https://webchat.freenode.net/?channels=hunter)!
 - [Quick Actions] Run specific actions based on file type
 
 
