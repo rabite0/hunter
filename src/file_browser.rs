@@ -1067,7 +1067,7 @@ impl FileBrowser {
         let selected_file = self.selected_file().ok();
         let selected_files = self.selected_files().ok();
 
-        let cmd = self.core.minibuffer("exec")?.trim_start().to_string() + " ";
+        let cmd = self.core.minibuffer("exec")?.to_string() + " ";
 
         let cwd_files = selected_files.map(|selected_files| {
             if selected_files.len() == 0 {

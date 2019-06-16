@@ -1,10 +1,10 @@
 use std::sync::{Arc, Mutex};
 use std::sync::mpsc::Sender;
-use std::process::Child;
+use std::process::{Child, Command};
 use std::os::unix::process::{CommandExt, ExitStatusExt};
 use std::io::{BufRead, BufReader};
-use std::ffi::OsString;
-use std::os::unix::ffi::OsStringExt;
+use std::ffi::{OsString, OsStr};
+use std::os::unix::ffi::{OsStringExt, OsStrExt};
 
 use termion::event::Key;
 use unicode_width::UnicodeWidthStr;
@@ -19,7 +19,7 @@ use crate::preview::AsyncWidget;
 use crate::dirty::Dirtyable;
 use crate::hbox::HBox;
 use crate::fail::{HResult, HError, ErrorLog};
-use crate::term;
+use crate::term::{self, ScreenExt};
 use crate::files::File;
 
 #[derive(Debug)]
@@ -208,18 +208,28 @@ impl ListView<Vec<Process>> {
     fn run_proc_subshell(&mut self, mut cmd: Cmd) -> HResult<()> {
         let shell = std::env::var("SHELL").unwrap_or("sh".into());
         let home = crate::paths::home_path()?.into_os_string();
+        let fg = cmd.cmd.as_bytes().ends_with(b"! ");
+
+        if fg {
+            // remove that last !
+            let real_len = cmd.cmd.as_bytes().len() - 2;
+            cmd.cmd = OsString::from_vec(cmd.cmd.as_bytes()[0..real_len].to_vec());
+            // workaround until split is fixed
+            cmd.cmd.push(" ");
+        }
 
         let cmd_args = cmd.process();
 
-        let short = OsString::from("~");
+        let short = OsStr::from_bytes("~".as_bytes());
         let short_cmd = cmd_args
             .concat()
             .replace(&home, &short)
-            .replace(&OsString::from("\""), &OsString::from(""))
+            .replace(OsStr::from_bytes("'\''".as_bytes()),
+                     OsStr::from_bytes("'".as_bytes()))
+            .replace(OsStr::from_bytes("\"".as_bytes()),
+                     OsStr::from_bytes("".as_bytes()))
             .to_string_lossy()
             .to_string();
-
-        self.core.show_status(&format!("Running: {}", &short_cmd)).log();
 
         let shell_args = cmd_args.concat();
         let shell_args = vec![OsString::from("-c"), shell_args.clone()];
@@ -228,7 +238,17 @@ impl ListView<Vec<Process>> {
         cmd.args = Some(shell_args.clone());
         cmd.short_cmd = Some(short_cmd);
 
-        self.run_proc_raw(cmd)
+        if !fg {
+            self.run_proc_raw(cmd)
+        } else {
+            self.run_proc_raw_fg(cmd).log();
+
+            // Command might fail/return early. do this here
+            self.core.screen.reset()?;
+            self.core.screen.activate()?;
+            self.core.screen.clear()?;
+            Ok(())
+        }
     }
 
     fn run_proc_raw(&mut self, cmd: Cmd) -> HResult<()> {
@@ -241,7 +261,7 @@ impl ListView<Vec<Process>> {
 
         self.core.show_status(&format!("Running: {}", &short_cmd)).log();
 
-        let handle = std::process::Command::new(real_cmd)
+        let handle = Command::new(real_cmd)
             .args(args)
             .stdin(std::process::Stdio::null())
             .stdout(std::process::Stdio::piped())
@@ -257,6 +277,67 @@ impl ListView<Vec<Process>> {
         };
         proc.read_proc()?;
         self.content.push(proc);
+        Ok(())
+    }
+
+    fn run_proc_raw_fg(&mut self, cmd: Cmd) -> HResult<()> {
+        let real_cmd = cmd.cmd;
+        let short_cmd = cmd.short_cmd
+                           .unwrap_or(real_cmd
+                                      .to_string_lossy()
+                                      .to_string());
+        let args = cmd.args.unwrap_or(vec![]);
+
+        self.core.show_status(&format!("Running (fg): {}", &short_cmd)).log();
+
+        self.core.screen.goto_xy(0,0)?;
+        self.core.screen.reset()?;
+        self.core.screen.suspend()?;
+
+        match Command::new(real_cmd)
+            .args(args)
+            .status() {
+                Ok(status) => {
+                    let color_success =
+                        if status.success() {
+                            format!("{}successfully", term::color_green())
+                        } else {
+                            format!("{}unsuccessfully", term::color_red())
+                        };
+
+                    let color_status =
+                        if status.success() {
+                            format!("{}{}",
+                                    term::color_green(),
+                                    status.code().unwrap_or(status
+                                                            .signal()
+                                                            .unwrap_or(-1)))
+                        } else {
+                            format!("{}{}",
+                                    term::color_red(),
+                                    status.code().unwrap_or(status
+                                                            .signal()
+                                                            .unwrap_or(-1)))
+
+                        };
+
+
+                    let procinfo = format!("{} exited {}{}{} with status: {}",
+                                           short_cmd,
+                                           color_success,
+                                           term::reset(),
+                                           term::status_bg(),
+                                           color_status);
+
+                    self.core.show_status(&procinfo)?;
+                },
+                err @ Err(_) => {
+                    self.core.show_status(&format!("{}{} ",
+                                                  "Couldn't start process:",
+                                                   short_cmd))?;
+                    err?;
+                }
+            }
         Ok(())
     }
 
