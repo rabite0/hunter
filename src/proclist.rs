@@ -61,12 +61,14 @@ impl Cmd {
             .take()
             .unwrap()
             .iter()
-            .map(|file| file.strip_prefix(&self.cwd).into_os_string())
+            .map(|file| file.strip_prefix(&self.cwd)
+                 .into_os_string()
+                 .escape_single_quote())
             .collect::<Vec<OsString>>();
 
         cmd.iter()
-            .map(|part| part.splice_quoted(&cwd_pat,
-                                         cwd_files.clone()))
+            .map(|part| part.splice_quoted_single(&cwd_pat,
+                                                  cwd_files.clone()))
             .flatten().collect()
     }
 
@@ -80,12 +82,14 @@ impl Cmd {
             .fold(cmd, |cmd, (i, tab_files)| {
                 let tab_files_pat = OsString::from(format!("${}s", i));
                 let tab_file_paths = tab_files.iter()
-                    .map(|file| file.strip_prefix(&self.cwd).into_os_string())
+                    .map(|file| file.strip_prefix(&self.cwd)
+                         .into_os_string()
+                         .escape_single_quote())
                     .collect::<Vec<OsString>>();
 
                 cmd.iter().map(|part| {
-                    part.splice_quoted(&tab_files_pat,
-                                       tab_file_paths.clone())
+                    part.splice_quoted_single(&tab_files_pat,
+                                              tab_file_paths.clone())
                 }).flatten().collect()
             })
     }
@@ -99,11 +103,13 @@ impl Cmd {
             .enumerate()
             .fold(cmd, |cmd, (i, tab_path)| {
                 let tab_path_pat = OsString::from(format!("${}", i));
-                let tab_path = tab_path.strip_prefix(&self.cwd).into_os_string();
+                let tab_path = tab_path.strip_prefix(&self.cwd)
+                    .into_os_string()
+                    .escape_single_quote();
 
                 cmd.iter().map(|part| {
-                    part.splice_quoted(&tab_path_pat,
-                                     vec![tab_path.clone()])
+                    part.splice_quoted_single(&tab_path_pat,
+                                              vec![tab_path.clone()])
                 }).flatten().collect()
             })
     }
