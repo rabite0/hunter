@@ -1181,7 +1181,7 @@ impl FileBrowser {
 
         let fs = self.fs_stat.read()?.find_fs(&file.path)?.clone();
 
-        let dev = fs.get_dev();
+        let dev = fs.get_dev().unwrap_or(String::from(""));
         let free_space = fs.get_free();
         let total_space = fs.get_total();
         let space = format!("{}{} / {}",

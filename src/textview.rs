@@ -1,4 +1,4 @@
-use std::io::BufRead;
+use std::io::{BufRead, BufReader};
 
 use crate::files::File;
 use crate::term::sized_string;
@@ -42,8 +42,8 @@ impl TextView {
     pub fn new_from_file_limit_lines(core: &WidgetCore,
                                      file: &File,
                                      num: usize) -> HResult<TextView> {
-        let file = std::fs::File::open(&file.path).unwrap();
-        let file = std::io::BufReader::new(file);
+        let file = std::fs::File::open(&file.path)?;
+        let file = BufReader::new(file);
         let lines = file.lines()
                         .take(num)
                         .map(|line|

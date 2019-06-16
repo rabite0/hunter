@@ -58,19 +58,21 @@ impl FsStat {
 }
 
 pub trait FsExt {
-    fn get_dev(&self) -> String;
+    fn get_dev(&self) -> Option<String>;
     fn get_total(&self) -> String;
     fn get_free(&self) -> String;
 }
 
 impl FsExt for Filesystem {
-    fn get_dev(&self) -> String {
+    fn get_dev(&self) -> Option<String> {
         let path = PathBuf::from(&self.fs_mounted_from);
-        let dev = match path.components().last() {
-            Some(Component::Normal(dev)) => dev.to_string_lossy().to_string() + ": ",
+        let dev = path.components().last()?;
+        let dev = match dev {
+            Component::Normal(dev) => dev.to_string_lossy().to_string() + ": ",
+            // zfs on FBSD doesn't return a device path
             _ => "".to_string()
         };
-        dev
+        Some(dev)
     }
 
     fn get_total(&self) -> String {
