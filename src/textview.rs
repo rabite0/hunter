@@ -1,7 +1,7 @@
 use std::io::{BufRead, BufReader};
 
 use crate::files::File;
-use crate::term::sized_string;
+use crate::term::sized_string_u;
 use crate::widget::{Widget, WidgetCore};
 use crate::fail::HResult;
 use crate::dirty::Dirtyable;
@@ -164,7 +164,7 @@ impl Widget for TextView {
                     "{}{}{}",
                     crate::term::goto_xy(xpos, i as u16 + ypos),
                     crate::term::reset(),
-                    sized_string(&line, xsize))
+                    sized_string_u(&line, (xsize-1) as usize))
             })
             .collect::<String>();
         Ok(output)
