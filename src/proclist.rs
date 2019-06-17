@@ -59,10 +59,13 @@ impl Cmd {
         let cwd_pat = OsString::from("$s");
         let cwd_files =  self.cwd_files
             .take()
-            .unwrap()
+            .unwrap() // There always is a file, even if just place holder
             .iter()
-            .map(|file| file.strip_prefix(&self.cwd)
+            .map(|file|
+                 // strip out the cwd part to make path shorter
+                 file.strip_prefix(&self.cwd)
                  .into_os_string()
+                 // escape single quotes so file names with them work
                  .escape_single_quote())
             .collect::<Vec<OsString>>();
 
@@ -82,8 +85,11 @@ impl Cmd {
             .fold(cmd, |cmd, (i, tab_files)| {
                 let tab_files_pat = OsString::from(format!("${}s", i));
                 let tab_file_paths = tab_files.iter()
-                    .map(|file| file.strip_prefix(&self.cwd)
+                    .map(|file|
+                         // strip out the cwd part to make path shorter
+                         file.strip_prefix(&self.cwd)
                          .into_os_string()
+                         // escape single quotes so file names with them work
                          .escape_single_quote())
                     .collect::<Vec<OsString>>();
 
@@ -105,6 +111,7 @@ impl Cmd {
                 let tab_path_pat = OsString::from(format!("${}", i));
                 let tab_path = tab_path.strip_prefix(&self.cwd)
                     .into_os_string()
+                    // escape single quotes so file names with them work
                     .escape_single_quote();
 
                 cmd.iter().map(|part| {
