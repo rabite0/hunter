@@ -6,8 +6,10 @@ use termion::screen::AlternateScreen;
 use termion::raw::{IntoRawMode, RawTerminal};
 
 use parse_ansi::parse_bytes;
+use crate::unicode_width::{UnicodeWidthStr, UnicodeWidthChar};
 
 use crate::fail::{HResult, ErrorLog};
+use crate::trait_ext::ExtractResult;
 
 pub type TermMode = AlternateScreen<RawTerminal<BufWriter<Stdout>>>;
 
@@ -203,7 +205,7 @@ pub fn size() -> HResult<(usize, usize)> {
 
 pub fn sized_string(string: &str, xsize: u16) -> String {
     string.chars().fold("".to_string(), |acc, ch| {
-        let width: usize = unicode_width::UnicodeWidthStr::width_cjk(acc.as_str());
+        let width: usize = unicode_width::UnicodeWidthStr::width(acc.as_str());
         if width + 1 >= xsize as usize {
             acc
         } else {
@@ -212,46 +214,99 @@ pub fn sized_string(string: &str, xsize: u16) -> String {
     })
 }
 
-fn is_ansi(ansi_pos: &Vec<(usize, usize)>, char_pos: &usize) -> bool {
-    ansi_pos.iter().fold(false, |is_ansi, (start, end)| {
-        if char_pos >= start && char_pos <= end {
-            true
-        } else { is_ansi }
-    })
+#[derive(Debug)]
+enum Token<'a> {
+    Text(&'a str),
+    Ansi(&'a str)
 }
 
-fn ansi_len_at(ansi_pos: &Vec<(usize, usize)>, char_pos: &usize) -> usize {
-    ansi_pos.iter().fold(0, |len, (start, end)| {
-        if char_pos >= start && char_pos <= end {
-            len + (char_pos - start)
-        } else if char_pos >= end {
-            len + (end - start)
-        } else {
-            len
-        }
-    })
+fn get_tokens(string: &str) -> Vec<Token> {
+    let mut tokens = parse_bytes(string.as_bytes())
+        .fold((Vec::new(), 0), |(mut tokens, last_tok), ansi_pos| {
+            if last_tok == 0 {
+                // first iteration
+                if ansi_pos.start() != 0 {
+                    // there is text before first ansi code
+                    tokens.push(Token::Text(&string[0..ansi_pos.start()]));
+                }
+                tokens.push(Token::Ansi(&string[ansi_pos.start()..ansi_pos.end()]));
+                (tokens, ansi_pos.end())
+            } else if last_tok == ansi_pos.start() {
+                // next token is another ansi code
+                tokens.push(Token::Ansi(&string[ansi_pos.start()..ansi_pos.end()]));
+                (tokens, ansi_pos.end())
+            } else {
+                // there is text before the next ansi code
+                tokens.push(Token::Text(&string[last_tok..ansi_pos.start()]));
+                tokens.push(Token::Ansi(&string[ansi_pos.start()..ansi_pos.end()]));
+                (tokens, ansi_pos.end())
+            }
+        });
+
+    // last part is just text, add it to tokens
+    if string.len() > tokens.1 {
+        tokens.0.push(Token::Text(&string[tokens.1..string.len()]));
+    }
+
+    tokens.0
 }
+
 
 pub fn sized_string_u(string: &str, xsize: usize) -> String {
-    let ansi_pos = parse_bytes(string.as_bytes()).map(|m| {
-        (m.start(), m.end())
-    }).collect();
+    let tokens = get_tokens(&string);
 
-    let sized = string.chars().fold(String::new(), |acc, ch| {
-        let width: usize = unicode_width::UnicodeWidthStr::width_cjk(acc.as_str());
-        let ansi_len = ansi_len_at(&ansi_pos, &acc.len());
-        let unprinted = acc.len() - width;
+    let sized = tokens.iter().try_fold((String::new(), 0), |(mut sized, width), token| {
+        let (tok, tok_width) = match token {
+            Token::Text(text) => {
+                let tok_str = text;
+                let tok_width = text.width();
+                (tok_str, tok_width)
+            },
+            Token::Ansi(ansi) => (ansi, 0)
+        };
 
-        if width + unprinted >= xsize + ansi_len + 1{
-            acc
+        // adding this token makes string larger than xsise
+        if width + tok_width > xsize {
+            let chars_left = xsize + 1 - width;
+
+            // fill up with chars from token until xsize is reached
+            let fillup = tok.chars().try_fold((String::new(), 0),
+                                              |(mut fillup, fillup_width), chr| {
+                let chr_width = chr.width().unwrap_or(0);
+
+                if fillup_width + chr_width > chars_left {
+                    Err((fillup, fillup_width))
+                } else {
+                    fillup.push(chr);
+                    Ok((fillup, fillup_width + chr_width))
+                }
+            });
+
+            let (fillup, fillup_width) = fillup.extract();
+            sized.push_str(&fillup);
+
+            // we're done here, stop looping
+            Err((sized, width + fillup_width))
         } else {
-            acc + &ch.to_string()
+            sized.push_str(&tok);
+            Ok((sized, width + tok_width))
         }
 
     });
-    let ansi_len = ansi_len_at(&ansi_pos, &sized.len());
-    let padded = format!("{:padding$}", sized, padding=xsize + ansi_len + 1);
-    padded
+
+
+    let (mut sized_str, sized_width) = sized.extract();
+
+    // pad out string
+    if sized_width < xsize {
+        let padding = xsize-sized_width;
+        for _ in 0..padding {
+            sized_str += " ";
+        }
+    }
+
+
+    sized_str
 }
 
 
