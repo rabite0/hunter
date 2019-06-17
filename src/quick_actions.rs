@@ -201,7 +201,7 @@ impl QuickActions {
                description: String,
                sender: Sender<Events>,
                proc_view: Arc<Mutex<ProcView>>) -> HResult<QuickActions> {
-        let mut actions = files.get_actions(mime.clone(), dbg!(subpath.to_string()));
+        let mut actions = files.get_actions(mime.clone(), subpath.to_string());
 
         actions.on_ready(move |_,_| {
             sender.send(Events::WidgetReady).ok();
@@ -326,8 +326,8 @@ pub struct QuickAction {
 impl QuickAction {
     fn new(path: PathBuf, mime: mime::Mime) -> QuickAction {
         let title = path.get_title();
-        let queries = dbg!(path.get_queries());
-        let sync = dbg!(path.get_sync());
+        let queries = path.get_queries();
+        let sync = path.get_sync();
 
         QuickAction {
             path,
