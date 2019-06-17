@@ -1168,7 +1168,7 @@ impl FileBrowser {
         } else { "".to_string() };
 
         let main_widget = self.main_widget()?;
-        let selection = main_widget.get_selection();
+        let selection = main_widget.get_selection() + 1;
         let file_count = main_widget.content.len();
         let file_count = format!("{}", file_count);
         let digits = file_count.len();
