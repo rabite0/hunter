@@ -2,6 +2,7 @@ use async_value::{Async, Stale};
 use termion::event::Key;
 
 use std::sync::{Arc, Mutex};
+use std::path::PathBuf;
 
 use crate::files::{File, Files, Kind};
 use crate::fscache::FsCache;
@@ -206,6 +207,27 @@ enum PreviewWidget {
     MediaView(MediaView)
 }
 
+fn find_previewer(file: &File) -> HResult<PathBuf> {
+    let path = crate::paths::previewers_path()?;
+    let ext = file.path.extension()?;
+
+    // Special case to highlight text files that aren't text/plain
+    if file.is_text() {
+        let mut previewer = PathBuf::from(&path);
+        previewer.push("definitions/");
+        previewer.push("text");
+        return Ok(previewer);
+    }
+
+    // Look for previewers matching the file extension
+    let previewer = path.read_dir()?
+        .find(|previewer| previewer.as_ref()
+                                   .and_then(|p| Ok(p.file_name() == ext ))
+                                   .unwrap_or(false))
+         .map(|p| p.map(|p| p.path()));
+    Ok(previewer??)
+}
+
 
 pub struct Previewer {
     widget: AsyncWidget<PreviewWidget>,
@@ -224,6 +246,7 @@ impl Previewer {
             let blank = PreviewWidget::TextView(blank);
             Ok(blank)
         });
+
 
         Previewer { widget: widget,
                     core: core.clone(),
@@ -342,13 +365,6 @@ impl Previewer {
                     return Ok(preview?);
                 }
 
-                if file.is_text() {
-                    return Ok(Previewer::preview_text(&file,
-                                                      &core,
-                                                      &stale,
-                                                      &animator)?);
-                }
-
                 if let Some(mime) = file.get_mime() {
                     let mime_type = mime.type_().as_str();
                     let is_gif = mime.subtype() == "gif";
@@ -376,16 +392,23 @@ impl Previewer {
                                                                      media_type);
                             return Ok(PreviewWidget::MediaView(mediaview));
                         }
+                        "text" if mime.subtype() == "plain" => {
+                            return Ok(Previewer::preview_text(&file,
+                                                              &core,
+                                                              &stale,
+                                                              &animator)?);
+                        }
                         _ => {}
                     }
                 }
-
 
                 let preview = Previewer::preview_external(&file,
                                                           &core,
                                                           &stale,
                                                           &animator);
-                if preview.is_ok() { return Ok(preview?); }
+                if preview.is_ok() {
+                    return Ok(preview?);
+                }
                 else {
                     let mut blank = TextView::new_blank(&core);
                     blank.set_coordinates(&coordinates).log();
@@ -405,7 +428,7 @@ impl Previewer {
 
 
 
-    fn preview_failed(file: &File) -> HResult<PreviewWidget> {
+    fn preview_failed<T>(file: &File) -> HResult<T> {
         HError::preview_failed(file)
     }
 
@@ -453,18 +476,10 @@ impl Previewer {
         Ok(PreviewWidget::TextView(textview))
     }
 
-    fn preview_external(file: &File,
-                        core: &WidgetCore,
-                        stale: &Stale,
-                        animator: &Stale)
-                        -> HResult<PreviewWidget> {
+    fn run_external(cmd: PathBuf, file: &File, stale: &Stale) -> HResult<Vec<String>> {
         let process =
-            std::process::Command::new("scope.sh")
+            std::process::Command::new(cmd)
             .arg(&file.path)
-            .arg("10".to_string())
-            .arg("10".to_string())
-            .arg("".to_string())
-            .arg("false".to_string())
             .stdin(std::process::Stdio::null())
             .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::null())
@@ -477,35 +492,51 @@ impl Previewer {
         }
 
         if stale.is_stale()? { return Previewer::preview_failed(&file) }
-
         let output = process.wait_with_output()?;
-
         if stale.is_stale()? { return Previewer::preview_failed(&file) }
+
         {
             let mut pid_ = SUBPROC.lock()?;
             *pid_ = None;
         }
 
+
+
         //let status = output.status.code()?;
 
-        if !stale.is_stale()? {
-            let output = std::str::from_utf8(&output.stdout)
-                .unwrap()
-                .to_string();
-            let mut textview = TextView {
-                lines: output.lines().map(|s| s.to_string()).collect(),
-                core: core.clone(),
-                follow: false,
-                offset: 0};
-            textview.set_coordinates(&core.coordinates).log();
-            textview.refresh().log();
-            textview.animate_slide_up(Some(animator)).log();
-            return Ok(PreviewWidget::TextView(textview))
-        }
-        HError::preview_failed(file)
+        let output = std::str::from_utf8(&output.stdout)?
+            .to_string()
+            .lines().map(|s| s.to_string())
+            .collect();
+
+        Ok(output)
+    }
+
+    fn preview_external(file: &File,
+                        core: &WidgetCore,
+                        stale: &Stale,
+                        animator: &Stale)
+                        -> HResult<PreviewWidget> {
+        let previewer = find_previewer(&file)?;
+
+
+        let lines = Previewer::run_external(previewer, file, stale);
+
+        if stale.is_stale()? { return Previewer::preview_failed(&file) }
+
+        let mut textview = TextView {
+            lines: lines?,
+            core: core.clone(),
+            follow: false,
+            offset: 0};
+        textview.set_coordinates(&core.coordinates).log();
+        textview.refresh().log();
+        textview.animate_slide_up(Some(animator)).log();
+
+
+        return Ok(PreviewWidget::TextView(textview))
     }
 }
-
 
 
 impl Widget for Previewer {

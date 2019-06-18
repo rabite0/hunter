@@ -61,3 +61,9 @@ pub fn actions_path() -> HResult<PathBuf> {
     actions_path.push("actions");
     Ok(actions_path)
 }
+
+pub fn previewers_path() -> HResult<PathBuf> {
+    let mut previewers_path = hunter_path()?;
+    previewers_path.push("previewers");
+    Ok(previewers_path)
+}
