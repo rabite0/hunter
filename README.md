@@ -201,6 +201,7 @@ By default hunter uses vi-style keybindings. If you use a QWERTY-like keyboard l
 | K                   | select next by mtime               |
 | k                   | select prev by mtime               |
 | d                   | toggle dirs first                  |
+| ~                   | go to $HOME                        |
 | /                   | turbo cd                           |
 | Alt(/)              | enter dir with external program    |
 | Q                   | quit with dir/selections           |

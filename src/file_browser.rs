@@ -600,6 +600,12 @@ impl FileBrowser {
         Ok(())
     }
 
+    pub fn go_home(&mut self) -> HResult<()> {
+        let home = crate::paths::home_path().unwrap_or(PathBuf::from("~/"));
+        let home = File::new_from_path(&home, None)?;
+        self.main_widget_goto(&home)
+    }
+
     fn get_boomark(&mut self) -> HResult<String> {
         let cwd = &match self.prev_cwd.as_ref() {
             Some(cwd) => cwd,
@@ -1287,6 +1293,7 @@ impl Widget for FileBrowser {
             Key::Alt(' ') => self.external_select()?,
             Key::Alt('/') => self.external_cd()?,
             Key::Char('/') => { self.turbo_cd()?; },
+            Key::Char('~') => { self.go_home()?; },
             Key::Char('q') => HError::quit()?,
             Key::Char('Q') => { self.quit_with_dir()?; },
             Key::Right | Key::Char('l') => { self.enter_dir()?; },
