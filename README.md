@@ -193,6 +193,7 @@ By default hunter uses vi-style keybindings. If you use a QWERTY-like keyboard l
 | space               | multi select file                  |
 | Alt(space)          | select with external program       |
 | v                   | invert selections                  |
+| V                   | clear all selections               |
 | t                   | toggle tag                         |
 | h                   | toggle show hidden                 |
 | r                   | reverse sort                       |

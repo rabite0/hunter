@@ -83,6 +83,7 @@ impl Listable for ListView<Files> {
             Key::Right => self.goto_selected()?,
             Key::Char(' ') => self.multi_select_file(),
             Key::Char('v') => self.invert_selection(),
+            Key::Char('V') => self.clear_selections(),
             Key::Char('t') => self.toggle_tag()?,
             Key::Char('H') => self.toggle_hidden(),
             Key::Char('r') => self.reverse_sort(),
@@ -364,6 +365,14 @@ impl ListView<Files>
     pub fn invert_selection(&mut self) {
         for file in self.content.get_files_mut() {
             file.toggle_selection();
+        }
+        self.content.set_dirty();
+        self.refresh().log();
+    }
+
+    pub fn clear_selections(&mut self) {
+        for file in self.content.get_files_mut() {
+            file.selected = false;
         }
         self.content.set_dirty();
         self.refresh().log();
