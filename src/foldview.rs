@@ -294,6 +294,7 @@ where
     }
 
     fn on_key(&mut self, key: Key) -> HResult<()> {
+        // this on_key() could have been implmented by some type
         let result = FoldableWidgetExt::on_key(self, key);
         if let Err(HError::WidgetUndefinedKeyError{key}) = result {
             match key {
@@ -302,9 +303,11 @@ where
                 Key::Char('J') => for _ in 0..10 { self.move_down() },
                 Key::Down | Key::Char('j') => self.move_down(),
                 Key::Char('t') => self.toggle_fold()?,
-                Key::Char('g') => self.popup_finnished()?,
+                Key::Char('g') | Key::Esc => self.popup_finnished()?,
                 _ =>  { HError::undefined_key(key)?; },
             }
+            // Key was defined, or _ match would have returned undefined key
+            return Ok(());
         }
         result
     }

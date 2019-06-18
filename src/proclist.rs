@@ -657,7 +657,7 @@ impl Widget for ProcView {
     }
     fn on_key(&mut self, key: Key) -> HResult<()> {
         match key {
-            Key::Char('w') => {
+            Key::Char('w') | Key::Esc => {
                 self.animator.set_stale().log();
                 self.get_core()?.clear().log();
                 return Err(HError::PopupFinnished) }

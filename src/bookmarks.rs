@@ -184,7 +184,7 @@ impl Widget for BMPopup {
     }
     fn on_key(&mut self, key: Key) -> HResult<()> {
         match key {
-            Key::Ctrl('c') => {
+            Key::Ctrl('c') | Key::Esc => {
                 self.bookmark_path = None;
                 return HError::popup_finnished()
             },
