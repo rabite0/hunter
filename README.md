@@ -57,6 +57,15 @@ If it works on a system not mentioned here, please open an issue. Also feel free
 * Rust-nighly compiler
 * GStreamer for video/audio previews
 
+### PREVIEWERS
+
+hunter comes with definitions to enable previewing certain file typse. To use this you need to install some programs first. You can also define your own. See below. Defaults are:
+
+* bat / highlight for syntax highlighting
+* 7z for archives
+* w3m / links / elinks / lynx for html
+* pdftotext / mutool for pdf
+
 ### Debian/Ubuntu
 
 * ```apt install gcc libmagic-dev gstreamer1.0-devel gst-plugins-base gst-plugins-good```
@@ -100,8 +109,6 @@ cd {source_dir}/hunter/
 cargo install (--no-default-features --features=...) --path .
 ```
 
-## NOTE:
-hunter uses ranger's scope.sh to generate previews for non-text files. A slightly modified version is included in the "extra" directory. Put it in your $PATH somewhere if you want previews for non-text files.
 
 ## Configuration
 hunter reads $XDG_CONFIG_HOME/hunter/config at startup. On macOS it simply reads ~/.config/hunter/config. There are a few options which can be set. The configuration file is read asynchronously, so if it's not read by the time hunter starts drawing you will see its default configuration until the config file is read. Options can be set like this (default config):
@@ -116,28 +123,39 @@ media_autostart=off
 media_mute=off
 ```
 
+## Previews
+Defining previews is easy. You just need a shell script that takes a path as first parameter and prints out what you want to see in the preview column. Put that shell script in
+
+```$HOME/.config/hunter/previewers/definitions```
+
+and create a symlink to it in
+
+```$HOME/.config/hunter/previewers/```
+
+with the extension of the file type you want to preview. Make sure the script is executable. That's it.
+
 ## Quick Actions
 These are executables you can run by pressing ```a```. Which actions you can see depends on the MIME type of the files you have selected. If you have multiple files selected, hunter will try to use the most specific MIME type possible. For example, if you have selected a bunch of images with different types you will see actions for "image/". You can see the computed MIME type in the header bar.
 
-There are "universal", "base-type", and "sub-type" actions. These are stored in 
+There are "universal", "base-type", and "sub-type" actions. These are stored in
 
 ```~/.config/hunter/actions/<base-type>/<sub-type>/```
 
 Universal actions are always available. These are stored right in the "actions" directory. "Base-type" actions are stored in directories like "text", "image", "video". These correspond to the part left of the "/" in a full MIME-type like "image/png". These will be available to all "text", "image", or "video" files. This list is not exhaustive, there are a lot more base-types. In addition to that you can create a directory in those base-type directories to store "sub-type" actions, which are only available to a specific file type..
 
-For example, if you want to define an action only available to PNG images, you can store that in 
+For example, if you want to define an action only available to PNG images, you can store that in
 
 ```~/.config/hunter/actions/image/png/custom_pngcrush.sh```
 
 You can also ask for input before those actions are run. This input will be entered through hunter's minibuffer. To ask for input append "?question" to the file name, but before the extension. hunter will then set an environment variable named after whatever you put after the question mark. You can also ask for multiple things to be entered.
 
-For example, you could name an action 
+For example, you could name an action
 
 ```download_stuff?url?destination.sh```
 
 hunter will ask for the "url" and the "destination" before running your script. The values will be available through the $url and $destination environment variables.
 
-You can also make the action run in the foreground, so that it will take over the terminal while it runs. To do that simply append "!" to the file name before the extension. It should look like this: 
+You can also make the action run in the foreground, so that it will take over the terminal while it runs. To do that simply append "!" to the file name before the extension. It should look like this:
 
 ```action?query1?query2!.sh```
 
