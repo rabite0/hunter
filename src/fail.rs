@@ -104,8 +104,8 @@ pub enum HError {
 }
 
 impl HError {
-    pub fn log<T>(log: String) -> HResult<T> {
-        Err(HError::Log(log))
+    pub fn log<T>(log: &str) -> HResult<T> {
+        Err(HError::Log(String::from(log))).log_and()
     }
     pub fn quit() -> HResult<()> {
         Err(HError::Quit)
@@ -243,7 +243,8 @@ impl From<std::io::Error> for HError {
 impl From<failure::Error> for HError {
     fn from(error: failure::Error) -> Self {
         let err = HError::Error(format!("{}", error),
-                                Backtrace::new_arced());
+                                Backtrace::new_arced()
+        );
         err
     }
 }

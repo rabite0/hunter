@@ -87,6 +87,14 @@ pub struct FileBrowser {
 }
 
 impl Tabbable for TabView<FileBrowser> {
+    fn on_new(&mut self) -> HResult<()> {
+        let core = self.core.clone();
+        std::thread::spawn(move || {
+            crate::config_installer::ensure_config(core).log();
+        });
+        Ok(())
+    }
+
     fn new_tab(&mut self) -> HResult<()> {
         let cur_tab = self.active_tab_();
 

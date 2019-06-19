@@ -27,7 +27,7 @@ pub trait Tabbable {
     }
     fn on_refresh(&mut self) -> HResult<()> { Ok(()) }
     fn on_config_loaded(&mut self) -> HResult<()> { Ok(()) }
-
+    fn on_new(&mut self) -> HResult<()> { Ok(()) }
 
 }
 
@@ -41,11 +41,15 @@ pub struct TabView<T> where T: Widget, TabView<T>: Tabbable {
 
 impl<T> TabView<T> where T: Widget, TabView<T>: Tabbable {
     pub fn new(core: &WidgetCore) -> TabView<T> {
-        TabView {
+        let mut tabview = TabView {
             widgets: vec![],
             active: 0,
             core: core.clone()
-        }
+        };
+
+        Tabbable::on_new(&mut tabview).log();
+
+        tabview
     }
 
     pub fn push_widget(&mut self, widget: T) -> HResult<()> {

@@ -58,6 +58,7 @@ mod stats;
 mod icon;
 mod quick_actions;
 mod trait_ext;
+mod config_installer;
 
 #[cfg(feature = "img")]
 mod imgview;

@@ -1,0 +1,6 @@
+#!/bin/sh
+
+w3m -dump ||
+elinks -dump ||
+links -dump ||
+lynx -dump

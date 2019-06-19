@@ -70,7 +70,7 @@ impl History {
     }
 
     fn add(&mut self, htype: &str, input: &str) {
-        self.load().log();
+        self.load().ok();
         let history = match self.history.get_mut(htype) {
             Some(history) => history,
             None => {
@@ -498,7 +498,7 @@ impl Widget for MiniBuffer {
     }
 
     fn after_draw(&self) -> HResult<()> {
-        let cursor_pos = self.query.len() +
+        let cursor_pos = crate::term::string_len(&self.query) +
                          ": ".len() +
                          self.position;
 

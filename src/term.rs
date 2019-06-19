@@ -251,6 +251,17 @@ fn get_tokens(string: &str) -> Vec<Token> {
     tokens.0
 }
 
+pub fn string_len(string: &str) -> usize {
+    let tokens = get_tokens(&string);
+
+    tokens.iter().fold(0, |len, token| {
+        match token {
+            Token::Text(text) => len + text.len(),
+            _ => len
+        }
+    })
+}
+
 
 pub fn sized_string_u(string: &str, xsize: usize) -> String {
     let tokens = get_tokens(&string);

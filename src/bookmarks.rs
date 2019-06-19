@@ -15,7 +15,7 @@ pub struct Bookmarks {
 impl Bookmarks {
     pub fn new() -> Bookmarks {
         let mut bm = Bookmarks { mapping: HashMap::new() };
-        bm.load().log();
+        bm.load().or_else(|_| HError::log("Couldn't load bookmarks!")).ok();
         bm
     }
     pub fn add(&mut self, key: char, path: &str) -> HResult<()> {

@@ -7,6 +7,7 @@ use crate::paths;
 
 use crate::fail::{HError, HResult, ErrorLog};
 
+
 #[derive(Clone)]
 // These are options, so we know if they have been set or not
 struct ArgvConfig {

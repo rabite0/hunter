@@ -24,11 +24,9 @@ pub fn hunter_path() -> HResult<PathBuf> {
 
 #[cfg(target_os = "macos")]
 pub fn hunter_path() -> HResult<PathBuf> {
-    dbg!("Finding path for macOS");
     let mut hunter_path = home_path()?;
     hunter_path.push(".config/");
     hunter_path.push("hunter/");
-    dbg!(&hunter_path);
     Ok(hunter_path)
 }
 

@@ -75,10 +75,10 @@ impl WidgetCore {
         let (sender, receiver) = channel();
         let status_bar_content = Arc::new(Mutex::new(None));
 
-        let mut config = Async::new(|_| Ok(Config::load()?));
-        let confsender = Arc::new(Mutex::new(sender.clone()));
+        let mut config = Async::new(move |_| Ok(Config::load()?));
+        let confsender = sender.clone();
         config.on_ready(move |_, _| {
-            confsender.lock().map(|s| s.send(Events::ConfigLoaded)).ok();
+            confsender.send(Events::ConfigLoaded).ok();
             Ok(())
         }).log();
         config.run().log();
@@ -123,7 +123,7 @@ impl WidgetCore {
     }
 
     pub fn show_status(&self, status: &str) -> HResult<()> {
-        HError::log::<()>(status.to_string()).log();
+        HError::log::<()>(status).ok();
         {
             let mut status_content = self.status_bar_content.lock()?;
             *status_content = Some(status.to_string());
@@ -466,7 +466,7 @@ pub trait Widget {
                     self.get_core()?.screen()?.clear().log();
                 }
                 Events::ConfigLoaded => {
-                    self.get_core_mut()?.config.write()?.pull_async()?;
+                    self.get_core_mut()?.config.write()?.pull_async().ok();
                     self.config_loaded().log();
                 }
                 _ => {}
