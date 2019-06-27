@@ -84,8 +84,8 @@ A big thanks to ranger and its developers. Without its inspiration this wouldn't
 
   
 
-If it works on anyother system go ahead open an issue and we will add to the README.MD
-  
+If it works on anyother system go ahead open an issue and we will add to the README.md or wiki.
+ 
 
 ## PREREQUISITES:
 
@@ -144,11 +144,20 @@ curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 
   
   
+### Install Nightly
 
-### Build with cargo
+First instal nightly on you machine via rustup
+
+    rustup toolchain install nightly
+    
+ then select nightly as your default toolchain
+
+	rustup default nightly
+  
+  
+### Build With Cargo
 
   
-
 ```
 
 cargo install (--no-default-features --features=...) hunter
@@ -158,7 +167,7 @@ cargo install (--no-default-features --features=...) hunter
   
   
 
-### Build from source
+### Build From Source
 
   
 
