@@ -10,6 +10,7 @@ use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 
 use crate::foldview::LogEntry;
+use crate::mediaview::MediaError;
 
 pub type HResult<T> = Result<T, HError>;
 
@@ -101,6 +102,8 @@ pub enum HError {
     UTF8ParseError(std::str::Utf8Error),
     #[fail(display = "Failed to parse integer!")]
     ParseIntError(std::num::ParseIntError),
+    #[fail(display = "{}", _0)]
+    Media(MediaError)
 }
 
 impl HError {

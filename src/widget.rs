@@ -192,9 +192,16 @@ impl WidgetCore {
     }
 
     pub fn config(&self) -> Config {
-        self.config.read().unwrap().get()
-            .map(|config| config.clone())
-            .unwrap_or(Config::new())
+        self.get_conf()
+            .unwrap_or_else(|_| Config::new())
+    }
+
+    fn get_conf(&self) -> HResult<Config> {
+        let conf = self.config
+            .read()?
+            .get()?
+            .clone();
+        Ok(conf)
     }
 }
 

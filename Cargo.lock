@@ -453,9 +453,6 @@ dependencies = [
  "dirs-2 1.1.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "failure 0.1.5 (registry+https://github.com/rust-lang/crates.io-index)",
  "failure_derive 0.1.5 (registry+https://github.com/rust-lang/crates.io-index)",
- "gstreamer 0.11.6 (registry+https://github.com/rust-lang/crates.io-index)",
- "gstreamer-app 0.11.2 (registry+https://github.com/rust-lang/crates.io-index)",
- "image 0.21.2 (registry+https://github.com/rust-lang/crates.io-index)",
  "lazy_static 0.2.11 (registry+https://github.com/rust-lang/crates.io-index)",
  "libc 0.2.58 (registry+https://github.com/rust-lang/crates.io-index)",
  "lscolors 0.5.0 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -472,6 +469,17 @@ dependencies = [
  "tree_magic 0.2.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "unicode-width 0.1.5 (registry+https://github.com/rust-lang/crates.io-index)",
  "users 0.8.1 (registry+https://github.com/rust-lang/crates.io-index)",
+]
+
+[[package]]
+name = "hunter-media"
+version = "0.1.0"
+dependencies = [
+ "failure 0.1.5 (registry+https://github.com/rust-lang/crates.io-index)",
+ "gstreamer 0.11.6 (registry+https://github.com/rust-lang/crates.io-index)",
+ "gstreamer-app 0.11.2 (registry+https://github.com/rust-lang/crates.io-index)",
+ "image 0.21.2 (registry+https://github.com/rust-lang/crates.io-index)",
+ "termion 1.5.3 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
 [[package]]

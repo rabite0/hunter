@@ -1,5 +1,6 @@
 use lazy_static;
 use termion::event::Key;
+use failure::{self, Fail};
 
 use crate::widget::{Widget, WidgetCore};
 use crate::coordinates::Coordinates;
@@ -13,6 +14,18 @@ use std::sync::{Arc, Mutex, RwLock,
 
 use std::io::{BufRead, BufReader, Write};
 use std::process::Child;
+
+#[derive(Fail, Debug, Clone)]
+pub enum MediaError {
+    #[fail(display = "{}", _0)]
+    NoPreviewer(String)
+}
+
+impl From<MediaError> for HError {
+    fn from(e: MediaError) -> HError {
+        HError::Media(e)
+    }
+}
 
 impl std::cmp::PartialEq for MediaView {
     fn eq(&self, other: &Self) -> bool {
@@ -61,8 +74,23 @@ impl MediaType {
 impl MediaView {
     pub fn new_from_file(core: WidgetCore,
                          file: &Path,
-                         media_type: MediaType) -> MediaView {
+                         media_type: MediaType) -> HResult<MediaView> {
+        // Check if previewer is present, or bail out to show message
+        let media_previewer = core.config().media_previewer;
+        if crate::minibuffer::find_bins(&media_previewer).is_err() {
+            let msg = format!("Couldn't find previewer: {}{}{}!",
+                              crate::term::color_red(),
+                              media_previewer,
+                              crate::term::normal_color());
+
+
+            core.show_status(&msg).log();
+
+            return Err(MediaError::NoPreviewer(msg))?;
+        }
+
         let (xsize, ysize) = core.coordinates.size_u();
+        let (xpos, ypos) = core.coordinates.position_u();
         let (tx_cmd, rx_cmd) = channel();
 
         let imgview = ImgView {
@@ -71,6 +99,7 @@ impl MediaView {
             file: file.to_path_buf()
         };
 
+        // Stuff that gets moved into the closure
         let imgview = Arc::new(Mutex::new(imgview));
         let thread_imgview = imgview.clone();
 
@@ -82,7 +111,8 @@ impl MediaView {
         let process = Arc::new(Mutex::new(None));
         let cprocess = process.clone();
         let ctype = media_type.clone();
-
+        let ccore = core.clone();
+        let media_previewer = core.config().media_previewer;
 
         let run_preview = Box::new(move | auto,
                                    mute,
@@ -93,18 +123,32 @@ impl MediaView {
                     return Ok(());
                 }
 
-                let mut previewer = std::process::Command::new("preview-gen")
+
+                let mut previewer = std::process::Command::new(&media_previewer)
                     .arg(format!("{}", (xsize)))
                     // Leave space for position/seek bar
                     .arg(format!("{}", (ysize-1)))
+                    .arg(format!("{}", xpos))
+                    .arg(format!("{}", ypos))
                     .arg(format!("{}", ctype.to_str()))
                     .arg(format!("{}", auto))
                     .arg(format!("{}", mute))
                     .arg(&path)
                     .stdin(std::process::Stdio::piped())
                     .stdout(std::process::Stdio::piped())
-                    .stderr(std::process::Stdio::inherit())
-                    .spawn()?;
+                    .stderr(std::process::Stdio::piped())
+                    .spawn()
+                    .map_err(|e| {
+                        let msg = format!("Couldn't run {}{}{}! Error: {:?}",
+                                          crate::term::color_red(),
+                                          media_previewer,
+                                          crate::term::normal_color(),
+                                          &e.kind());
+
+                        ccore.show_status(&msg).log();
+
+                        MediaError::NoPreviewer(msg)
+                    })?;
 
                 let mut stdout = BufReader::new(previewer.stdout.take()?);
                 let mut stdin = previewer.stdin.take()?;
@@ -174,7 +218,7 @@ impl MediaView {
         });
 
 
-        MediaView {
+        Ok(MediaView {
             core: core.clone(),
             imgview: imgview,
             file: file.to_path_buf(),
@@ -186,7 +230,7 @@ impl MediaView {
             stale: stale,
             process: process,
             preview_runner: Some(run_preview)
-        }
+        })
     }
 
     pub fn start_video(&mut self) -> HResult<()> {
@@ -308,7 +352,7 @@ impl MediaView {
             // Since GStreamer sucks, just create a new instace
             let mut view = MediaView::new_from_file(self.core.clone(),
                                                     &self.file.clone(),
-                                                    self.media_type.clone());
+                                                    self.media_type.clone())?;
 
             // Insert buffer to prevent flicker
             let buffer = self.imgview.lock()?.buffer.clone();

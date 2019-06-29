@@ -4,6 +4,8 @@ use crate::fail::HResult;
 
 use std::path::{Path, PathBuf};
 
+use crate::mediaview::MediaError;
+
 impl std::cmp::PartialEq for ImgView {
     fn eq(&self, other: &Self) -> bool {
         self.core == other.core &&
@@ -31,17 +33,33 @@ impl ImgView {
 
     pub fn encode_file(&mut self) -> HResult<()> {
         let (xsize, ysize) = self.core.coordinates.size_u();
+        let (xpos, ypos) = self.core.coordinates.position_u();
         let file = &self.file;
+        let media_previewer = self.core.config().media_previewer;
 
-        let output = std::process::Command::new("preview-gen")
+        let output = std::process::Command::new(&media_previewer)
             .arg(format!("{}", (xsize)))
             .arg(format!("{}", (ysize+1)))
+            .arg(format!("{}", xpos))
+            .arg(format!("{}", ypos))
             .arg("image")
             .arg(format!("true"))
             .arg(format!("true"))
             .arg(file.to_string_lossy().to_string())
-            .output()?
+            .output()
+            .map_err(|e| {
+                let msg = format!("Couldn't run {}{}{}! Error: {:?}",
+                                  crate::term::color_red(),
+                                  media_previewer,
+                                  crate::term::normal_color(),
+                                  &e.kind());
+
+                self.core.show_status(&msg).ok();
+
+                MediaError::NoPreviewer(msg)
+            })?
             .stdout;
+
 
         let output = std::str::from_utf8(&output)?;
         let output = output.lines()

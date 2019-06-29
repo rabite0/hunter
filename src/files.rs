@@ -424,9 +424,9 @@ impl Files {
                 file.path = new_path.into();
                 file.reload_meta()?;
             },
-            DebouncedEvent::Error(err, path) => {
-                dbg!(err);
-                dbg!(path);
+            DebouncedEvent::Error(err, _path) => {
+                // Never seen this happen. Should reload affected dirs
+                HError::log::<()>(&format!("{}", err))?;
             },
             _ => {},
         }

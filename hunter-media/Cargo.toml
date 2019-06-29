@@ -1,0 +1,25 @@
+[package]
+name = "hunter-media"
+version = "0.1.0"
+authors = ["rabite0"]
+edition = "2018"
+description = "hunter's preview generator for image/video/audio files"
+homepage = "https://github.com/rabite0/hunter"
+repository = "https://github.com/rabite0/hunter"
+readme = "../README.md"
+license = "WTFPL"
+keywords = ["cli", "terminal", "file"]
+categories = ["command-line-utilities"]
+
+
+[dependencies]
+termion = "1.5.1"
+failure = "0.1.5"
+image = "0.21.1"
+gstreamer = { version = "0.11.2", optional = true }
+gstreamer-app = { version = "0.11.2", optional = true }
+
+
+[features]
+default = ["video"]
+video = ["gstreamer", "gstreamer-app"]

@@ -12,10 +12,7 @@ use crate::widget::{Widget, WidgetCore};
 use crate::coordinates::Coordinates;
 use crate::fail::{HResult, HError, ErrorLog};
 use crate::dirty::Dirtyable;
-
-#[cfg(feature = "img")]
 use crate::imgview::ImgView;
-#[cfg(feature = "video")]
 use crate::mediaview::MediaView;
 
 
@@ -201,9 +198,7 @@ impl PartialEq for Previewer {
 enum PreviewWidget {
     FileList(ListView<Files>),
     TextView(TextView),
-    #[cfg(feature = "img")]
     ImgView(ImgView),
-    #[cfg(feature = "video")]
     MediaView(MediaView)
 }
 
@@ -370,26 +365,23 @@ impl Previewer {
                     let is_gif = mime.subtype() == "gif";
 
                     match mime_type {
-                       #[cfg(feature = "video")]
                         _ if mime_type == "video" || is_gif => {
                             let media_type = crate::mediaview::MediaType::Video;
                             let mediaview = MediaView::new_from_file(core.clone(),
                                                                      &file.path,
-                                                                     media_type);
+                                                                     media_type)?;
                             return Ok(PreviewWidget::MediaView(mediaview));
                         }
-                        #[cfg(feature = "img")]
                         "image" => {
                             let imgview = ImgView::new_from_file(core.clone(),
                                                                  &file.path())?;
                             return Ok(PreviewWidget::ImgView(imgview));
                         }
-                        #[cfg(feature = "video")]
                         "audio" => {
                             let media_type = crate::mediaview::MediaType::Audio;
                             let mediaview = MediaView::new_from_file(core.clone(),
                                                                      &file.path,
-                                                                     media_type);
+                                                                     media_type)?;
                             return Ok(PreviewWidget::MediaView(mediaview));
                         }
                         "text" if mime.subtype() == "plain" => {
@@ -578,9 +570,7 @@ impl Widget for PreviewWidget {
         match self {
             PreviewWidget::FileList(widget) => widget.get_core(),
             PreviewWidget::TextView(widget) => widget.get_core(),
-            #[cfg(feature = "img")]
             PreviewWidget::ImgView(widget) => widget.get_core(),
-            #[cfg(feature = "video")]
             PreviewWidget::MediaView(widget) => widget.get_core()
         }
     }
@@ -588,9 +578,7 @@ impl Widget for PreviewWidget {
         match self {
             PreviewWidget::FileList(widget) => widget.get_core_mut(),
             PreviewWidget::TextView(widget) => widget.get_core_mut(),
-            #[cfg(feature = "img")]
             PreviewWidget::ImgView(widget) => widget.get_core_mut(),
-            #[cfg(feature = "video")]
             PreviewWidget::MediaView(widget) => widget.get_core_mut()
         }
     }
@@ -598,9 +586,7 @@ impl Widget for PreviewWidget {
         match self {
             PreviewWidget::FileList(widget) => widget.set_coordinates(coordinates),
             PreviewWidget::TextView(widget) => widget.set_coordinates(coordinates),
-            #[cfg(feature = "img")]
             PreviewWidget::ImgView(widget) => widget.set_coordinates(coordinates),
-            #[cfg(feature = "video")]
             PreviewWidget::MediaView(widget) => widget.set_coordinates(coordinates),
         }
     }
@@ -608,9 +594,7 @@ impl Widget for PreviewWidget {
         match self {
             PreviewWidget::FileList(widget) => widget.refresh(),
             PreviewWidget::TextView(widget) => widget.refresh(),
-            #[cfg(feature = "img")]
             PreviewWidget::ImgView(widget) => widget.refresh(),
-            #[cfg(feature = "video")]
             PreviewWidget::MediaView(widget) => widget.refresh()
         }
     }
@@ -618,9 +602,7 @@ impl Widget for PreviewWidget {
         match self {
             PreviewWidget::FileList(widget) => widget.get_drawlist(),
             PreviewWidget::TextView(widget) => widget.get_drawlist(),
-            #[cfg(feature = "img")]
             PreviewWidget::ImgView(widget) => widget.get_drawlist(),
-            #[cfg(feature = "video")]
             PreviewWidget::MediaView(widget) => widget.get_drawlist()
         }
     }
@@ -629,9 +611,7 @@ impl Widget for PreviewWidget {
         match self {
             PreviewWidget::FileList(widget) => widget.on_key(key),
             PreviewWidget::TextView(widget) => widget.on_key(key),
-            #[cfg(feature = "img")]
             PreviewWidget::ImgView(widget) => widget.on_key(key),
-            #[cfg(feature = "video")]
             PreviewWidget::MediaView(widget) => widget.on_key(key)
         }
     }
