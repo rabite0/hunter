@@ -541,7 +541,7 @@ impl ListView<Files>
         self.content.toggle_filter_selected();
 
         if self.content.len() == 0 {
-            core.show_status("No files selected").log();
+            self.core.show_status("No files selected").log();
             self.content.toggle_filter_selected();
         }
 
