@@ -234,6 +234,7 @@ impl Tabbable for TabView<FileBrowser> {
             }).log();
 
             tab.preview_widget_mut().map(|w| w.config_loaded()).ok();
+            tab.columns.set_ratios(self.core.config().ratios);
         }
         Ok(())
     }
@@ -255,7 +256,7 @@ impl FileBrowser {
         let mut core_p = core.clone();
 
         let mut columns = HBox::new(core);
-        columns.set_ratios(vec![20,30,49]);
+        columns.set_ratios(core.config().ratios);
         let list_coords = columns.calculate_coordinates()?;
 
         core_l.coordinates = list_coords[0].clone();
