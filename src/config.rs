@@ -138,12 +138,27 @@ impl Config {
                 },
                 Ok(("ratios", ratios)) => {
                     let ratios_str = ratios.to_string();
-                    let ratios: Vec<usize> = ratios_str.split([',', ':'].as_ref())
+                    let mut ratios: Vec<usize> = ratios_str.split([',', ':'].as_ref())
                         .map(|r| r.trim().parse::<usize>().unwrap()).collect();
-                    let ratios_sum: usize = ratios.iter().sum();
-                    let ratios_min = ratios.iter().min().unwrap();
-                    if ratios.len() == 3 && ratios_sum == 99 && *ratios_min > 2 {
-                        config.ratios = ratios;
+                    if ratios.len() == 3 {
+                        let mut ratios_sum: usize = ratios.iter().sum();
+                        if ratios_sum != 99 {
+                            if ratios_sum != 100 {
+                                ratios = ratios.iter().map(|&r| (r as f64 * 100.0 / ratios_sum as f64)
+                                    .round() as usize).collect();
+                                ratios_sum = ratios.iter().sum();
+                            }
+                            while ratios_sum > 99 {
+                                let ratios_max = ratios.iter()
+                                    .position(|&r| r == *ratios.iter().max().unwrap()).unwrap();
+                                ratios[ratios_max] = ratios[ratios_max] - 1;
+                                ratios_sum -= 1;
+                            }
+                        }
+                        let ratios_min = ratios.iter().min().unwrap();
+                        if *ratios_min > 2 {
+                            config.ratios = ratios;
+                        }
                     }
                 }
                 _ => { HError::config_error::<Config>(line.to_string()).log(); }
