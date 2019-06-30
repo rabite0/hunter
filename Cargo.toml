@@ -40,6 +40,10 @@ pathbuftools = "0.1"
 clap = "2.33"
 mime = "0.3.13"
 
+[build-dependencies]
+termion = "1.5.1"
+rustc_version = "0.2.3"
+
 [features]
 default = ["video"]
 video = []
