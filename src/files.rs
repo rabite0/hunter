@@ -109,6 +109,7 @@ pub struct Files {
     pub reverse: bool,
     pub show_hidden: bool,
     pub filter: Option<String>,
+    pub filter_selected: bool,
     pub dirty: DirtyBit,
     pub dirty_meta: AsyncDirtyBit,
 }
@@ -164,6 +165,7 @@ impl Files {
             reverse: false,
             show_hidden: true,
             filter: None,
+            filter_selected: false,
             dirty: dirty,
             dirty_meta: dirty_meta,
         };
@@ -221,6 +223,7 @@ impl Files {
             reverse: false,
             show_hidden: true,
             filter: None,
+            filter_selected: false,
             dirty: dirty,
             dirty_meta: dirty_meta,
         };
@@ -236,6 +239,7 @@ impl Files {
 
     pub fn get_file_mut(&mut self, index: usize) -> Option<&mut File> {
         let filter = self.filter.clone();
+        let filter_selected = self.filter_selected;
         let show_hidden = self.show_hidden;
 
         let file = self.files
@@ -243,7 +247,8 @@ impl Files {
             .filter(|f|
                     f.kind == Kind::Placeholder ||
                     !(filter.is_some() &&
-                      !f.name.contains(filter.as_ref().unwrap())))
+                      !f.name.contains(filter.as_ref().unwrap())) &&
+                    (!filter_selected || f.selected))
             .filter(|f| !(!show_hidden && f.name.starts_with(".")))
             .nth(index);
         file
@@ -254,21 +259,25 @@ impl Files {
             .iter()
             .filter(|f|
                     f.kind == Kind::Placeholder ||
-                    (!(self.filter.is_some() &&
-                      !f.name.contains(self.filter.as_ref().unwrap()))))
+                    !(self.filter.is_some() &&
+                      !f.name.contains(self.filter.as_ref().unwrap())) &&
+                    (!self.filter_selected || f.selected))
             .filter(|f| !(!self.show_hidden && f.name.starts_with(".")))
             .collect()
     }
 
     pub fn get_files_mut(&mut self) -> Vec<&mut File> {
         let filter = self.filter.clone();
+        let filter_selected = self.filter_selected;
         let show_hidden = self.show_hidden;
+
         self.files
             .iter_mut()
             .filter(|f|
                     f.kind == Kind::Placeholder ||
                     !(filter.is_some() &&
-                      !f.name.contains(filter.as_ref().unwrap())))
+                      !f.name.contains(filter.as_ref().unwrap())) &&
+                    (!filter_selected || f.selected))
             .filter(|f| !(!show_hidden && f.name.starts_with(".")))
             .collect()
     }
@@ -529,12 +538,20 @@ impl Files {
         self.filter.clone()
     }
 
+    pub fn toggle_filter_selected(&mut self) {
+        self.filter_selected = !self.filter_selected;
+    }
+
     pub fn len(&self) -> usize {
         self.get_files().len()
     }
 
     pub fn get_selected(&self) -> Vec<&File> {
-        self.files.iter().filter(|f| f.is_selected()).collect()
+        self.get_files()
+            .iter()
+            .filter(|f| f.is_selected())
+            .map(|f| *f)
+            .collect()
     }
 }
 

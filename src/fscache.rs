@@ -20,6 +20,7 @@ pub struct DirSettings {
     reverse: bool,
     show_hidden: bool,
     filter: Option<String>,
+    filter_selected: bool
 }
 
 impl DirSettings {
@@ -29,7 +30,8 @@ impl DirSettings {
             dirs_first: true,
             reverse: false,
             show_hidden: true,
-            filter: None
+            filter: None,
+            filter_selected: false
         }
     }
 }
@@ -257,6 +259,7 @@ impl FsCache {
         files.reverse = tab_settings.dir_settings.reverse;
         files.show_hidden = tab_settings.dir_settings.show_hidden;
         files.filter = tab_settings.dir_settings.filter.clone();
+        files.filter_selected = tab_settings.dir_settings.filter_selected;
 
         if tab_settings.multi_selections.len() > 0 {
             for file in &mut files.files {
@@ -292,6 +295,7 @@ impl FsCache {
                 reverse: files.reverse,
                 show_hidden: files.show_hidden,
                 filter: files.filter.clone(),
+                filter_selected: files.filter_selected
             }
         }
     }

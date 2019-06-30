@@ -84,6 +84,7 @@ impl Listable for ListView<Files> {
             Key::Char(' ') => self.multi_select_file(),
             Key::Char('v') => self.invert_selection(),
             Key::Char('V') => self.clear_selections(),
+            Key::Alt('v') => self.toggle_filter_selected(),
             Key::Char('t') => self.toggle_tag()?,
             Key::Char('H') => self.toggle_hidden(),
             Key::Char('r') => self.reverse_sort(),
@@ -355,17 +356,33 @@ impl ListView<Files>
     fn multi_select_file(&mut self) {
         self.selected_file_mut().toggle_selection();
 
-        let selection = self.get_selection();
-        let line = self.render_line(self.selected_file());
-        self.buffer[selection] = line;
+        if !self.content.filter_selected {
+            let selection = self.get_selection();
+            let line = self.render_line(self.selected_file());
+            self.buffer[selection] = line;
 
-        self.move_down();
+            self.move_down();
+        } else {
+            if self.content.filter_selected && self.content.len() == 0 {
+                self.content.toggle_filter_selected();
+                self.core.show_status("Disabled selection filter!").log();
+            }
+
+            // fix cursor when last file is unselected, etc
+            self.refresh().log();
+        }
     }
 
     pub fn invert_selection(&mut self) {
         for file in self.content.get_files_mut() {
             file.toggle_selection();
         }
+
+        if self.content.filter_selected && self.content.len() == 0 {
+                self.content.toggle_filter_selected();
+                self.core.show_status("Disabled selection filter!").log();
+        }
+
         self.content.set_dirty();
         self.refresh().log();
     }
@@ -520,6 +537,17 @@ impl ListView<Files>
         Ok(())
     }
 
+    fn toggle_filter_selected(&mut self) {
+        self.content.toggle_filter_selected();
+
+        if self.content.len() == 0 {
+            core.show_status("No files selected").log();
+            self.content.toggle_filter_selected();
+        }
+
+        self.refresh().log();
+    }
+
     fn render_line(&self, file: &File) -> String {
         let icon = if self.core.config().icons {
             file.icon()
@@ -607,8 +635,8 @@ impl<T> Widget for ListView<T> where ListView<T>: Listable {
         self.on_refresh().log();
         self.lines = self.len();
 
-        if self.selection >= self.lines && self.selection != 0 {
-            self.selection -= 1;
+        if self.selection >= self.len() && self.selection != 0 {
+            self.selection = self.len() - 1;
         }
 
         if self.core.is_dirty() || self.buffer.len() != self.len() {
