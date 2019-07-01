@@ -69,9 +69,10 @@ mod mediaview;
 
 use widget::{Widget, WidgetCore};
 use term::ScreenExt;
-use fail::{HResult, HError};
+use fail::{HResult, HError, MimeError};
 use file_browser::FileBrowser;
 use tabview::TabView;
+use trait_ext::PathBufMime;
 
 
 fn reset_screen(core: &mut WidgetCore) -> HResult<()> {
@@ -136,8 +137,7 @@ fn parse_args() -> HResult<()> {
                 .short("a")
                 .long("animation-off")
                 .help("Turn off animations")
-                .takes_value(false),
-        )
+                .takes_value(false))
         .arg(
             Arg::with_name("show-hidden")
                 .short("h")
@@ -150,17 +150,31 @@ fn parse_args() -> HResult<()> {
                 .short("i")
                 .long("icons")
                 .help("Show icons for different file types")
-                .takes_value(false),
-        )
+                .takes_value(false))
+        // For "Add Action" action
+        .arg(
+            Arg::with_name("mime")
+                .short("m")
+                .long("mime")
+                .help("Print MIME type of file")
+                .takes_value(false))
         .arg(
             Arg::with_name("path")
                 .index(1)
-                .help("Start in <path>")
-        )
+                .help("Start in <path>"))
         .get_matches();
 
 
     let path = args.value_of("path");
+
+    // Just print MIME and quit
+    if args.is_present("mime") {
+        get_mime(path)
+            .map_err(|e| eprintln!("{}", e)).
+            ok();
+        // If we get heres something went wrong.
+        std::process::exit(1)
+    }
 
     if let Some(path) = path {
         std::env::set_current_dir(&path).ok();
@@ -168,4 +182,19 @@ fn parse_args() -> HResult<()> {
 
     crate::config::set_argv_config(args).ok();
     Ok(())
+}
+
+
+
+
+
+
+fn get_mime(path: Option<&str>) -> HResult<()> {
+    let path = path.ok_or(MimeError::NoFileProvided)?;
+    let path = std::path::PathBuf::from(path);
+    path.get_mime()
+        .map(|mime| println!("{}", mime))
+        .map(|_| std::process::exit(0))
+        .map_err(|e| eprintln!("{}", e))
+        .map_err(|_| std::process::exit(1))
 }

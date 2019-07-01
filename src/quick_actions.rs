@@ -349,17 +349,22 @@ impl QuickAction {
             .iter()
             .fold(Ok(vec![]), |mut acc, query| {
                 // If error occured/input was cancelled just skip querying
+                // Turn into try_fold?
                 if acc.is_err() { return acc; }
 
                 match core.minibuffer(query) {
                     Err(HError::MiniBufferEmptyInput) => {
-                        acc.as_mut().map(|acc| acc.push((OsString::from(query),
-                                                         OsString::from("")))).ok();
+                        acc.as_mut()
+                            .map(|acc| acc.push((OsString::from(query),
+                                                 OsString::from(""))))
+                            .ok();
                         acc
                     }
                     Ok(input) => {
-                        acc.as_mut().map(|acc| acc.push((OsString::from(query),
-                                                         OsString::from(input)))).ok();
+                        acc.as_mut()
+                            .map(|acc| acc.push((OsString::from(query),
+                                                 OsString::from(input))))
+                            .ok();
                         acc
                     }
                     Err(err) => Err(err)
@@ -505,7 +510,8 @@ impl QuickPath for PathBuf {
                  .collect::<Vec<&str>>()
                  .iter()
                  .skip(1)
-                 .map(|q| q.to_string())
+                 // Remove ! in queries from sync actions
+                 .map(|q| q.trim_end_matches("!").to_string())
                  .collect())
             .unwrap_or_else(|| vec![])
     }

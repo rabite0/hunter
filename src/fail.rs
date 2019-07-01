@@ -103,7 +103,9 @@ pub enum HError {
     #[fail(display = "Failed to parse integer!")]
     ParseIntError(std::num::ParseIntError),
     #[fail(display = "{}", _0)]
-    Media(MediaError)
+    Media(MediaError),
+    #[fail(display = "{}", _0)]
+    Mime(MimeError),
 }
 
 impl HError {
@@ -329,5 +331,24 @@ impl From<std::num::ParseIntError> for HError {
     fn from(error: std::num::ParseIntError) -> Self {
         let err = HError::ParseIntError(error);
         err
+    }
+}
+
+
+// MIME Errors
+
+#[derive(Fail, Debug, Clone)]
+pub enum MimeError {
+    #[fail(display = "Need a file to determine MIME type")]
+    NoFileProvided,
+    #[fail(display = "File access failed! Error: {}", _0)]
+    AccessFailed(Box<HError>),
+    #[fail(display = "No MIME type found for this file",)]
+    NoMimeFound
+}
+
+impl From<MimeError> for HError {
+    fn from(e: MimeError) -> Self {
+        HError::Mime(e)
     }
 }
