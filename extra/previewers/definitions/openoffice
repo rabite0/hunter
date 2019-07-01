@@ -1,3 +1,0 @@
-#!/bin/sh
-
-odt2text "${1}" 2> /dev/null
