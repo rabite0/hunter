@@ -34,22 +34,26 @@ fn main() -> MResult<()> {
         .expect("provide ysize")
         .parse()
         .unwrap();
+    #[cfg(feature = "video")]
     let xpos = args.get(3)
         .expect("provide xpos")
-        .parse()
+        .parse::<usize>()
         .unwrap();
+    #[cfg(feature = "video")]
     let ypos = args.get(4)
         .expect("provide ypos")
-        .parse()
+        .parse::<usize>()
         .unwrap();
     let preview_type = args.get(5)
         .expect("Provide preview type")
         .parse::<String>()
         .unwrap();
+    #[cfg(feature = "video")]
     let autoplay = args.get(6)
         .expect("Autoplay?")
         .parse::<bool>()
         .unwrap();
+    #[cfg(feature = "video")]
     let mute = args.get(7)
         .expect("Muted?")
         .parse::<bool>()
@@ -117,7 +121,7 @@ fn image_preview(path: &str,
     Ok(())
 }
 
-// #[cfg(feature = "video")]
+#[cfg(feature = "video")]
 fn video_preview(path: &String,
                  xsize: usize,
                  ysize: usize,
@@ -209,7 +213,7 @@ fn video_preview(path: &String,
     Ok(())
 }
 
-// #[cfg(feature = "video")]
+#[cfg(feature = "video")]
 fn read_keys(player: gstreamer::Element,
              renderer: Option<Arc<RwLock<Renderer>>>) -> MResult<()> {
     let seek_time = gstreamer::ClockTime::from_seconds(5);
@@ -292,7 +296,7 @@ fn read_keys(player: gstreamer::Element,
     }
 }
 
-// #[cfg(feature = "video")]
+#[cfg(feature = "video")]
 pub fn audio_preview(path: &String,
                      autoplay: bool,
                      mute: bool)
@@ -348,7 +352,7 @@ pub fn audio_preview(path: &String,
     Ok(())
 }
 
-// #[cfg(feature = "video")]
+#[cfg(feature = "video")]
 pub fn make_gstreamer() -> MResult<(gstreamer::Element,
                                     gstreamer_app::AppSink)> {
     gstreamer::init()?;
@@ -399,6 +403,7 @@ struct Renderer {
     xpos: usize,
     #[cfg(feature = "video")]
     ypos: usize,
+    #[cfg(feature = "video")]
     last_frame: Option<DynamicImage>,
     #[cfg(feature = "video")]
     position: Option<usize>,
@@ -428,7 +433,7 @@ impl Renderer {
     }
 
 
-    // #[cfg(feature = "video")]
+    #[cfg(feature = "video")]
     fn set_size(&mut self, xsize: usize, ysize: usize) -> MResult<()> {
         self.xsize = xsize;
         self.ysize = ysize;
@@ -462,7 +467,7 @@ impl Renderer {
         Ok(())
     }
 
-    // #[cfg(feature = "video")]
+    #[cfg(feature = "video")]
     fn send_frame(&mut self,
                   frame: &gstreamer::sample::SampleRef,
                   position: u64,

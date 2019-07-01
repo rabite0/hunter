@@ -2,7 +2,7 @@ cargo-features = ["default-run"]
 
 [package]
 name = "hunter"
-version = "1.3.0"
+version = "1.3.4"
 authors = ["rabite0"]
 edition = "2018"
 description = "Fast, lag-free terminal file browser"
@@ -40,20 +40,29 @@ pathbuftools = "0.1"
 clap = "2.33"
 mime = "0.3.13"
 
+image = { version = "0.21.1", optional = true }
+gstreamer = { version = "0.11.2", optional = true }
+gstreamer-app = { version = "0.11.2", optional = true }
+
 [build-dependencies]
 termion = "1.5.1"
 rustc_version = "0.2.3"
 
 [features]
-default = ["video"]
-video = []
+default = ["img", "video"]
+video = ["gstreamer", "gstreamer-app"]
+img = ["image"]
+
+[[bin]]
+name = "hunter"
+path = "src/main.rs"
+
+[[bin]]
+name = "hunter-media"
+path = "src/hunter-media.rs"
+required-features = ["img"]
 
 
-
-
-[workspace]
-members = [".", "hunter-media"]
-default-members = [".", "hunter-media"]
 
 
 [patch.crates-io]
