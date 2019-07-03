@@ -96,17 +96,34 @@ impl<T> HBox<T> where T: Widget + PartialEq {
         let box_ysize = box_coords.ysize();
         let box_top = box_coords.top().y();
 
-        let ratios = match &self.ratios {
+        let mut ratios = match &self.ratios {
             Some(ratios) => ratios.clone(),
             None => self.calculate_equal_ratios()?
         };
 
-        let coords = ratios.iter().fold(Vec::<Coordinates>::new(), |mut coords, ratio| {
-            let ratio = *ratio as u16;
-            let len = coords.len();
-            let gap = if len == 0 { 0 } else { 1 };
+        let mut ratios_sum: usize = ratios.iter().sum();
 
-            let widget_xsize = box_xsize * ratio / 100;
+        ratios = ratios.iter().map(|&r|
+            (r as f64 * box_xsize as f64 / ratios_sum as f64).round() as usize).collect();
+
+        for r in &mut ratios {
+            if *r < 10 { *r = 10 }
+        }
+
+        ratios_sum = ratios.iter().sum();
+
+        while ratios_sum + ratios.len() > box_xsize as usize {
+            let ratios_max = ratios.iter()
+                .position(|&r| r == *ratios.iter().max().unwrap()).unwrap();
+            ratios[ratios_max] = ratios[ratios_max] - 1;
+            ratios_sum -= 1;
+        }
+
+        let coords = ratios.iter().fold(Vec::<Coordinates>::new(), |mut coords, ratio| {
+            let len = coords.len();
+            let gap = if len == ratios.len() { 0 } else { 1 };
+
+            let widget_xsize = *ratio as u16;
             let widget_xpos = if len == 0 {
                 box_coords.top().x()
             } else {

@@ -77,7 +77,8 @@ pub struct Config {
     pub icons: bool,
     pub media_autoplay: bool,
     pub media_mute: bool,
-    pub media_previewer: String
+    pub media_previewer: String,
+    pub ratios: Vec::<usize>
 }
 
 
@@ -97,7 +98,8 @@ impl Config {
             icons: false,
             media_autoplay: false,
             media_mute: false,
-            media_previewer: "hunter-media".to_string()
+            media_previewer: "hunter-media".to_string(),
+            ratios: vec![20,30,49]
         }
     }
 
@@ -133,6 +135,19 @@ impl Config {
                 Ok(("media_previewer", cmd)) => {
                     let cmd = cmd.to_string();
                     config.select_cmd = cmd;
+                },
+                Ok(("ratios", ratios)) => {
+                    let ratios_str = ratios.to_string();
+                    if ratios_str.chars().all(|x| x.is_digit(10) || x.is_whitespace()
+                        || x == ':' || x == ',' ) {
+                            let ratios: Vec<usize> = ratios_str.split([',', ':'].as_ref())
+                                .map(|r| r.trim().parse::<usize>().unwrap()).collect();
+                            let ratios_sum: usize = ratios.iter().sum();
+                            if ratios.len() == 3 && ratios_sum > 0 && ratios.iter()
+                                .filter(|&r| *r > u16::max_value() as usize).next() == None {
+                                    config.ratios = ratios;
+                        }
+                    }
                 }
                 _ => { HError::config_error::<Config>(line.to_string()).log(); }
             }
