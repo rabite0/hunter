@@ -134,7 +134,7 @@ impl Config {
                 Ok(("media_mute", "off")) => { config.media_mute = false; },
                 Ok(("media_previewer", cmd)) => {
                     let cmd = cmd.to_string();
-                    config.select_cmd = cmd;
+                    config.media_previewer = cmd;
                 },
                 Ok(("ratios", ratios)) => {
                     let ratios_str = ratios.to_string();
