@@ -71,6 +71,7 @@ fn infuse_argv_config(mut config: Config) -> Config {
 #[derive(Debug, Clone)]
 pub struct Config {
     pub animation: bool,
+    pub animation_refresh_frequency: usize,
     pub show_hidden: bool,
     pub select_cmd: String,
     pub cd_cmd: String,
@@ -92,6 +93,7 @@ impl Config {
     pub fn default() -> Config {
         Config {
             animation: true,
+            animation_refresh_frequency: 60,
             show_hidden: false,
             select_cmd: "find -type f | fzf -m".to_string(),
             cd_cmd: "find -type d | fzf".to_string(),
@@ -116,6 +118,12 @@ impl Config {
             match Config::prep_line(line) {
                 Ok(("animation", "on")) => { config.animation = true; },
                 Ok(("animation", "off")) => { config.animation = false; },
+                Ok(("animation_refresh_frequency", frequency)) => {
+                    match frequency.parse::<usize>() {
+                        Ok(parsed_freq) => config.animation_refresh_frequency = parsed_freq,
+                        _ => HError::config_error::<Config>(line.to_string()).log()
+                    }
+                }
                 Ok(("show_hidden", "on")) => { config.show_hidden = true; },
                 Ok(("show_hidden", "off")) => { config.show_hidden = false; },
                 Ok(("icons", "on")) => config.icons = true,
