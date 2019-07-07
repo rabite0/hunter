@@ -6,7 +6,7 @@ use async_value::Async;
 use std::path::PathBuf;
 use std::sync::{
     Arc, Mutex,
-    mpsc::Sender,
+    mpsc::SyncSender,
 };
 use std::ffi::OsString;
 use std::str::FromStr;
@@ -201,7 +201,7 @@ impl QuickActions {
                mime: mime::Mime,
                subpath: &str,
                description: String,
-               sender: Sender<Events>,
+               sender: SyncSender<Events>,
                proc_view: Arc<Mutex<ProcView>>) -> HResult<QuickActions> {
         let mut actions = files.get_actions(mime.clone(), subpath.to_string());
 
@@ -227,7 +227,7 @@ impl QuickActions {
 }
 
 pub fn open(files: Vec<File>,
-           sender: Sender<Events>,
+           sender: SyncSender<Events>,
            core: WidgetCore,
            proc_view: Arc<Mutex<ProcView>>) -> HResult<()> {
     let mime  = files.common_mime()

@@ -3,7 +3,7 @@ use notify::{RecommendedWatcher, Watcher, DebouncedEvent, RecursiveMode};
 use async_value::{Async, Stale};
 
 use std::sync::{Arc, RwLock};
-use std::sync::mpsc::{channel, Sender, Receiver};
+use std::sync::mpsc::{SyncSender, Receiver, channel};
 use std::collections::{HashMap, HashSet};
 use std::time::Duration;
 use std::path::PathBuf;
@@ -64,9 +64,6 @@ impl std::fmt::Debug for FsCache {
     }
 }
 
-unsafe impl Sync for FsCache {}
-
-
 #[derive(Clone)]
 pub struct FsCache {
     files: Arc<RwLock<HashMap<File, Files>>>,
@@ -74,11 +71,11 @@ pub struct FsCache {
     watched_dirs: Arc<RwLock<HashSet<File>>>,
     watcher: Arc<RwLock<RecommendedWatcher>>,
     pub fs_changes: Arc<RwLock<Vec<(File, Option<File>, Option<File>)>>>,
-    sender: Sender<Events>,
+    sender: SyncSender<Events>,
 }
 
 impl FsCache {
-    pub fn new(sender: Sender<Events>) -> FsCache {
+    pub fn new(sender: SyncSender<Events>) -> FsCache {
         let (tx_fs_event, rx_fs_event) = channel();
         let watcher = RecommendedWatcher::new(tx_fs_event,
                                           Duration::from_secs(2)).unwrap();
@@ -305,7 +302,7 @@ impl FsCache {
 fn watch_fs(rx_fs_events: Receiver<DebouncedEvent>,
             fs_cache: Arc<RwLock<HashMap<File, Files>>>,
             fs_changes: Arc<RwLock<Vec<(File, Option<File>, Option<File>)>>>,
-            sender: Sender<Events>) {
+            sender: SyncSender<Events>) {
     std::thread::spawn(move || -> HResult<()> {
         for event in rx_fs_events.iter() {
             apply_event(&fs_cache, &fs_changes, event).log();

@@ -1,5 +1,5 @@
 use std::sync::{Arc, Mutex, RwLock};
-use std::sync::mpsc::{Sender, Receiver, channel};
+use std::sync::mpsc::{SyncSender, Receiver, sync_channel};
 use std::io::{Write, stdin};
 
 use termion::event::{Event, Key, MouseEvent};
@@ -24,7 +24,7 @@ pub enum Events {
     WidgetReady,
     TerminalResized,
     InputUpdated(String),
-    ExclusiveEvent(Option<Mutex<Option<Sender<Events>>>>),
+    ExclusiveEvent(Option<Mutex<Option<SyncSender<Events>>>>),
     InputEnabled(bool),
     RequestInput,
     Status(String),
@@ -56,7 +56,7 @@ pub struct WidgetCore {
     pub screen: Screen,
     pub coordinates: Coordinates,
     pub minibuffer: Arc<Mutex<Option<MiniBuffer>>>,
-    pub event_sender: Arc<Mutex<Sender<Events>>>,
+    pub event_sender: Arc<Mutex<SyncSender<Events>>>,
     event_receiver: Arc<Mutex<Option<Receiver<Events>>>>,
     pub status_bar_content: Arc<Mutex<Option<String>>>,
     term_size: (usize, usize),
@@ -72,7 +72,7 @@ impl WidgetCore {
                                          term::ysize() - 2,
                                          1,
                                          2);
-        let (sender, receiver) = channel();
+        let (sender, receiver) = sync_channel(100);
         let status_bar_content = Arc::new(Mutex::new(None));
 
         let mut config = Async::new(move |_| Ok(Config::load()?));
@@ -99,7 +99,7 @@ impl WidgetCore {
         Ok(core)
     }
 
-    pub fn get_sender(&self) -> Sender<Events> {
+    pub fn get_sender(&self) -> SyncSender<Events> {
         self.event_sender.lock().unwrap().clone()
     }
 
@@ -343,7 +343,7 @@ pub trait Widget {
     }
 
     fn run_widget(&mut self) -> HResult<()> {
-        let (tx_event, rx_event) = channel();
+        let (tx_event, rx_event) = sync_channel(100);
         self.get_core()?
             .get_sender()
             .send(Events::ExclusiveEvent(Some(Mutex::new(Some(tx_event)))))?;
@@ -452,7 +452,7 @@ pub trait Widget {
     }
 
     fn handle_input(&mut self) -> HResult<()> {
-        let (tx_internal_event, rx_internal_event) = channel();
+        let (tx_internal_event, rx_internal_event) = sync_channel(100);
         let rx_global_event = self.get_core()?.event_receiver.lock()?.take()?;
 
         dispatch_events(tx_internal_event, rx_global_event, self.get_core()?.screen()?);
@@ -499,18 +499,18 @@ pub trait Widget {
     }
 }
 
-fn dispatch_events(tx_internal: Sender<Events>,
+fn dispatch_events(tx_internal: SyncSender<Events>,
                    rx_global: Receiver<Events>,
                    screen: Screen) {
-    let (tx_event, rx_event) = channel();
-    let (tx_input_req, rx_input_req) = channel();
+    let (tx_event, rx_event) = sync_channel(100);
+    let (tx_input_req, rx_input_req) = sync_channel(100);
 
     input_thread(tx_event.clone(), rx_input_req);
     event_thread(rx_global, tx_event.clone());
     signal_thread(tx_event.clone());
 
     std::thread::spawn(move || {
-        let mut tx_exclusive_event: Option<Sender<Events>> = None;
+        let mut tx_exclusive_event: Option<SyncSender<Events>> = None;
         let mut input_enabled = true;
 
         for event in rx_event.iter() {
@@ -548,7 +548,7 @@ fn dispatch_events(tx_internal: Sender<Events>,
 }
 
 fn event_thread(rx_global: Receiver<Events>,
-                       tx: Sender<Events>) {
+                       tx: SyncSender<Events>) {
     std::thread::spawn(move || {
         for event in rx_global.iter() {
             tx.send(event).unwrap();
@@ -556,7 +556,7 @@ fn event_thread(rx_global: Receiver<Events>,
     });
 }
 
-fn input_thread(tx: Sender<Events>, rx_input_request: Receiver<()>) {
+fn input_thread(tx: SyncSender<Events>, rx_input_request: Receiver<()>) {
     std::thread::spawn(move || {
         for input in stdin().events() {
             input.map(|input| {
@@ -568,7 +568,7 @@ fn input_thread(tx: Sender<Events>, rx_input_request: Receiver<()>) {
     });
 }
 
-fn signal_thread(tx: Sender<Events>) {
+fn signal_thread(tx: SyncSender<Events>) {
     std::thread::spawn(move || {
         let rx = notify(&[Signal::WINCH]);
         for _ in rx.iter() {

@@ -4,7 +4,7 @@ use std::fs::Metadata;
 use std::os::unix::fs::MetadataExt;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, RwLock};
-use std::sync::mpsc::Sender;
+use std::sync::mpsc::SyncSender;
 use std::hash::{Hash, Hasher};
 use std::str::FromStr;
 
@@ -36,7 +36,7 @@ lazy_static! {
     static ref ICONS: Icons = Icons::new();
 }
 
-fn make_pool(sender: Option<Sender<Events>>) -> ThreadPool {
+fn make_pool(sender: Option<SyncSender<Events>>) -> ThreadPool {
     let sender = Arc::new(Mutex::new(sender));
     ThreadPoolBuilder::new()
         .num_threads(8)
@@ -480,7 +480,7 @@ impl Files {
         self.meta_upto(len, None);
     }
 
-    pub fn meta_upto(&mut self, to: usize, sender: Option<Sender<Events>>) {
+    pub fn meta_upto(&mut self, to: usize, sender: Option<SyncSender<Events>>) {
         let meta_files = if self.meta_upto > Some(to) {
             self.meta_upto.unwrap()
         } else {

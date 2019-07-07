@@ -10,7 +10,7 @@ use crate::imgview::ImgView;
 
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, RwLock,
-                mpsc::{channel, Sender}};
+                mpsc::{sync_channel, SyncSender}};
 
 use std::io::{BufRead, BufReader, Write};
 use std::process::Child;
@@ -42,7 +42,7 @@ pub struct MediaView {
     core: WidgetCore,
     imgview: Arc<Mutex<ImgView>>,
     file: PathBuf,
-    controller: Sender<String>,
+    controller: SyncSender<String>,
     paused: bool,
     media_type: MediaType,
     position: Arc<Mutex<usize>>,
@@ -53,7 +53,7 @@ pub struct MediaView {
                                           bool,
                                           Arc<Mutex<usize>>,
                                           Arc<Mutex<usize>>)
-                                          -> HResult<()> + Send + 'static>>
+                                          -> HResult<()> + Send + Sync + 'static>>
 }
 
 #[derive(Clone,Debug)]
@@ -91,7 +91,7 @@ impl MediaView {
 
         let (xsize, ysize) = core.coordinates.size_u();
         let (xpos, ypos) = core.coordinates.position_u();
-        let (tx_cmd, rx_cmd) = channel();
+        let (tx_cmd, rx_cmd) = sync_channel(100);
 
         let imgview = ImgView {
             core: core.clone(),

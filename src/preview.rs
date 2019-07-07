@@ -16,7 +16,7 @@ use crate::imgview::ImgView;
 use crate::mediaview::MediaView;
 
 
-pub type AsyncWidgetFn<W> = FnOnce(&Stale, WidgetCore)
+pub type AsyncWidgetFn<W> = dyn FnOnce(&Stale, WidgetCore)
                                    -> HResult<W> + Send + Sync;
 
 lazy_static! {
@@ -35,7 +35,7 @@ fn kill_proc() -> HResult<()> {
 
 
 
-impl<W: Widget + Send + 'static> PartialEq for AsyncWidget<W> {
+impl<W: Widget + Send + Sync + 'static> PartialEq for AsyncWidget<W> {
     fn eq(&self, other: &AsyncWidget<W>) -> bool {
         if self.get_coordinates().unwrap() ==
             other.get_coordinates().unwrap() {
@@ -47,12 +47,12 @@ impl<W: Widget + Send + 'static> PartialEq for AsyncWidget<W> {
 }
 
 #[derive(Debug)]
-pub struct AsyncWidget<W: Widget + Send + 'static> {
+pub struct AsyncWidget<W: Widget + Send + Sync + 'static> {
     pub widget: Async<W>,
     core: WidgetCore
 }
 
-impl<W: Widget + Send + 'static> AsyncWidget<W> {
+impl<W: Widget + Send + Sync + 'static> AsyncWidget<W> {
     pub fn new(core: &WidgetCore,
                closure: impl FnOnce(&Stale) -> HResult<W> + Send + Sync + 'static)
                -> AsyncWidget<W> {
@@ -132,7 +132,7 @@ impl<W: Widget + Send + 'static> AsyncWidget<W> {
 
 
 
-impl<T: Widget + Send + 'static> Widget for AsyncWidget<T> {
+impl<T: Widget + Send + Sync + 'static> Widget for AsyncWidget<T> {
     fn get_core(&self) -> HResult<&WidgetCore> {
         Ok(&self.core)
     }

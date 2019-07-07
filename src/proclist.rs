@@ -1,5 +1,5 @@
 use std::sync::{Arc, Mutex};
-use std::sync::mpsc::Sender;
+use std::sync::mpsc::SyncSender;
 use std::process::{Child, Command};
 use std::os::unix::process::{CommandExt, ExitStatusExt};
 use std::io::{BufRead, BufReader};
@@ -29,7 +29,7 @@ struct Process {
     output: Arc<Mutex<String>>,
     status: Arc<Mutex<Option<i32>>>,
     success: Arc<Mutex<Option<bool>>>,
-    sender: Sender<Events>
+    sender: SyncSender<Events>
 
 }
 
@@ -141,7 +141,7 @@ impl Process {
         std::thread::spawn(move || -> HResult<()> {
             let stdout = handle.lock()?.stdout.take()?;
             let mut stdout = BufReader::new(stdout);
-            let mut processor = move |cmd, sender: &Sender<Events>| -> HResult<()> {
+            let mut processor = move |cmd, sender: &SyncSender<Events>| -> HResult<()> {
                 loop {
                     let buffer = stdout.fill_buf()?;
                     let len = buffer.len();
@@ -268,12 +268,13 @@ impl ListView<Vec<Process>> {
 
         self.core.show_status(&format!("Running: {}", &short_cmd)).log();
 
-        let handle = Command::new(real_cmd)
+        let handle = unsafe {Command::new(real_cmd)
             .args(args)
             .stdin(std::process::Stdio::null())
             .stdout(std::process::Stdio::piped())
-            .before_exec(|| unsafe { libc::dup2(1, 2); Ok(()) })
-            .spawn()?;
+            .pre_exec(|| {libc::dup2(1, 2); Ok(())})
+            .spawn()?
+        };
         let mut proc = Process {
             cmd: short_cmd,
             handle: Arc::new(Mutex::new(handle)),
