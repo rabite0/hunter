@@ -64,8 +64,6 @@ impl std::fmt::Debug for FsCache {
     }
 }
 
-unsafe impl Sync for FsCache {}
-
 
 #[derive(Clone)]
 pub struct FsCache {
@@ -74,7 +72,6 @@ pub struct FsCache {
     watched_dirs: Arc<RwLock<HashSet<File>>>,
     watcher: Arc<RwLock<RecommendedWatcher>>,
     pub fs_changes: Arc<RwLock<Vec<(File, Option<File>, Option<File>)>>>,
-    sender: Sender<Events>,
 }
 
 impl FsCache {
@@ -90,13 +87,12 @@ impl FsCache {
             watched_dirs: Arc::new(RwLock::new(HashSet::new())),
             watcher: Arc::new(RwLock::new(watcher)),
             fs_changes: Arc::new(RwLock::new(vec![])),
-            sender: sender.clone(),
         };
 
         watch_fs(rx_fs_event,
                  fs_cache.files.clone(),
                  fs_cache.fs_changes.clone(),
-                 sender.clone());
+                 sender);
 
         fs_cache
     }
