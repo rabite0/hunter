@@ -406,7 +406,12 @@ pub trait Widget {
         let xsize = coords.xsize();
         let ysize = coords.ysize();
         let clear = self.get_core()?.get_clearlist()?;
-        let pause = std::time::Duration::from_millis(5);
+
+        let animation_hz = self.get_core()?.config().animation_refresh_frequency as u64;
+        let pause_millis = 1000/animation_hz;
+        const ANIMATION_DURATION_MILLIS: u64 = 64;
+        let number_of_frames= (ANIMATION_DURATION_MILLIS/pause_millis) as u16;
+        let pause = std::time::Duration::from_millis(pause_millis);
 
         if let Some(ref animator) = animator {
             if animator.is_stale()? {
@@ -416,7 +421,7 @@ pub trait Widget {
 
         self.get_core()?.write_to_screen(&clear).log();
 
-        for i in (0..10).rev() {
+        for i in (0..number_of_frames).rev() {
             if let Some(ref animator) = animator {
                 if animator.is_stale()? {
                     self.set_coordinates(&coords).log();
