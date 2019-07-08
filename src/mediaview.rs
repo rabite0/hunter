@@ -45,12 +45,14 @@ pub struct MediaView {
     controller: Sender<String>,
     paused: bool,
     media_type: MediaType,
+    height: Arc<Mutex<usize>>,
     position: Arc<Mutex<usize>>,
     duration: Arc<Mutex<usize>>,
     stale: Stale,
     process: Arc<Mutex<Option<Child>>>,
     preview_runner: Option<Box<dyn FnOnce(bool,
                                           bool,
+                                          Arc<Mutex<usize>>,
                                           Arc<Mutex<usize>>,
                                           Arc<Mutex<usize>>)
                                           -> HResult<()> + Send + 'static>>
@@ -90,7 +92,12 @@ impl MediaView {
         }
 
         let (xsize, ysize) = core.coordinates.size_u();
-        let (xpos, ypos) = core.coordinates.position_u();
+        let (cols, rows) = termion::terminal_size()?;
+        let (xpix, ypix) = termion::terminal_size_pixels()?;
+        let (xpix, ypix) = (xpix/cols, ypix/rows);
+        let (xpix, ypix) = (xpix * (xsize as u16 + 1),
+                            ypix * (ysize as u16 - 1));
+
         let (tx_cmd, rx_cmd) = channel();
 
         let imgview = ImgView {
@@ -113,9 +120,11 @@ impl MediaView {
         let ctype = media_type.clone();
         let ccore = core.clone();
         let media_previewer = core.config().media_previewer;
+        let sixel = core.config().sixel;
 
         let run_preview = Box::new(move | auto,
                                    mute,
+                                   height: Arc<Mutex<usize>>,
                                    position: Arc<Mutex<usize>>,
                                    duration: Arc<Mutex<usize>>| -> HResult<()> {
             loop {
@@ -125,18 +134,20 @@ impl MediaView {
 
 
                 let mut previewer = std::process::Command::new(&media_previewer)
-                    .arg(format!("{}", (xsize)))
+                    .arg(format!("{}", (xsize+1)))
                     // Leave space for position/seek bar
                     .arg(format!("{}", (ysize-1)))
-                    .arg(format!("{}", xpos))
-                    .arg(format!("{}", ypos))
+                    .arg(format!("{}", xpix))
+                    .arg(format!("{}", ypix))
                     .arg(format!("{}", ctype.to_str()))
                     .arg(format!("{}", auto))
                     .arg(format!("{}", mute))
+                    .arg(format!("{}", sixel))
                     .arg(&path)
                     .stdin(std::process::Stdio::piped())
                     .stdout(std::process::Stdio::piped())
-                    .stderr(std::process::Stdio::piped())
+                    .stderr(std::process::Stdio::inherit())
+                    // .stderr(std::process::Stdio::piped())
                     .spawn()
                     .map_err(|e| {
                         let msg = format!("Couldn't run {}{}{}! Error: {:?}",
@@ -187,6 +198,12 @@ impl MediaView {
                     if line_buf == newline {
                         line_buf.clear();
                         stdout.read_line(&mut line_buf)?;
+                        let h = &line_buf.trim();
+                        *height.lock().unwrap() = h
+                            .parse::<usize>()?;
+
+                        line_buf.clear();
+                        stdout.read_line(&mut line_buf)?;
                         let pos = &line_buf.trim();
                         *position.lock().unwrap() = pos
                             .parse::<usize>()?;
@@ -225,6 +242,7 @@ impl MediaView {
             media_type: media_type,
             controller: tx_cmd,
             paused: false,
+            height: Arc::new(Mutex::new(0)),
             position: Arc::new(Mutex::new(0)),
             duration: Arc::new(Mutex::new(0)),
             stale: stale,
@@ -240,6 +258,7 @@ impl MediaView {
             let stale = self.stale.clone();
             let autoplay = self.autoplay();
             let mute = self.mute();
+            let height = self.height.clone();
             let position = self.position.clone();
             let duration = self.duration.clone();
             let clear = self.get_core()?.get_clearlist()?;
@@ -254,6 +273,7 @@ impl MediaView {
 
                     runner.map(|runner| runner(autoplay,
                                                mute,
+                                               height,
                                                position,
                                                duration));
                 }
@@ -470,19 +490,20 @@ impl Widget for MediaView {
 
     fn get_drawlist(&self) -> HResult<String> {
         let (xpos, ypos) = self.core.coordinates.position_u();
+        let height = *self.height.lock()?;
         let progress_str = self.progress_string()?;
         let progress_bar = self.progress_bar()?;
 
-        let (frame, lines) = self.imgview
+        let frame= self.imgview
             .lock()
-            .map(|img| (img.get_drawlist(), img.lines()))?;
+            .map(|img| img.get_drawlist())?;
 
         let mut frame = frame?;
 
-        frame += &crate::term::goto_xy_u(xpos+1, ypos+lines);
+        frame += &crate::term::goto_xy_u(xpos, ypos+height);
         frame += &progress_str;
-        frame += &self.get_icons(lines)?;
-        frame += &crate::term::goto_xy_u(xpos+1, ypos+lines+1);
+        frame += &self.get_icons(height)?;
+        frame += &crate::term::goto_xy_u(xpos, ypos+height+1);
         frame += &progress_bar;
 
         Ok(frame)

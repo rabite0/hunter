@@ -16,7 +16,8 @@ default-run = "hunter"
 
 
 [dependencies]
-termion = "1.5.1"
+# Added terminal_size_pixels recently
+termion = { git = "https://github.com/redox-os/termion" }
 unicode-width = "0.1.5"
 lazy_static = "0.2.11"
 alphanumeric-sort = "1.0.6"
@@ -39,13 +40,17 @@ osstrtools = "0.1.9"
 pathbuftools = "0.1"
 clap = "2.33"
 mime = "0.3.13"
+# Updated to work with recent sixel-sys
+sixel = { git = "https://github.com/rabite0/sixel-rs", tag="v0.3.0" }
+base64 = { version = "0.10.1" }
 
 image = { version = "0.21.1", optional = true }
 gstreamer = { version = "0.11.2", optional = true }
 gstreamer-app = { version = "0.11.2", optional = true }
 
 [build-dependencies]
-termion = "1.5.1"
+# Added terminal_size_pixels recently
+termion = { git = "https://github.com/redox-os/termion" }
 rustc_version = "0.2.3"
 
 [features]

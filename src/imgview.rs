@@ -33,18 +33,25 @@ impl ImgView {
 
     pub fn encode_file(&mut self) -> HResult<()> {
         let (xsize, ysize) = self.core.coordinates.size_u();
-        let (xpos, ypos) = self.core.coordinates.position_u();
+        let (cols, rows) = termion::terminal_size()?;
+        let (xpix, ypix) = termion::terminal_size_pixels()?;
+        let (xpix, ypix) = (xpix/cols, ypix/rows);
+        let (xpix, ypix) = (xpix * (xsize as u16 + 1),
+                            ypix * (ysize as u16 + 1));
+
         let file = &self.file;
         let media_previewer = self.core.config().media_previewer;
+        let sixel = self.core.config().sixel;
 
         let output = std::process::Command::new(&media_previewer)
-            .arg(format!("{}", (xsize)))
+            .arg(format!("{}", (xsize+1)))
             .arg(format!("{}", (ysize+1)))
-            .arg(format!("{}", xpos))
-            .arg(format!("{}", ypos))
+            .arg(format!("{}", xpix))
+            .arg(format!("{}", ypix))
             .arg("image")
             .arg(format!("true"))
             .arg(format!("true"))
+            .arg(format!("{}", sixel))
             .arg(file.to_string_lossy().to_string())
             .output()
             .map_err(|e| {
@@ -111,7 +118,7 @@ impl Widget for ImgView {
             .iter()
             .enumerate()
             .fold(String::new(), |mut draw, (pos, line)| {
-                draw += &format!("{}", crate::term::goto_xy_u(xpos+1,
+                draw += &format!("{}", crate::term::goto_xy_u(xpos,
                                                               ypos + pos));
                 draw += line;
                 draw
@@ -120,5 +127,13 @@ impl Widget for ImgView {
         draw += &format!("{}", termion::style::Reset);
 
         Ok(draw)
+    }
+}
+
+impl Drop for ImgView {
+    fn drop(&mut self) {
+        if self.core.config().sixel {
+            print!("\x1b_Ga=d\x1b\\");
+        }
     }
 }

@@ -123,16 +123,22 @@ impl<T> HBox<T> where T: Widget + PartialEq {
             let len = coords.len();
             let gap = if len == ratios.len() { 0 } else { 1 };
 
-            let widget_xsize = *ratio as u16;
+            let prev_coords = coords.last();
+            let prev_xsize = prev_coords.map(|c| c.xsize());
+            let prev_xpos = prev_coords.map(|c| c.xpos());
+
+            let widget_xsize = box_xsize * *ratio as u16 / 100;
+
             let widget_xpos = if len == 0 {
                 box_coords.top().x()
             } else {
-                let prev_coords = coords.last().unwrap();
-                let prev_xsize = prev_coords.xsize();
-                let prev_xpos = prev_coords.position().x();
-
-                prev_xsize + prev_xpos + gap
+                prev_xsize.unwrap() + prev_xpos.unwrap() + gap
             };
+
+            // Ensure that last widget isn't under/over sized due to gap/rounding
+            let widget_xsize = if len+1 == ratios.len() && len != 0 {
+                box_xsize - (prev_xpos.unwrap() + prev_xsize.unwrap())
+            } else { widget_xsize };
 
             coords.push(Coordinates {
                 size: Size((widget_xsize,

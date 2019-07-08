@@ -151,6 +151,12 @@ fn parse_args() -> HResult<()> {
                 .long("icons")
                 .help("Show icons for different file types")
                 .takes_value(false))
+        .arg(
+            Arg::with_name("sixel")
+                .short("s")
+                .long("sixel")
+                .help("Show HQ graphics using sixel")
+                .takes_value(false))
         // For "Add Action" action
         .arg(
             Arg::with_name("mime")

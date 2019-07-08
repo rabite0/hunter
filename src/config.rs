@@ -13,7 +13,8 @@ use crate::fail::{HError, HResult, ErrorLog};
 struct ArgvConfig {
     animation: Option<bool>,
     show_hidden: Option<bool>,
-    icons: Option<bool>
+    icons: Option<bool>,
+    sixel: Option<bool>,
 }
 
 impl ArgvConfig {
@@ -21,7 +22,8 @@ impl ArgvConfig {
         ArgvConfig {
             animation: None,
             show_hidden: None,
-            icons: None
+            icons: None,
+            sixel: None
         }
     }
 }
@@ -35,6 +37,7 @@ pub fn set_argv_config(args: clap::ArgMatches) -> HResult<()> {
     let animation = args.is_present("animation-off");
     let show_hidden = args.is_present("show-hidden");
     let icons = args.is_present("icons");
+    let sixel = args.is_present("sixel");
 
     let mut config = ArgvConfig::new();
 
@@ -48,6 +51,10 @@ pub fn set_argv_config(args: clap::ArgMatches) -> HResult<()> {
 
     if icons == true {
         config.icons = Some(true)
+    }
+
+    if sixel == true {
+        config.sixel = Some(true)
     }
 
     *ARGV_CONFIG.write()? = config;
@@ -64,6 +71,7 @@ fn infuse_argv_config(mut config: Config) -> Config {
     argv_config.animation.map(|val| config.animation = val);
     argv_config.show_hidden.map(|val| config.show_hidden = val);
     argv_config.icons.map(|val| config.icons = val);
+    argv_config.sixel.map(|val| config.sixel = val);
 
     config
 }
@@ -78,7 +86,8 @@ pub struct Config {
     pub media_autoplay: bool,
     pub media_mute: bool,
     pub media_previewer: String,
-    pub ratios: Vec::<usize>
+    pub ratios: Vec::<usize>,
+    pub sixel: bool,
 }
 
 
@@ -99,7 +108,8 @@ impl Config {
             media_autoplay: false,
             media_mute: false,
             media_previewer: "hunter-media".to_string(),
-            ratios: vec![20,30,49]
+            ratios: vec![20,30,49],
+            sixel: false
         }
     }
 
@@ -149,6 +159,7 @@ impl Config {
                         }
                     }
                 }
+                Ok(("sixel", "off")) => { config.sixel = true; }
                 _ => { HError::config_error::<Config>(line.to_string()).log(); }
             }
             config
