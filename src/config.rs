@@ -167,7 +167,7 @@ impl Config {
                         }
                     }
                 }
-                Ok(("sixel", "off")) => { config.sixel = true; }
+                Ok(("sixel", "on")) => { config.sixel = true; }
                 _ => { HError::config_error::<Config>(line.to_string()).log(); }
             }
             config
