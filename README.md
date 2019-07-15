@@ -62,7 +62,7 @@ If it works on a system not mentioned here, please open an issue. Also feel free
 
 ### PREVIEWERS
 
-hunter comes with definitions to enable previewing certain file typse. To use this you need to install some programs first. You can also define your own. See below. Defaults are:
+hunter comes with definitions to enable previewing certain file types. To use this you need to install some programs first. You can also define your own. See below. Defaults are:
 
 * bat / highlight for syntax highlighting
 * 7z for archives
