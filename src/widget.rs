@@ -332,6 +332,11 @@ pub trait Widget {
     }
 
     fn popup(&mut self) -> HResult<()> {
+        // Image will draw over widget otherwise
+        if self.get_core()?.config().graphics == "kitty" {
+            let ypos = self.get_coordinates()?.ypos();
+            print!("\x1b_Ga=d,d=y,y={}\x1b\\", ypos+1);
+        }
         let result = self.run_widget();
         self.get_core()?.clear().log();
         self.get_core()?.get_sender().send(Events::ExclusiveEvent(None))?;

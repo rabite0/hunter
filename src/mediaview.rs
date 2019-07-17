@@ -91,20 +91,15 @@ impl MediaView {
             return Err(MediaError::NoPreviewer(msg))?;
         }
 
-        let (xsize, ysize) = core.coordinates.size_u();
-        let (cols, rows) = termion::terminal_size()?;
-        let (xpix, ypix) = termion::terminal_size_pixels()?;
-        let (xpix, ypix) = (xpix/cols, ypix/rows);
-        let (xpix, ypix) = (xpix * (xsize as u16 + 1),
-                            ypix * (ysize as u16 - 1));
 
-        let (tx_cmd, rx_cmd) = channel();
 
         let imgview = ImgView {
             core: core.clone(),
             buffer: vec![],
-            file: file.to_path_buf()
+            file: None
         };
+
+        let (tx_cmd, rx_cmd) = channel();
 
         // Stuff that gets moved into the closure
         let imgview = Arc::new(Mutex::new(imgview));
@@ -120,7 +115,7 @@ impl MediaView {
         let ctype = media_type.clone();
         let ccore = core.clone();
         let media_previewer = core.config().media_previewer;
-        let sixel = core.config().sixel;
+        let g_mode = core.config().graphics;
 
         let run_preview = Box::new(move | auto,
                                    mute,
@@ -132,6 +127,16 @@ impl MediaView {
                     return Ok(());
                 }
 
+                // Use current size. Widget could have been resized at some point
+                let (xsize, ysize, xpix, ypix) =
+                {
+                    let view = thread_imgview.lock()?;
+                    let (xsize, ysize) = view.core.coordinates.size_u();
+                    let (xpix, ypix) = view.core.coordinates.size_pixels()?;
+                    (xsize, ysize, xpix, ypix)
+                };
+                let cell_ratio = crate::term::cell_ratio()?;
+
 
                 let mut previewer = std::process::Command::new(&media_previewer)
                     .arg(format!("{}", (xsize+1)))
@@ -139,15 +144,15 @@ impl MediaView {
                     .arg(format!("{}", (ysize-1)))
                     .arg(format!("{}", xpix))
                     .arg(format!("{}", ypix))
+                    .arg(format!("{}", cell_ratio))
                     .arg(format!("{}", ctype.to_str()))
                     .arg(format!("{}", auto))
                     .arg(format!("{}", mute))
-                    .arg(format!("{}", sixel))
+                    .arg(format!("{}", g_mode))
                     .arg(&path)
                     .stdin(std::process::Stdio::piped())
                     .stdout(std::process::Stdio::piped())
                     .stderr(std::process::Stdio::inherit())
-                    // .stderr(std::process::Stdio::piped())
                     .spawn()
                     .map_err(|e| {
                         let msg = format!("Couldn't run {}{}{}! Error: {:?}",
@@ -187,7 +192,10 @@ impl MediaView {
                         .try_wait() {
                         if code.success() {
                             break;
-                        } else { return Ok(()); }
+                        } else {
+                            let msg = String::from("hunter-media failed!");
+                            return Err(failure::format_err!("{}", msg))?;
+                        }
                     }
 
 
@@ -196,11 +204,20 @@ impl MediaView {
 
                     // Newline means frame is complete
                     if line_buf == newline {
+                        let new_height;
+
                         line_buf.clear();
                         stdout.read_line(&mut line_buf)?;
-                        let h = &line_buf.trim();
-                        *height.lock().unwrap() = h
-                            .parse::<usize>()?;
+                        let h = line_buf.trim().parse::<usize>()?;
+
+                        let mut height = height.lock().unwrap();
+                        if *height != h {
+                            new_height = true;
+                        } else {
+                            new_height = false;
+                        }
+                        *height = h;
+
 
                         line_buf.clear();
                         stdout.read_line(&mut line_buf)?;
@@ -217,6 +234,9 @@ impl MediaView {
 
 
                         if let Ok(mut imgview) = thread_imgview.lock() {
+                            if new_height {
+                                imgview.core.clear()?;
+                            }
                             imgview.set_image_data(frame);
                             sender.send(crate::widget::Events::WidgetReady)
                                 .map_err(|e| HError::from(e))
@@ -275,7 +295,7 @@ impl MediaView {
                                                mute,
                                                height,
                                                position,
-                                               duration));
+                                               duration).log());
                 }
                 Ok(())
             });
@@ -307,7 +327,7 @@ impl MediaView {
             Ok(format!("{:|>elements$}|{: >empty$}",
                        "",
                        "",
-                       empty=xsize - (element_count as usize + 1),
+                       empty=xsize - (element_count as usize),
                        elements=element_count as usize))
         }
     }
@@ -328,7 +348,7 @@ impl MediaView {
 
         let mute_char = "🔇";
         let pause_char = "⏸";
-        let play_char = "⏴";
+        let play_char = "▶";
 
         let mut icons = String::new();
 
@@ -364,25 +384,14 @@ impl MediaView {
         let auto = AUTOPLAY.read()?.clone();
         let pos = self.position.lock()?.clone();
 
-        // This combination means only first frame is shown, since
+        // This combination means only first frame was shown, since
         // self.paused will be false, even with autoplay off
         if pos == 0 && auto == false && self.paused == false {
             self.toggle_autoplay();
 
-            // Since GStreamer sucks, just create a new instace
-            let mut view = MediaView::new_from_file(self.core.clone(),
-                                                    &self.file.clone(),
-                                                    self.media_type.clone())?;
-
-            // Insert buffer to prevent flicker
-            let buffer = self.imgview.lock()?.buffer.clone();
-            view.imgview.lock()?.buffer = buffer;
-
-            view.start_video()?;
-            view.paused = false;
-            view.play()?;
-            std::mem::swap(self, &mut &mut view);
-
+            self.start_video()?;
+            self.paused = false;
+            self.play()?;
 
             return Ok(())
         }
@@ -468,15 +477,23 @@ impl Widget for MediaView {
     fn set_coordinates(&mut self, coordinates: &Coordinates) -> HResult<()> {
         if &self.core.coordinates == coordinates { return Ok(()); }
 
+
         self.core.coordinates = coordinates.clone();
 
         let mut imgview = self.imgview.lock()?;
+        imgview.set_image_data(vec![]);
         imgview.set_coordinates(&coordinates)?;
 
-        let xsize = self.core.coordinates.xsize_u();
-        let ysize = self.core.coordinates.ysize_u() - 1;
+        let (xsize, ysize) = self.core.coordinates.size_u();
+        let (xpix, ypix) = self.core.coordinates.size_pixels()?;
+        let cell_ratio = crate::term::cell_ratio()?;
 
-        let xystring = format!("xy\n{}\n{}\n", xsize, ysize);
+        let xystring = format!("xy\n{}\n{}\n{}\n{}\n{}\n",
+                               xsize+1,
+                               ysize-1,
+                               xpix,
+                               ypix,
+                               cell_ratio);
 
         self.controller.send(xystring)?;
 

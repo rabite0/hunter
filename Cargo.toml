@@ -40,13 +40,22 @@ osstrtools = "0.1.9"
 pathbuftools = "0.1"
 clap = "2.33"
 mime = "0.3.13"
-# Updated to work with recent sixel-sys
-sixel = { git = "https://github.com/rabite0/sixel-rs", tag="v0.3.0" }
-base64 = { version = "0.10.1" }
+base64 = "0.10.1"
+#glib = "*"
 
 image = { version = "0.21.1", optional = true }
-gstreamer = { version = "0.11.2", optional = true }
-gstreamer-app = { version = "0.11.2", optional = true }
+gstreamer = { version = "0.14", optional = true }
+gstreamer-app = { version = "0.14", optional = true }
+gstreamer-player = { version = "0.14", optional = true }
+gstreamer-video = { version = "0.14", optional = true }
+gstreamer-base = { version = "0.14", optional = true }
+sixel-sys = { version="0.3.1" , optional = true }
+
+[dependencies.sixel-rs]
+package = "sixel"
+git = "https://github.com/rabite0/sixel-rs"
+tag="v0.3.1"
+optional = true
 
 [build-dependencies]
 # Added terminal_size_pixels recently
@@ -54,9 +63,10 @@ termion = { git = "https://github.com/redox-os/termion" }
 rustc_version = "0.2.3"
 
 [features]
-default = ["img", "video"]
-video = ["gstreamer", "gstreamer-app"]
+default = ["img", "video", "sixel"]
+video = ["gstreamer", "gstreamer-app", "gstreamer-player","gstreamer-video", "gstreamer-base"]
 img = ["image"]
+sixel = ["sixel-rs", "sixel-sys"]
 
 [[bin]]
 name = "hunter"
@@ -65,7 +75,7 @@ path = "src/main.rs"
 [[bin]]
 name = "hunter-media"
 path = "src/hunter-media.rs"
-required-features = ["img"]
+required-features = ["img", "sixel"]
 
 
 

@@ -202,7 +202,12 @@ enum PreviewWidget {
     MediaView(MediaView)
 }
 
-fn find_previewer(file: &File) -> HResult<PathBuf> {
+enum ExtPreviewer {
+    Text(PathBuf),
+    Graphics(PathBuf)
+}
+
+fn find_previewer(file: &File, g_mode: bool) -> HResult<ExtPreviewer> {
     let path = crate::paths::previewers_path()?;
     let ext = file.path.extension()?;
 
@@ -211,16 +216,35 @@ fn find_previewer(file: &File) -> HResult<PathBuf> {
         let mut previewer = PathBuf::from(&path);
         previewer.push("definitions/");
         previewer.push("text");
-        return Ok(previewer);
+        return Ok(ExtPreviewer::Text(previewer));
     }
+
+    // Try to find a graphical previewer first
+    if g_mode {
+        let g_previewer = path.read_dir()?
+            .find(|previewer| previewer.as_ref()
+                  .and_then(|p| {
+                      Ok(p.path().file_stem() == Some(ext)
+                         && p.path().extension() == Some(&std::ffi::OsStr::new("g")))
+                  })
+                  .unwrap_or(false))
+            .map(|p| p.map(|p| p.path()));
+        match g_previewer {
+            Some(Ok(g_p)) => return Ok(ExtPreviewer::Graphics(g_p)),
+            _ => {}
+        }
+    }
+
+
 
     // Look for previewers matching the file extension
     let previewer = path.read_dir()?
         .find(|previewer| previewer.as_ref()
                                    .and_then(|p| Ok(p.file_name() == ext ))
                                    .unwrap_or(false))
-         .map(|p| p.map(|p| p.path()));
-    Ok(previewer??)
+        .map(|p| p.map(|p| p.path()));
+
+    Ok(ExtPreviewer::Text(previewer??))
 }
 
 
@@ -349,7 +373,11 @@ impl Previewer {
             &self.core,
             move |stale: &Stale|
             {
-                kill_proc().unwrap();
+                kill_proc().log();
+                // Delete files left by graphical PDF previews, etc.
+                std::fs::remove_dir_all("/tmp/hunter-previews/")
+                    .map_err(HError::from)
+                    .log();
 
                 if file.kind == Kind::Directory  {
                     let preview = Previewer::preview_dir(&file,
@@ -509,27 +537,40 @@ impl Previewer {
                         stale: &Stale,
                         animator: &Stale)
                         -> HResult<PreviewWidget> {
-        let previewer = find_previewer(&file)?;
+        let previewer = if core.config().graphics.as_str() != "unicode" {
+             find_previewer(&file, true)?
+        } else {
+            find_previewer(&file, false)?
+        };
 
+        match previewer {
+            ExtPreviewer::Text(previewer) => {
+                let lines = Previewer::run_external(previewer, file, stale);
 
-        let lines = Previewer::run_external(previewer, file, stale);
+                if stale.is_stale()? { return Previewer::preview_failed(&file) }
 
-        if stale.is_stale()? { return Previewer::preview_failed(&file) }
+                let mut textview = TextView {
+                    lines: lines?,
+                    core: core.clone(),
+                    follow: false,
+                    offset: 0};
+                textview.set_coordinates(&core.coordinates).log();
+                textview.refresh().log();
+                textview.animate_slide_up(Some(animator)).log();
 
-        let mut textview = TextView {
-            lines: lines?,
-            core: core.clone(),
-            follow: false,
-            offset: 0};
-        textview.set_coordinates(&core.coordinates).log();
-        textview.refresh().log();
-        textview.animate_slide_up(Some(animator)).log();
+                Ok(PreviewWidget::TextView(textview))
+            },
+            ExtPreviewer::Graphics(previewer) => {
+                let lines = Previewer::run_external(previewer, file, stale)?;
+                let gfile = lines.first()?;
+                let imgview = ImgView::new_from_file(core.clone(),
+                                                     &PathBuf::from(&gfile))?;
 
-
-        return Ok(PreviewWidget::TextView(textview))
+                Ok(PreviewWidget::ImgView(imgview))
+            }
+        }
     }
 }
-
 
 impl Widget for Previewer {
     fn get_core(&self) -> HResult<&WidgetCore> {

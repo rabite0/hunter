@@ -1,3 +1,5 @@
+use crate::fail::HResult;
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct Size(pub (u16, u16));
 #[derive(Debug, Clone, PartialEq)]
@@ -108,6 +110,19 @@ impl Coordinates {
     pub fn size_u(&self) -> (usize, usize) {
         let (xsize, ysize) = self.u16size();
         ((xsize-1) as usize, (ysize-1) as usize)
+    }
+
+    pub fn size_pixels(&self) -> HResult<(usize, usize)> {
+        let (xsize, ysize) = self.size_u();
+        let (cols, rows) = crate::term::size()?;
+        let (xpix, ypix) = crate::term::size_pixels()?;
+        // Cell dimensions
+        let (xpix, ypix) = (xpix/cols, ypix/rows);
+        // Frame dimensions
+        let (xpix, ypix) = (xpix * (xsize + 1),
+                            ypix * (ysize + 1));
+
+        Ok((xpix as usize, ypix as usize))
     }
 
     pub fn top(&self) -> Position {

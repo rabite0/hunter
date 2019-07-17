@@ -131,6 +131,7 @@ pub trait ScreenExt: Write {
         let (xsize, ysize) = termion::terminal_size()?;
         Ok(((xsize-1) as usize, (ysize-1) as usize))
     }
+
     fn xsize(&self) -> HResult<usize> {
         let (xsize, _) = termion::terminal_size()?;
         Ok((xsize - 1) as usize)
@@ -201,6 +202,22 @@ pub fn ysize() -> u16 {
 pub fn size() -> HResult<(usize, usize)> {
     let (xsize, ysize) = termion::terminal_size()?;
     Ok(((xsize-1) as usize, (ysize-1) as usize))
+}
+
+pub fn size_pixels() -> HResult<(usize, usize)> {
+    let (xsize, ysize) = termion::terminal_size_pixels()?;
+    Ok((xsize as usize, ysize as usize))
+}
+
+pub fn cell_ratio() -> HResult<f32> {
+    let (xsize, ysize) = size()?;
+    let (xpix, ypix) = size_pixels()?;
+
+    let cell_xpix = xpix as f32 / (xsize+1) as f32;
+    let cell_ypix = ypix as f32 / (ysize+1) as f32;
+    let ratio = cell_xpix / cell_ypix;
+
+    Ok(ratio)
 }
 
 pub fn sized_string(string: &str, xsize: u16) -> String {

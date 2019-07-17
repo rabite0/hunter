@@ -16,7 +16,7 @@ impl std::cmp::PartialEq for ImgView {
 pub struct ImgView {
     pub core: WidgetCore,
     pub buffer: Vec<String>,
-    pub file: PathBuf
+    pub file: Option<PathBuf>
 }
 
 impl ImgView {
@@ -24,7 +24,7 @@ impl ImgView {
         let mut view = ImgView {
             core: core,
             buffer: vec![],
-            file: file.to_path_buf()
+            file: Some(file.to_path_buf())
         };
 
         view.encode_file()?;
@@ -33,25 +33,23 @@ impl ImgView {
 
     pub fn encode_file(&mut self) -> HResult<()> {
         let (xsize, ysize) = self.core.coordinates.size_u();
-        let (cols, rows) = termion::terminal_size()?;
-        let (xpix, ypix) = termion::terminal_size_pixels()?;
-        let (xpix, ypix) = (xpix/cols, ypix/rows);
-        let (xpix, ypix) = (xpix * (xsize as u16 + 1),
-                            ypix * (ysize as u16 + 1));
+        let (xpix, ypix) = self.core.coordinates.size_pixels()?;
+        let cell_ratio = crate::term::cell_ratio()?;
 
-        let file = &self.file;
+        let file = &self.file.as_ref()?;
         let media_previewer = self.core.config().media_previewer;
-        let sixel = self.core.config().sixel;
+        let g_mode = self.core.config().graphics;
 
         let output = std::process::Command::new(&media_previewer)
             .arg(format!("{}", (xsize+1)))
             .arg(format!("{}", (ysize+1)))
             .arg(format!("{}", xpix))
             .arg(format!("{}", ypix))
+            .arg(format!("{}", cell_ratio))
             .arg("image")
             .arg(format!("true"))
             .arg(format!("true"))
-            .arg(format!("{}", sixel))
+            .arg(format!("{}", g_mode))
             .arg(file.to_string_lossy().to_string())
             .output()
             .map_err(|e| {
@@ -101,7 +99,9 @@ impl Widget for ImgView {
         if &self.core.coordinates == coordinates { return Ok(()) }
 
         self.core.coordinates = coordinates.clone();
-        self.encode_file()?;
+        if self.file.is_some() {
+            self.encode_file()?;
+        }
 
         Ok(())
     }
@@ -132,7 +132,8 @@ impl Widget for ImgView {
 
 impl Drop for ImgView {
     fn drop(&mut self) {
-        if self.core.config().sixel {
+        let g_mode = self.core.config().graphics;
+        if g_mode == "kitty" || g_mode == "auto" {
             print!("\x1b_Ga=d\x1b\\");
         }
     }

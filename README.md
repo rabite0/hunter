@@ -5,6 +5,7 @@ hunter
 
 NEW
 
+- [Graphics] High quality support for graphics using SIXEL/kitty protocols
 - [QuickActions] Added quick action creator/customizer
 - [Previews] New and improved preview customization
 - [**[IRC channel](https://webchat.freenode.net/?channels=hunter)**] Problems? Bugs? Praise? Chat with us: [#hunter @ Freenode](https://webchat.freenode.net/?channels=hunter)!
@@ -41,7 +42,7 @@ A big thanks to ranger and its developers. Without its inspiration this wouldn't
 * Exit and cd into last directory and put selected files into shell variables
 * Slide up animation for previews for a smoother experience (configurable)
 * Can show icons with the [right fonts](https://github.com/ryanoasis/nerd-fonts)
-* Optional support for previews of image/video/audio files using Unicode half-block drawing
+* Optional support for previews of image(+pdf)/video/audio files using Unicode half-block drawing and SIXEL, or kitty's graphics protocol
 
 
 
@@ -67,7 +68,7 @@ hunter comes with definitions to enable previewing certain file typse. To use th
 * bat / highlight for syntax highlighting
 * 7z for archives
 * w3m / links / elinks / lynx for html
-* pdftotext / mutool for pdf
+* pdftotext / mutool for pdf or pdftoppm in graphics mode
 
 ### Debian/Ubuntu
 
@@ -122,8 +123,11 @@ show_hidden=off
 select_cmd=find -type f | fzf -m
 cd_cmd=find -type d | fzf
 icons=off
+ratios=20,30,49
 media_autostart=off
 media_mute=off
+media_previewer=hunter-media
+graphics_mode=auto
 ```
 
 ## Previews
@@ -136,6 +140,8 @@ and create a symlink to it in
 ```$HOME/.config/hunter/previewers/```
 
 with the extension of the file type you want to preview. Make sure the script is executable. That's it.
+
+A graphical previewer can be created by appending ```.g``` to the name of the symlink. It should print the path to the generated image file. If you want the file deleted after display, create it in the ```/tmp/hunter-preview``` directory.
 
 ## Quick Actions
 These are executables you can run by pressing ```a```. Which actions you can see depends on the MIME type of the files you have selected. If you have multiple files selected, hunter will try to use the most specific MIME type possible. For example, if you have selected a bunch of images with different types you will see actions for "image/". You can see the computed MIME type in the header bar.

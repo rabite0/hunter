@@ -14,7 +14,7 @@ struct ArgvConfig {
     animation: Option<bool>,
     show_hidden: Option<bool>,
     icons: Option<bool>,
-    sixel: Option<bool>,
+    graphics: Option<String>,
 }
 
 impl ArgvConfig {
@@ -23,7 +23,7 @@ impl ArgvConfig {
             animation: None,
             show_hidden: None,
             icons: None,
-            sixel: None
+            graphics: None
         }
     }
 }
@@ -37,7 +37,6 @@ pub fn set_argv_config(args: clap::ArgMatches) -> HResult<()> {
     let animation = args.is_present("animation-off");
     let show_hidden = args.is_present("show-hidden");
     let icons = args.is_present("icons");
-    let sixel = args.is_present("sixel");
 
     let mut config = ArgvConfig::new();
 
@@ -53,8 +52,12 @@ pub fn set_argv_config(args: clap::ArgMatches) -> HResult<()> {
         config.icons = Some(true)
     }
 
-    if sixel == true {
-        config.sixel = Some(true)
+    if let Some(mode) = args.value_of("graphics") {
+        if mode == "auto" {
+            config.graphics = Some(detect_g_mode());
+        } else {
+            config.graphics = Some(String::from(mode));
+        }
     }
 
     *ARGV_CONFIG.write()? = config;
@@ -71,7 +74,7 @@ fn infuse_argv_config(mut config: Config) -> Config {
     argv_config.animation.map(|val| config.animation = val);
     argv_config.show_hidden.map(|val| config.show_hidden = val);
     argv_config.icons.map(|val| config.icons = val);
-    argv_config.sixel.map(|val| config.sixel = val);
+    argv_config.graphics.map(|val| config.graphics = val);
 
     config
 }
@@ -88,7 +91,7 @@ pub struct Config {
     pub media_mute: bool,
     pub media_previewer: String,
     pub ratios: Vec::<usize>,
-    pub sixel: bool,
+    pub graphics: String,
 }
 
 
@@ -111,7 +114,7 @@ impl Config {
             media_mute: false,
             media_previewer: "hunter-media".to_string(),
             ratios: vec![20,30,49],
-            sixel: false
+            graphics: detect_g_mode(),
         }
     }
 
@@ -126,16 +129,16 @@ impl Config {
 
         let config = config_string.lines().fold(Config::new(), |mut config, line| {
             match Config::prep_line(line) {
-                Ok(("animation", "on")) => { config.animation = true; },
-                Ok(("animation", "off")) => { config.animation = false; },
+                Ok(("animation", "on")) => config.animation = true,
+                Ok(("animation", "off")) => config.animation = false,
                 Ok(("animation_refresh_frequency", frequency)) => {
                     match frequency.parse::<usize>() {
                         Ok(parsed_freq) => config.animation_refresh_frequency = parsed_freq,
                         _ => HError::config_error::<Config>(line.to_string()).log()
                     }
                 }
-                Ok(("show_hidden", "on")) => { config.show_hidden = true; },
-                Ok(("show_hidden", "off")) => { config.show_hidden = false; },
+                Ok(("show_hidden", "on")) => config.show_hidden = true,
+                Ok(("show_hidden", "off")) => config.show_hidden = false,
                 Ok(("icons", "on")) => config.icons = true,
                 Ok(("icons", "off")) => config.icons = false,
                 Ok(("select_cmd", cmd)) => {
@@ -146,10 +149,10 @@ impl Config {
                     let cmd = cmd.to_string();
                     config.cd_cmd = cmd;
                 }
-                Ok(("media_autoplay", "on")) => { config.media_autoplay = true; },
-                Ok(("media_autoplay", "off")) => { config.media_autoplay = false; },
-                Ok(("media_mute", "on")) => { config.media_mute = true; },
-                Ok(("media_mute", "off")) => { config.media_mute = false; },
+                Ok(("media_autoplay", "on")) => config.media_autoplay = true,
+                Ok(("media_autoplay", "off")) => config.media_autoplay = false,
+                Ok(("media_mute", "on")) => config.media_mute = true,
+                Ok(("media_mute", "off")) => config.media_mute = false,
                 Ok(("media_previewer", cmd)) => {
                     let cmd = cmd.to_string();
                     config.media_previewer = cmd;
@@ -167,7 +170,13 @@ impl Config {
                         }
                     }
                 }
-                Ok(("sixel", "on")) => { config.sixel = true; }
+                #[cfg(feature = "sixel")]
+                Ok(("graphics",
+                    "sixel")) => config.graphics = "sixel".to_string(),
+                Ok(("graphics",
+                    "kitty")) => config.graphics = "kitty".to_string(),
+                Ok(("graphics",
+                    "auto")) => config.graphics = detect_g_mode(),
                 _ => { HError::config_error::<Config>(line.to_string()).log(); }
             }
             config
@@ -195,4 +204,14 @@ impl Config {
     pub fn show_hidden(&self) -> bool {
         self.show_hidden
     }
+}
+
+fn detect_g_mode() -> String {
+    let term = std::env::var("TERM").unwrap_or(String::new());
+    match term.as_str() {
+        "xterm-kitty" => "kitty",
+        #[cfg(feature = "sixel")]
+        "xterm" => "sixel",
+        _ => "unicode"
+    }.to_string()
 }
