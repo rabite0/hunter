@@ -375,9 +375,11 @@ impl Previewer {
             {
                 kill_proc().log();
                 // Delete files left by graphical PDF previews, etc.
-                std::fs::remove_dir_all("/tmp/hunter-previews/")
-                    .map_err(HError::from)
-                    .log();
+                if std::path::Path::new("/tmp/hunter-previews").exists() {
+                    std::fs::remove_dir_all("/tmp/hunter-previews/")
+                        .map_err(HError::from)
+                        .log();
+                }
 
                 if file.kind == Kind::Directory  {
                     let preview = Previewer::preview_dir(&file,
