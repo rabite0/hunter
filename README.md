@@ -59,7 +59,8 @@ If it works on a system not mentioned here, please open an issue. Also feel free
 * gcc
 * libmagic-dev
 * Rust-nighly compiler
-* GStreamer for video/audio previews
+* GStreamer for video/audio previews (optional)
+* libsixel (optional)
 
 ### PREVIEWERS
 
@@ -72,16 +73,16 @@ hunter comes with definitions to enable previewing certain file types. To use th
 
 ### Debian/Ubuntu
 
-* ```apt install gcc libmagic-dev gstreamer1.0-devel gst-plugins-base gst-plugins-good```
+* ```apt install gcc libgstreamer-plugins-base1.0-dev gstreamer1.0-plugins-good libgstreamer-plugins-bad1.0-dev libsixel-bin```
 
 ## INSTALLATION:
 
 Compiling hunter currently requires a nightly Rust compiler!
 The easiest way to get a nightly compiler is with [rustup](https://rustup.rs/). If you have rustup installed it will automatically download and use a version that is known to work when you run cargo.
 
-By default it will install a full-featured version with support for media-previews. You can control this using the feature flags ```img```, and ```video```. These can be disabled by calling cargo with ```--no-default-features```. You can then enable image previews with ```--features=img``` and add video/audio with ```--feature=img,video```. Note that video requires img!
+By default it will install a full-featured version with support for media-previews. You can control this using the feature flags ```img```, ```video``` and ```sixel```. These can be disabled by calling cargo with ```--no-default-features```. You can then enable image previews with ```--features=img``` and add video/audio with ```--feature=img,video```. Note that video requires img!
 
-Note that this only works if hunter can find the "preview-gen" tool somewhere in $PATH!
+Note that this only works if hunter can find the "hunter-media" tool somewhere in $PATH!
 
 ### Install rustup
 
