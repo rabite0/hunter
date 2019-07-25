@@ -36,6 +36,12 @@ pub fn config_path() -> HResult<PathBuf> {
     Ok(config_path)
 }
 
+pub fn bindings_path() -> HResult<PathBuf> {
+    let mut config_path = hunter_path()?;
+    config_path.push("keys");
+    Ok(config_path)
+}
+
 pub fn bookmark_path() -> HResult<PathBuf> {
     let mut bookmark_path = hunter_path()?;
     bookmark_path.push("bookmarks");

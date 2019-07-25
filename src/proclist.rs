@@ -656,30 +656,10 @@ impl Widget for ProcView {
         self.hbox.get_drawlist()
     }
     fn on_key(&mut self, key: Key) -> HResult<()> {
-        match key {
-            Key::Char('w') | Key::Esc => {
-                self.animator.set_stale().log();
-                self.get_core()?.clear().log();
-                return Err(HError::PopupFinnished) }
-            Key::Char('d') => { self.remove_proc()? }
-            Key::Char('K') => { self.get_listview_mut().kill_proc()? }
-            Key::Up | Key::Char('k') => {
-                self.get_listview_mut().move_up();
-            }
-            Key::Down | Key::Char('j') => {
-                self.get_listview_mut().move_down();
-            }
-            Key::Char('f') => { self.toggle_follow().log(); }
-            Key::Ctrl('j') => { self.scroll_down().log(); },
-            Key::Ctrl('k') => { self.scroll_up().log(); },
-            Key::Ctrl('v') => { self.page_down().log(); },
-            Key::Alt('v') => { self.page_up().log(); },
-            Key::Char('>') => { self.scroll_bottom().log(); },
-            Key::Char('<') => { self.scroll_top().log(); }
-            _ => {}
-        }
+        self.do_key(key)?;
         self.refresh().log();
         self.draw().log();
+
         Ok(())
     }
 }
@@ -728,5 +708,69 @@ impl ConcatOsString for Vec<OsString> {
 
             OsString::from_vec(string)
         })
+    }
+}
+
+use crate::keybind::*;
+
+impl Acting for ProcView {
+    type Action = ProcessAction;
+
+    fn search_in(&self) -> Bindings<Self::Action> {
+        self.core.config().keybinds.process
+    }
+
+    fn movement(&mut self, movement: &Movement) -> HResult<()> {
+        self.get_listview_mut().movement(movement)
+    }
+
+    fn do_action(&mut self, action: &Self::Action) -> HResult<()> {
+        use ProcessAction::*;
+
+        match action {
+            Close => { self.animator.set_stale().log();
+                       self.core.clear().log();
+                       Err(HError::PopupFinnished)? }
+            Remove => self.remove_proc()?,
+            Kill => self.get_listview_mut().kill_proc()?,
+            FollowOutput => self.toggle_follow()?,
+            ScrollOutputDown => self.scroll_down()?,
+            ScrollOutputUp => self.scroll_up()?,
+            ScrollOutputPageDown => self.page_down()?,
+            ScrollOutputPageUp => self.page_up()?,
+            ScrollOutputBottom => self.scroll_bottom()?,
+            ScrollOutputTop => self.scroll_top()?
+        }
+
+        Ok(())
+    }
+}
+
+
+impl Acting for ListView<Vec<Process>> {
+    type Action=ProcessAction;
+
+    fn search_in(&self) -> Bindings<Self::Action> {
+        self.core.config().keybinds.process
+    }
+
+    fn movement(&mut self, movement: &Movement) -> HResult<()> {
+        use Movement::*;
+
+        match movement {
+            Up(n) => { for _ in 0..*n { self.move_up(); }; self.refresh()?; }
+            Down(n) => { for _ in 0..*n { self.move_down(); }; self.refresh()?; }
+            PageUp => self.page_up(),
+            PageDown => self.page_down(),
+            Top => self.move_top(),
+            Bottom => self.move_bottom(),
+            Left | Right => {}
+        }
+
+        Ok(())
+    }
+
+    fn do_action(&mut self, _action: &Self::Action) -> HResult<()> {
+        Ok(())
     }
 }

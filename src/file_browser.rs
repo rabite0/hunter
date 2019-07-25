@@ -1,4 +1,4 @@
-use termion::event::{Event, Key};
+use termion::event::Key;
 use pathbuftools::PathBufTools;
 use osstrtools::OsStrTools;
 use async_value::Stale;
@@ -126,6 +126,11 @@ impl Tabbable for TabView<FileBrowser> {
         Ok(())
     }
 
+    fn prev_tab(&mut self) -> HResult<()> {
+        self.prev_tab_();
+        Ok(())
+    }
+
     fn goto_tab(&mut self, index: usize) -> HResult<()> {
         self.goto_tab_(index)
     }
@@ -152,10 +157,11 @@ impl Tabbable for TabView<FileBrowser> {
     }
 
     fn on_key_sub(&mut self, key: Key) -> HResult<()> {
-        match key {
-            Key::Char('!') => {
+        match self.active_tab_mut().on_key(key) {
+            // returned by specific tab when called with ExecCmd action
+            Err(HError::FileBrowserNeedTabFiles) => {
                 let tab_dirs = self.widgets.iter().map(|w| w.cwd.clone())
-                                                  .collect::<Vec<_>>();
+                    .collect::<Vec<_>>();
                 let selected_files = self
                     .widgets
                     .iter()
@@ -165,7 +171,7 @@ impl Tabbable for TabView<FileBrowser> {
 
                 self.widgets[self.active].exec_cmd(tab_dirs, selected_files)
             }
-            _ => { self.active_tab_mut().on_key(key) }
+            result @ _ => result
         }
     }
 
@@ -239,6 +245,7 @@ impl Tabbable for TabView<FileBrowser> {
         Ok(())
     }
 }
+
 
 
 
@@ -1077,7 +1084,6 @@ impl FileBrowser {
     fn exec_cmd(&mut self,
                 tab_dirs: Vec<File>,
                 tab_files: Vec<Vec<File>>) -> HResult<()> {
-
         let cwd = self.cwd()?.clone();
         let selected_file = self.selected_file().ok();
         let selected_files = self.selected_files().ok();
@@ -1295,40 +1301,65 @@ impl Widget for FileBrowser {
     }
 
     fn on_key(&mut self, key: Key) -> HResult<()> {
-        match key {
-            Key::Char('a') => self.quick_action()?,
-            Key::Char(']') => self.move_down_left_widget()?,
-            Key::Char('[') => self.move_up_left_widget()?,
-            Key::Alt(' ') => self.external_select()?,
-            Key::Alt('/') => self.external_cd()?,
-            Key::Char('/') => { self.turbo_cd()?; },
-            Key::Char('~') => { self.go_home()?; },
-            Key::Char('q') => HError::quit()?,
-            Key::Char('Q') => { self.quit_with_dir()?; },
-            Key::Right | Key::Char('l') => { self.enter_dir()?; },
-            Key::Char('L') => { self.open_bg()?; },
-            Key::Left | Key::Char('h') => { self.go_back()?; },
-            Key::Char('-') => { self.goto_prev_cwd()?; },
-            Key::Char('`') => { self.goto_bookmark()?; },
-            Key::Char('m') => { self.add_bookmark()?; },
-            Key::Char('w') => { self.show_procview()?; },
-            Key::Char('g') => self.show_log()?,
-            Key::Char('z') => self.run_subshell()?,
-            Key::Char('c') => self.toggle_colums(),
-            _ => {
-                let main_widget_result = self.main_widget_mut()?.on_key(key);
-                if let Err(HError::WidgetUndefinedKeyError{..}) = main_widget_result {
-                    match self.preview_widget_mut()?.on_key(key) {
-                        Ok(()) => {}
-                        Err(HError::WidgetUndefinedKeyError{key}) => {
-                            self.bad(Event::Key(key))?;
-                        }
-                        err @ Err(_)  => { err?; }
+        match self.do_key(key) {
+            Err(HError::WidgetUndefinedKeyError{..}) => {
+                match self.main_widget_mut()?.on_key(key) {
+                    Err(HError::WidgetUndefinedKeyError{..}) => {
+                        self.preview_widget_mut()?.on_key(key)?
                     }
+                    e @ _ => e?
                 }
-            },
-        }
+            }
+            e @ _ => e?
+        };
+
         if !self.columns.zoom_active { self.update_preview().log(); }
+        Ok(())
+    }
+}
+
+use crate::keybind::{Acting, Bindings, FileBrowserAction, Movement};
+
+impl Acting for FileBrowser {
+    type Action=FileBrowserAction;
+
+    fn search_in(&self) -> Bindings<Self::Action> {
+        self.core.config().keybinds.filebrowser
+    }
+
+    fn movement(&mut self, movement: &Movement) -> HResult<()> {
+        use Movement::*;
+
+        match movement {
+            Left => self.go_back(),
+            Right => self.enter_dir(),
+            _ => self.main_widget_mut()?.movement(movement)
+        }
+    }
+
+    fn do_action(&mut self, action: &Self::Action) -> HResult<()> {
+        use FileBrowserAction::*;
+        match action {
+            Quit => HError::quit()?,
+            QuitWithDir => self.quit_with_dir()?,
+            LeftColumnDown => self.move_down_left_widget()?,
+            LeftColumnUp => self.move_up_left_widget()?,
+            GotoHome => self.go_home()?,
+            TurboCd => self.turbo_cd()?,
+            SelectExternal => self.external_select()?,
+            EnterDirExternal => self.external_cd()?,
+            RunInBackground => self.open_bg()?,
+            GotoPrevCwd => self.goto_prev_cwd()?,
+            ShowBookmarks => self.goto_bookmark()?,
+            AddBookmark => self.add_bookmark()?,
+            ShowProcesses => self.show_procview()?,
+            ShowLog => self.show_log()?,
+            ShowQuickActions => self.quick_action()?,
+            RunSubshell => self.run_subshell()?,
+            ToggleColumns => self.toggle_colums(),
+            // Tab implementation needs to call exec_cmd because ALL files are needed
+            ExecCmd => Err(HError::FileBrowserNeedTabFiles)?
+        }
         Ok(())
     }
 }

@@ -6,6 +6,7 @@ use std::sync::RwLock;
 use crate::paths;
 
 use crate::fail::{HError, HResult, ErrorLog};
+use crate::keybind::KeyBinds;
 
 
 #[derive(Clone)]
@@ -92,6 +93,7 @@ pub struct Config {
     pub media_previewer: String,
     pub ratios: Vec::<usize>,
     pub graphics: String,
+    pub keybinds: KeyBinds,
 }
 
 
@@ -115,6 +117,7 @@ impl Config {
             media_previewer: "hunter-media".to_string(),
             ratios: vec![20,30,49],
             graphics: detect_g_mode(),
+            keybinds: KeyBinds::default(),
         }
     }
 
@@ -182,7 +185,12 @@ impl Config {
             config
         });
 
-        let config = infuse_argv_config(config);
+        let mut config = infuse_argv_config(config);
+
+        //use std::iter::Extend;
+        KeyBinds::load()
+            .map(|kb| config.keybinds = kb)
+            .log();
 
         Ok(config)
     }

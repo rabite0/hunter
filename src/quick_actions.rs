@@ -12,15 +12,16 @@ use std::ffi::OsString;
 use std::str::FromStr;
 
 
-use crate::fail::{HResult, HError};
+use crate::fail::{HResult, HError, KeyBindError};
 use crate::widget::{Widget, WidgetCore, Events};
-use crate::foldview::{Foldable, FoldableWidgetExt};
+use crate::foldview::{Foldable, FoldableWidgetExt, ActingExt};
 use crate::listview::ListView;
 use crate::proclist::ProcView;
 use crate::files::File;
 use crate::paths;
 use crate::term;
 use crate::term::ScreenExt;
+use crate::keybind::{Bindings, Movement, QuickActionAction};
 
 
 pub type QuickActionView = ListView<Vec<QuickActions>>;
@@ -66,47 +67,7 @@ impl FoldableWidgetExt for ListView<Vec<QuickActions>> {
     }
 
     fn on_key(&mut self, key: Key) -> HResult<()> {
-        match key {
-            Key::Char('a') |
-            Key::Char('h') |
-            Key::Ctrl('c') |
-            Key::Esc => HError::popup_finnished()?,
-            // undefined key causes parent to handle move up/down
-            Key::Char('j') => HError::undefined_key(key)?,
-            Key::Char('k') => HError::undefined_key(key)?,
-            Key::Char('l') => self.run_action(None),
-            key @ Key::Char(_) => {
-                let chr = match key {
-                    Key::Char(key) => key,
-                    // some other key that becomes None with letter_to_num()
-                    _ => 'x'
-                };
-
-                let num = self.letter_to_num(chr);
-
-                if let Some(num) = num {
-                    // only select the action at first, to prevent accidents
-                    if self.get_selection() != num {
-                        self.set_selection(num);
-                        return Ok(());
-                    // activate the action the second time the key is pressed
-                    } else {
-                        if self.is_description_selected() {
-                            self.toggle_fold()?;
-                        } else {
-                            self.run_action(Some(num))?;
-                            HError::popup_finnished()?
-                        }
-                    }
-                }
-
-                // Was a valid key, but not used, don't handle at parent
-                return Ok(());
-            }
-            _ => HError::undefined_key(key)?
-        }?;
-
-        HError::popup_finnished()?
+        ActingExt::do_key_ext(self,key)
     }
 
     fn render(&self) -> Vec<String> {
@@ -130,6 +91,50 @@ impl FoldableWidgetExt for ListView<Vec<QuickActions>> {
             })
     }
 }
+
+impl ActingExt for QuickActionView {
+    type Action = QuickActionAction;
+
+    fn search_in(&self) -> Bindings<Self::Action> {
+        self.core.config().keybinds.quickaction
+    }
+
+    fn movement(&mut self, movement: &Movement) -> HResult<()> {
+        match movement {
+            Movement::Right => self.run_action(None),
+            _ => Err(KeyBindError::MovementUndefined)?
+        }
+    }
+
+    fn do_action(&mut self, action: &Self::Action) -> HResult<()> {
+        use crate::keybind::QuickActionAction::*;
+
+        match action {
+            Close => self.popup_finnished(),
+            SelectOrRun(chr) => {
+                let num = self.letter_to_num(*chr);
+
+                if let Some(num) = num {
+                    // only select the action at first, to prevent accidents
+                    if self.get_selection() != num {
+                        self.set_selection(num);
+                        return Ok(());
+                    // activate the action the second time the key is pressed
+                    } else {
+                        if self.is_description_selected() {
+                            self.toggle_fold()?;
+                        } else {
+                            self.run_action(Some(num))?;
+                            HError::popup_finnished()?
+                        }
+                    }
+                }
+                Ok(())
+            }
+        }
+    }
+}
+
 
 
 impl ListView<Vec<QuickActions>> {

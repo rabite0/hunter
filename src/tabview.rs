@@ -1,13 +1,14 @@
 use termion::event::Key;
 
 use crate::widget::{Widget, WidgetCore};
-use crate::fail::{HResult, ErrorLog};
+use crate::fail::{HResult, HError, ErrorLog};
 use crate::coordinates::Coordinates;
 
 pub trait Tabbable {
     fn new_tab(&mut self) -> HResult<()>;
     fn close_tab(&mut self) -> HResult<()>;
     fn next_tab(&mut self) -> HResult<()>;
+    fn prev_tab(&mut self) -> HResult<()>;
     fn goto_tab(&mut self, index: usize) -> HResult<()>;
     fn on_tab_switch(&mut self) -> HResult<()> {
         Ok(())
@@ -17,13 +18,7 @@ pub trait Tabbable {
     fn active_tab_mut(&mut self) -> &mut dyn Widget;
     fn on_key_sub(&mut self, key: Key) -> HResult<()>;
     fn on_key(&mut self, key: Key) -> HResult<()> {
-        match key {
-            Key::F(n) => self.goto_tab(n as usize -1),
-            Key::Ctrl('t') => self.new_tab(),
-            Key::Ctrl('w') => self.close_tab(),
-            Key::Char('\t') => self.next_tab(),
-            _ => self.on_key_sub(key)
-        }
+        self.on_key_sub(key)
     }
     fn on_refresh(&mut self) -> HResult<()> { Ok(()) }
     fn on_config_loaded(&mut self) -> HResult<()> { Ok(()) }
@@ -105,6 +100,15 @@ impl<T> TabView<T> where T: Widget, TabView<T>: Tabbable {
         }
         self.on_tab_switch().log();
     }
+
+    pub fn prev_tab_(&mut self) {
+        if self.active == 0 {
+            self.active = self.widgets.len() - 1;
+        } else {
+            self.active -= 1;
+        }
+        self.on_tab_switch().log();
+    }
 }
 
 impl<T> Widget for TabView<T> where T: Widget, TabView<T>: Tabbable {
@@ -173,7 +177,35 @@ impl<T> Widget for TabView<T> where T: Widget, TabView<T>: Tabbable {
     }
 
     fn on_key(&mut self, key: Key) -> HResult<()> {
-        Tabbable::on_key(self, key)?;
+        match self.do_key(key) {
+            Err(HError::WidgetUndefinedKeyError{..}) => Tabbable::on_key(self, key)?,
+            e @ _ => e?
+        }
+
+        Ok(())
+    }
+}
+
+use crate::keybind::*;
+
+impl<T: Widget> Acting for TabView<T> where TabView<T>: Tabbable {
+    type Action = TabAction;
+
+    fn search_in(&self) -> Bindings<Self::Action> {
+        self.core.config().keybinds.tab
+    }
+
+    fn do_action(&mut self, action: &Self::Action) -> HResult<()> {
+        use TabAction::*;
+
+        match action {
+            GotoTab(n) => self.goto_tab(*n)?,
+            NewTab => self.new_tab()?,
+            CloseTab => self.close_tab()?,
+            NextTab => self.next_tab()?,
+            PrevTab => self.prev_tab()?,
+        }
+
         Ok(())
     }
 }

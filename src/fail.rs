@@ -1,7 +1,7 @@
 use failure;
 use failure::Fail;
 //use failure::Backtrace;
-use async_value::AError;
+//use async_value::AError;
 
 
 use termion::event::Key;
@@ -102,10 +102,16 @@ pub enum HError {
     UTF8ParseError(std::str::Utf8Error),
     #[fail(display = "Failed to parse integer!")]
     ParseIntError(std::num::ParseIntError),
+    #[fail(display = "Failed to parse char!")]
+    ParseCharError(std::char::ParseCharError),
     #[fail(display = "{}", _0)]
     Media(MediaError),
     #[fail(display = "{}", _0)]
     Mime(MimeError),
+    #[fail(display = "{}", _0)]
+    KeyBind(KeyBindError),
+    #[fail(display = "FileBrowser needs to know about all tab's files to run exec!")]
+    FileBrowserNeedTabFiles
 }
 
 impl HError {
@@ -203,33 +209,64 @@ pub trait ErrorLog where Self: Sized {
     fn log_and(self) -> Self;
 }
 
-impl<T> ErrorLog for HResult<T> {
+// impl<T> ErrorLog for HResult<T> {
+//     fn log(self) {
+//         if let Err(err) = self {
+//             put_log(&err).ok();
+//         }
+//     }
+
+//     fn log_and(self) -> Self {
+//         if let Err(err) = &self {
+//             put_log(err).ok();
+//         }
+//         self
+//     }
+// }
+
+
+// impl<T> ErrorLog for Result<T, AError> {
+//     fn log(self) {
+//         if let Err(err) = self {
+//             put_log(&err.into()).ok();
+//         }
+//     }
+
+//     fn log_and(self) -> Self {
+//         if let Err(err) = &self {
+//             put_log(&err.clone().into()).ok();
+//         }
+//         self
+//     }
+// }
+
+impl<T, E> ErrorLog for Result<T, E>
+where E: Into<HError> + Clone {
     fn log(self) {
         if let Err(err) = self {
+            let err: HError = err.into();
             put_log(&err).ok();
         }
     }
-
     fn log_and(self) -> Self {
-        if let Err(err) = &self {
-            put_log(err).ok();
+        if let Err(ref err) = self {
+            let err: HError = err.clone().into();
+            put_log(&err).ok();
         }
         self
     }
 }
 
-
-impl<T> ErrorLog for Result<T, AError> {
+impl<E> ErrorLog for E
+where E: Into<HError> + Clone {
     fn log(self) {
-        if let Err(err) = self {
-            put_log(&err.into()).ok();
-        }
-    }
+        let err: HError = self.into();
+        put_log(&err).ok();
 
+    }
     fn log_and(self) -> Self {
-        if let Err(err) = &self {
-            put_log(&err.clone().into()).ok();
-        }
+        let err: HError = self.clone().into();
+        put_log(&err).ok();
         self
     }
 }
@@ -334,6 +371,13 @@ impl From<std::num::ParseIntError> for HError {
     }
 }
 
+impl From<std::char::ParseCharError> for HError {
+    fn from(error: std::char::ParseCharError) -> Self {
+        let err = HError::ParseCharError(error);
+        err
+    }
+}
+
 
 // MIME Errors
 
@@ -350,5 +394,38 @@ pub enum MimeError {
 impl From<MimeError> for HError {
     fn from(e: MimeError) -> Self {
         HError::Mime(e)
+    }
+}
+
+
+impl From<KeyBindError> for HError {
+    fn from(e: KeyBindError) -> Self {
+        HError::KeyBind(e)
+    }
+}
+
+
+#[derive(Fail, Debug, Clone)]
+pub enum KeyBindError {
+    #[fail(display = "Movement has not been defined for this widget")]
+    MovementUndefined,
+    #[fail(display = "Keybind defined with wrong key: {} -> {}", _0, _1)]
+    WrongKey(String, String),
+    #[fail(display = "Defined keybind for non-existing action: {}", _0)]
+    WrongAction(String),
+    #[fail(display = "Failed to parse keybind: {}", _0)]
+    ParseKeyError(String),
+    #[fail(display = "Trouble with ini file! Error: {}", _0)]
+    IniError(Arc<ini::ini::Error>),
+    #[fail(display = "Couldn't parse as either char or u8: {}", _0)]
+    CharOrNumParseError(String),
+    #[fail(display = "Wanted {}, but got {}!", _0, _1)]
+    CharOrNumWrongType(String, String)
+
+}
+
+impl From<ini::ini::Error> for KeyBindError {
+    fn from(err: ini::ini::Error) -> Self {
+        KeyBindError::IniError(Arc::new(err))
     }
 }

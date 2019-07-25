@@ -24,6 +24,9 @@ extern crate systemstat;
 extern crate mime_guess;
 extern crate mime;
 extern crate clap;
+extern crate strum;
+#[macro_use]
+extern crate strum_macros;
 
 extern crate osstrtools;
 extern crate pathbuftools;
@@ -61,7 +64,7 @@ mod trait_ext;
 mod config_installer;
 mod imgview;
 mod mediaview;
-
+mod keybind;
 
 
 

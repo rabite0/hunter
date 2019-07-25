@@ -527,13 +527,7 @@ impl Widget for MediaView {
     }
 
     fn on_key(&mut self, key: Key) -> HResult<()> {
-        match key {
-            Key::Alt('>') => self.seek_forward(),
-            Key::Alt('<') => self.seek_backward(),
-            Key::Alt('m') => self.toggle_pause(),
-            Key::Alt('M') => Ok(self.toggle_mute()),
-            _ => HError::undefined_key(key)
-        }
+        self.do_key(key)
     }
 }
 
@@ -543,5 +537,29 @@ impl Drop for MediaView {
         self.kill().log();
 
         self.core.clear().log();
+    }
+}
+
+
+use crate::keybind::*;
+
+impl Acting for MediaView {
+    type Action = MediaAction;
+
+    fn search_in(&self) -> Bindings<Self::Action> {
+        self.core.config().keybinds.media
+    }
+
+    fn do_action(&mut self, action: &MediaAction) -> HResult<()> {
+        use MediaAction::*;
+
+        match action {
+            SeekForward => self.seek_forward()?,
+            SeekBackward => self.seek_backward()?,
+            TogglePause => self.toggle_pause()?,
+            ToggleMute => self.toggle_mute(),
+        }
+
+        Ok(())
     }
 }

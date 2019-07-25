@@ -433,62 +433,7 @@ impl Widget for MiniBuffer {
     fn on_key(&mut self, key: Key) -> HResult<()> {
         let prev_input = self.input.clone();
 
-        match key {
-            Key::Esc | Key::Ctrl('c') => {
-                self.clear();
-                self.input_cancelled()?;
-            },
-            Key::Char('\n') => {
-                if self.input != "" {
-                    self.history.add(&self.query, &self.input);
-                }
-                self.input_finnished()?;
-            }
-            Key::Char('\t') => {
-                self.complete()?;
-            }
-            Key::F(n) => {
-                let fnstr = format!("${}", n-1);
-                self.input.insert_str(self.position, &fnstr);
-                self.position += 2;
-            }
-            Key::Backspace => {
-                if self.position != 0 {
-                    self.input.remove(self.position - 1);
-                    self.position -= 1;
-                }
-            }
-            Key::Delete | Key::Ctrl('d') => {
-                if self.position != self.input.len() {
-                    self.input.remove(self.position);
-                }
-            }
-            Key::Left | Key::Ctrl('b') => {
-                if self.position != 0 {
-                    self.position -= 1;
-                }
-            }
-            Key::Right | Key::Ctrl('f') => {
-                if self.position != self.input.len() {
-                    self.position += 1;
-                }
-            }
-            Key::Up | Key::Ctrl('p') | Key::Alt('p') => {
-                self.history_up()?;
-            }
-            Key::Down | Key::Ctrl('n') | Key::Alt('n') => {
-                self.history_down()?;
-            }
-            Key::Ctrl('u') => { self.clear_line()?; },
-            Key::Ctrl('h') => { self.delete_word()?; },
-            Key::Ctrl('a') => { self.position = 0 },
-            Key::Ctrl('e') => { self.position = self.input.len(); },
-            Key::Char(key) => {
-                self.input.insert(self.position, key);
-                self.position += 1;
-            }
-            _ => {  }
-        }
+        self.do_key(key)?;
 
         if self.continuous && prev_input != self.input {
             self.input_updated()?;
@@ -508,6 +453,68 @@ impl Widget for MiniBuffer {
         screen.goto_xy(cursor_pos, ysize).log();
         screen.cursor_show().log();
 
+        Ok(())
+    }
+}
+
+use crate::keybind::*;
+
+impl Acting for MiniBuffer {
+    type Action = MiniBufferAction;
+
+    fn search_in(&self) -> Bindings<Self::Action> {
+        self.core.config().keybinds.minibuffer
+    }
+
+    fn do_action(&mut self, action: &Self::Action) -> HResult<()> {
+        use MiniBufferAction::*;
+
+        match action {
+            InsertChar(ch) => {
+                self.input.insert(self.position, *ch);
+                self.position += 1;
+            }
+            InsertTab(n) => {
+                let fnstr = format!("${}", n-1);
+                self.input.insert_str(self.position, &fnstr);
+                self.position += 2;
+            }
+            Cancel => { self.clear(); self.input_cancelled()? }
+            Finish => {
+                if self.input != "" {
+                    self.history.add(&self.query, &self.input);
+                }
+                self.input_finnished()?
+            },
+            Complete => self.complete()?,
+            DeleteChar => {
+                if self.position != self.input.len() {
+                    self.input.remove(self.position);
+                }
+            },
+            BackwardDeleteChar => {
+                if self.position != 0 {
+                    self.input.remove(self.position - 1);
+                    self.position -= 1;
+                }
+            }
+            CursorLeft => {
+                if self.position != 0 {
+                    self.position -= 1;
+                }
+            },
+            CursorRight => {
+                if self.position != self.input.len() {
+                    self.position += 1;
+                }
+            },
+            HistoryUp => self.history_up()?,
+            HistoryDown => self.history_down()?,
+            ClearLine => self.clear_line()?,
+            DeleteWord => self.delete_word()?,
+            CursorToStart => self.position = 0,
+            CursorToEnd => self.position = self.input.len(),
+        }
         Ok(())
     }
 }

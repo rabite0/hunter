@@ -19,6 +19,56 @@ pub trait Listable {
     fn on_key(&mut self, _key: Key) -> HResult<()> { Ok(()) }
 }
 
+use crate::keybind::{Acting, Bindings, FileListAction, Movement};
+
+
+impl Acting for ListView<Files> {
+    type Action=FileListAction;
+
+    fn search_in(&self) -> Bindings<Self::Action> {
+        self.core.config().keybinds.filelist
+    }
+
+    fn movement(&mut self, movement: &Movement) -> HResult<()> {
+        use Movement::*;
+
+        match movement {
+            Up(n) => { for _ in 0..*n { self.move_up(); }; self.refresh()?; }
+            Down(n) => { for _ in 0..*n { self.move_down(); }; self.refresh()?; }
+            PageUp => self.page_up(),
+            PageDown => self.page_down(),
+            Top => self.move_top(),
+            Bottom => self.move_bottom(),
+            Left | Right => {}
+        }
+
+        Ok(())
+    }
+
+    fn do_action(&mut self, action: &Self::Action) -> HResult<()> {
+        use FileListAction::*;
+
+        match action {
+            Search => self.search_file()?,
+            SearchNext => self.search_next()?,
+            SearchPrev => self.search_prev()?,
+            Filter => self.filter()?,
+            Select => self.multi_select_file(),
+            InvertSelection => self.invert_selection(),
+            ClearSelection => self.clear_selections(),
+            FilterSelection => self.toggle_filter_selected(),
+            ToggleTag => self.toggle_tag()?,
+            ToggleHidden => self.toggle_hidden(),
+            ReverseSort => self.reverse_sort(),
+            CycleSort => self.cycle_sort(),
+            ToNextMtime => self.select_next_mtime(),
+            ToPrevMtime => self.select_prev_mtime(),
+            ToggleDirsFirst => self.toggle_dirs_first(),
+        }
+        Ok(())
+    }
+}
+
 impl Listable for ListView<Files> {
     fn len(&self) -> usize {
         self.content.len()
@@ -60,41 +110,7 @@ impl Listable for ListView<Files> {
     }
 
     fn on_key(&mut self, key: Key) -> HResult<()> {
-        match key {
-            Key::Up | Key::Char('k') => {
-                self.move_up();
-                self.refresh()?;
-            }
-            Key::Char('K') => { for _ in 0..10 { self.move_up() } self.refresh()?; }
-            Key::Char('J') => { for _ in 0..10 { self.move_down() } self.refresh()?; }
-            Key::Down | Key::Char('j') => {
-                self.move_down();
-                self.refresh()?;
-            },
-            Key::PageUp => self.page_up(),
-            Key::PageDown => self.page_down(),
-            Key::Char('<') => self.move_top(),
-            Key::Char('>') => self.move_bottom(),
-            Key::Char('S') => { self.search_file().log(); }
-            Key::Alt('s') => { self.search_next().log(); }
-            Key::Alt('S') => { self.search_prev().log(); }
-            Key::Ctrl('f') => { self.filter().log(); }
-            Key::Left => self.goto_grand_parent()?,
-            Key::Right => self.goto_selected()?,
-            Key::Char(' ') => self.multi_select_file(),
-            Key::Char('v') => self.invert_selection(),
-            Key::Char('V') => self.clear_selections(),
-            Key::Alt('v') => self.toggle_filter_selected(),
-            Key::Char('t') => self.toggle_tag()?,
-            Key::Char('H') => self.toggle_hidden(),
-            Key::Char('r') => self.reverse_sort(),
-            Key::Char('s') => self.cycle_sort(),
-            Key::Char('N') => self.select_next_mtime(),
-            Key::Char('n') => self.select_prev_mtime(),
-            Key::Char('d') => self.toggle_dirs_first(),
-            _ => { HError::undefined_key(key)? }
-        }
-        Ok(())
+        self.do_key(key)
     }
 }
 

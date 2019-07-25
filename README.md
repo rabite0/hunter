@@ -5,11 +5,11 @@ hunter
 
 NEW
 
+- [Custom Keybindings] Customize keys to your liking
 - [Graphics] High quality support for graphics using SIXEL/kitty protocols
 - [QuickActions] Added quick action creator/customizer
 - [Previews] New and improved preview customization
 - [**[IRC channel](https://webchat.freenode.net/?channels=hunter)**] Problems? Bugs? Praise? Chat with us: [#hunter @ Freenode](https://webchat.freenode.net/?channels=hunter)!
-- [Quick Actions] Run specific actions based on file type
 
 
 
@@ -130,6 +130,10 @@ media_previewer=hunter-media
 graphics_mode=auto
 ```
 
+## Keys
+
+Keys can be configured in ```~/.config/hunter/keys```. Some actions can be further customized with arguments. For example, you can specify ```GotoTab(n)```, where n is a positive number to move up n times. Some keys like F1-F12 are represented as an enum like this: ```F(u8)```. You can take that u8 and stick it into the ```GotoTab``` action by using a placeholder binding like this: ```GotoTab(_)=F_```. This also works for key combinations, so you can specify ```C-_``` to bind all Ctrl-<key> combinations to some action like Delete(_) on bookmarks. To bind ```_``` itself escape like this: ```\_```. See the default configuration for more examples.
+
 ## Previews
 Defining previews is easy. You just need a shell script that takes a path as first parameter and prints out what you want to see in the preview column. Put that shell script in
 
@@ -200,96 +204,110 @@ To change the directory of your shell when quitting hunter with Q you need to so
 Keybindings:
 ============
 
-## holy mode
-By default hunter uses vi-style keybindings. If you use a QWERTY-like keyboard layout this is probably what you want. Most people will want this, so I made it the default. If you have a different keyboard layout this might not be the best choice. The holy-branch changes the movement keys to the emacs keybindings, which is more ergonomic on e.g. Colemak.
+Note: ```_``` means any key.
 
-## Main view:
+## Movement:
+Up(1)=k, Up
+Down(1)=j, Down
+Left=b, Left
+Right=f, Right
+Top=<, Home
+Bottom=>, End
+Up(10)=K
+Down(10)=J
+PageUp=C-v, PageUp
+PageDown=M-v, PageDown
 
-| Key                 | Action                             |
-| ------------------- | :--------------------------------- |
-| j/k (holy: n/p)     | move down/up                       |
-| J/K (holy: N/P)     | 5x move down/5x move up            |
-| ]/[                 | move down/up on left column        |
-| <                   | move to top                        |
-| >                   | move to bottom                     |
-| l/h (holy: f/b)     | open/go back                       |
-| S                   | search file                        |
-| Alt(s)              | search next                        |
-| Alt(S)              | search prev                        |
-| Ctrl(f)             | filter                             |
-| space               | multi select file                  |
-| Alt(space)          | select with external program       |
-| v                   | invert selections                  |
-| V                   | clear all selections               |
-| Alt(v)              | only show selected files           |
-| t                   | toggle tag                         |
-| h                   | toggle show hidden                 |
-| r                   | reverse sort                       |
-| s                   | cycle sort (name/size/mtime)       |
-| K                   | select next by mtime               |
-| k                   | select prev by mtime               |
-| d                   | toggle dirs first                  |
-| ~                   | go to $HOME                        |
-| /                   | turbo cd                           |
-| Alt(/)              | enter dir with external program    |
-| Q                   | quit with dir/selections           |
-| L                   | run in background                  |
-| ~                   | goto prev cwd                      |
-| `                   | goto bookmark                      |
-| m                   | add bookmark                       |
-| w                   | show processes                     |
-| g holy(l)           | show log                           |
-| a                   | show quick actions                 |
-| z                   | open subshell in cwd               |
-| c                   | toggle columns                     |
-| F(n)                | switch to tab                      |
-| Alt(m)              | toggle media pause and autoplay    |
-| Alt(M)              | toggle media mute                  |
-| Alt(>)              | seek media +5s                     |
-| Alt(<)              | seek media -5s                     |
+## File Browser (global effects):
+Quit=q
+QuitWithDir=Q
+LeftColumnDown=]
+LeftColumnUp=[
+GotoHome=~
+TurboCd=/
+SelectExternal=M-Space
+EnterDirExternal=M-/
+RunInBackground=F
+GotoPrevCwd=-
+ShowBookmarks=`
+AddBookmark=b
+ShowProcesses=w
+ShowLog=g
+ShowQuickActions=a
+RunSubshell=z
+ToggleColumns=c
+ExecCmd=!
 
+## File List (affects current directory):
+Search=S
+SearchNext=M-s
+SearchPrev=M-S
+Filter=C-f
+Select=Space
+InvertSelection=v
+ClearSelection=V
+FilterSelection=M-V
+ToggleTag=t
+ToggleHidden=h
+ReverseSort=r
+CycleSort=s
+ToNextMtime=K
+ToPrevMtime=k
+ToggleDirsFirst=d
 
+## Tabs
+NewTab=C-t
+CloseTab=C-w
+NextTab=Tab
+PrevTab=BackTab
+GotoTab(_)=F_
 
-## Keybindings in bookmark popup:
+## Media
+TogglePause=M-m
+ToggleMute=M-M
+SeekForward=M->
+SeekBackward=M-<
 
-| Key                 | Action                           |
-| ------------------- |:---------------------------------|
-|(key)                |open bookmark                     |
-|`                    |goto last cwd                     |
-|Ctrl(c)              |cancel                            |
-|Alt(key)             |delete bookmark                   |
+## Bookmarks
+GotoLastCwd=`
+Goto(_)=_
+Delete(_)=M-_
 
-## Keybindings in process viewer:
+## Processes
+Close=w, Esc
+Remove=d
+Kill=k
+FollowOutput=f
+ScrollOutputUp=C-p
+ScrollOutputDown=C-n
+ScrollOutputPageUp=C-V
+ScrollOutputPageDown=C-v
+ScrollOutputTop=C-<
+ScrollOutputBottom=>
 
-| Key                 | Action                           |
-| ------------------- |:---------------------------------|
-|w                    |close process viewer              |
-|d                    |remove process                    |
-|k                    |kill process                      |
-|k holy(p)            |move up                           |
-|j holy(n)            |move down                         |
-|f                    |toggle follow output              |
-|Ctrl(j) holy(Ctrl(n) |scroll output down                |
-|Ctrl(k) holy(Ctrl(p) |scroll output up                  |
-|Ctrl(v)              |page down                         |
-|Alt(v)               |page up                           |
-|<                    |scroll to bottom                  |
-|>                    |scroll to top                     |
+## MiniBuffer
+InsertChar(_)=_
+InsertTab(_)=F_
+Cancel=C-c, Esc
+Finish=Enter
+Complete=Tab
+DeleteChar=C-d, Delete
+BackwardDeleteChar=Backspace
+CursorLeft=C-b, Left
+CursorRight=C-f, Right
+HistoryUp=C-p, M-p, Up
+HistoryDown=C-n, M-n, Down
+ClearLine=C-u
+DeleteWord=C-h
+CursorToStart=C-a, Home
+CursorToEnd=C-e, End
 
+## Folds
+ToggleFold=t,Tab
 
-## Keybindings in minibuffer:
+## Log
+Close=g,Esc
 
-| Key                 | Action                           |
-| ------------------- |:---------------------------------|
-|Esc/Ctrl(c)          |cancel input                      |
-|Tab                  |complete                          |
-|F(n)                 |insert tab substitution           |
-|Ctrl(d)              |delete char                       |
-|Ctrl(b)              |move cursor left                  |
-|Ctrl(f)              |move cursor right                 |
-|Ctrl(p)/Alt(p)       |history up                        |
-|Ctrl(n)/Alt(n)       |history down                      |
-|Ctrl(u)              |clear line                        |
-|Ctrl(h)              |delete word                       |
-|Ctrl(a)              |move cursor to beginning          |
-|Ctrl(e)              |move cursor to end                |
+## QuickActions
+Close=a, Esc, C-a
+SelectOrRun(_)=_

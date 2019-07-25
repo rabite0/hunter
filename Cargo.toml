@@ -1,5 +1,3 @@
-cargo-features = ["default-run"]
-
 [package]
 name = "hunter"
 version = "1.3.4"
@@ -41,7 +39,10 @@ pathbuftools = "0.1"
 clap = "2.33"
 mime = "0.3.13"
 base64 = "0.10.1"
-#glib = "*"
+strum = "0.15"
+strum_macros = "0.15"
+rust-ini = "0.13"
+
 
 image = { version = "0.21.1", optional = true }
 gstreamer = { version = "0.14", optional = true }

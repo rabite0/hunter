@@ -5,8 +5,9 @@ use chrono::{DateTime, Local};
 use crate::term;
 use crate::widget::Widget;
 use crate::listview::{ListView, Listable};
-use crate::fail::{HResult, HError};
+use crate::fail::{HResult, HError, KeyBindError};
 use crate::dirty::Dirtyable;
+use crate::keybind::{Acting, AnyKey, Bindings, BindingSection, Movement, FoldAction, LogAction};
 
 pub type LogView = ListView<Vec<LogEntry>>;
 
@@ -81,9 +82,73 @@ impl From<&HError> for LogEntry {
     }
 }
 
+pub trait ActingExt
+where
+    Self::Action: BindingSection + std::fmt::Debug,
+    Bindings<Self::Action>: Default,
+    Self: Widget
+{
+    type Action;
 
+    fn search_in(&self) -> Bindings<Self::Action>;
+    fn movement(&mut self, _movement: &Movement) -> HResult<()> {
+        Err(KeyBindError::MovementUndefined)?
+    }
+    fn do_key_ext(&mut self, key: Key) -> HResult<()> {
+        let gkey = AnyKey::from(key);
 
-pub trait FoldableWidgetExt {
+        // Moving takes priority
+        if let Some(movement) = self.get_core()?
+            .config()
+            .keybinds
+            .movement
+            .get(gkey) {
+                match self.movement(movement) {
+                    Ok(()) => return Ok(()),
+                    Err(HError::KeyBind(KeyBindError::MovementUndefined)) => {}
+                    Err(e) => Err(e)?
+                }
+            }
+
+        self.search_in();
+
+        let bindings = self.search_in();
+
+        if let Some(action) = bindings.get(key) {
+            return self.do_action(action)
+        } else if let Some(any_key) = gkey.any() {
+            if let Some(action) = bindings.get(any_key) {
+                let action = action.insert_key_param(key);
+                return self.do_action(&action);
+            }
+        }
+
+        HError::undefined_key(key)
+    }
+    fn do_action(&mut self, _action: &Self::Action) -> HResult<()> {
+        Err(KeyBindError::MovementUndefined)?
+    }
+}
+
+impl ActingExt for ListView<Vec<LogEntry>> {
+    type Action = LogAction;
+
+    fn search_in(&self) -> Bindings<Self::Action> {
+        self.core.config().keybinds.log
+    }
+
+    fn do_action(&mut self, action: &Self::Action) -> HResult<()> {
+        match action {
+            LogAction::Close => self.popup_finnished()
+        }
+    }
+}
+
+pub trait FoldableWidgetExt
+where
+    Self: ActingExt,
+    Bindings<<Self as ActingExt>::Action>: Default
+{
     fn on_refresh(&mut self) -> HResult<()> { Ok(()) }
     fn render_header(&self) -> HResult<String> { Ok("".to_string()) }
     fn render_footer(&self) -> HResult<String> { Ok("".to_string()) }
@@ -204,7 +269,8 @@ pub trait Foldable {
 
 impl<F: Foldable> ListView<Vec<F>>
 where
-    ListView<Vec<F>>: FoldableWidgetExt {
+    ListView<Vec<F>>: FoldableWidgetExt,
+    Bindings<<ListView<Vec<F>> as ActingExt>::Action>: Default {
 
     pub fn toggle_fold(&mut self) -> HResult<()> {
         let fold = self.current_fold()?;
@@ -257,7 +323,9 @@ where
 
 impl<F: Foldable> Listable for ListView<Vec<F>>
 where
-    ListView<Vec<F>>: FoldableWidgetExt {
+    ListView<Vec<F>>: FoldableWidgetExt,
+    Bindings<<ListView<Vec<F>> as ActingExt>::Action>: Default
+{
 
     fn len(&self) -> usize {
         self.content.iter().map(|f| f.lines()).sum()
@@ -294,21 +362,42 @@ where
     }
 
     fn on_key(&mut self, key: Key) -> HResult<()> {
-        // this on_key() could have been implmented by some type
-        let result = FoldableWidgetExt::on_key(self, key);
-        if let Err(HError::WidgetUndefinedKeyError{key}) = result {
-            match key {
-                Key::Up | Key::Char('k') => self.move_up(),
-                Key::Char('K') => for _ in 0..10 { self.move_up() },
-                Key::Char('J') => for _ in 0..10 { self.move_down() },
-                Key::Down | Key::Char('j') => self.move_down(),
-                Key::Char('t') => self.toggle_fold()?,
-                Key::Char('g') | Key::Esc => self.popup_finnished()?,
-                _ =>  { HError::undefined_key(key)?; },
-            }
-            // Key was defined, or _ match would have returned undefined key
-            return Ok(());
+        match ActingExt::do_key_ext(self, key) {
+            Err(HError::PopupFinnished) => Err(HError::PopupFinnished),
+            _ => self.do_key(key)
         }
-        result
+    }
+}
+
+impl<F: Foldable> Acting for ListView<Vec<F>>
+where
+    ListView<Vec<F>>: FoldableWidgetExt,
+    Bindings<<ListView<Vec<F>> as ActingExt>::Action>: Default
+{
+    type Action = FoldAction;
+
+    fn search_in(&self) -> Bindings<Self::Action> {
+        self.core.config().keybinds.fold
+    }
+
+    fn movement(&mut self, movement: &Movement) -> HResult<()> {
+        use Movement::*;
+
+
+        match movement {
+            Up(n) => for _ in 0..*n { self.move_up() },
+            Down(n) => for _ in 0..*n { self.move_down() },
+            _ =>  { Err(KeyBindError::MovementUndefined)? },
+        }
+
+        Ok(())
+    }
+
+    fn do_action(&mut self, action: &FoldAction) -> HResult<()> {
+        use FoldAction::*;
+
+        match action {
+            ToggleFold => self.toggle_fold()
+        }
     }
 }
