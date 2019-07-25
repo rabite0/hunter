@@ -57,7 +57,6 @@ If it works on a system not mentioned here, please open an issue. Also feel free
 ## PREREQUISITES:
 
 * gcc
-* libmagic-dev
 * Rust-nighly compiler
 * GStreamer for video/audio previews (optional)
 * libsixel (optional)
