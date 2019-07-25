@@ -182,7 +182,7 @@ You can set a few options when hunter starts. These override the configuration f
 
 **USAGE: hunter [FLAGS] [path]**
 
-| **FLAGS: **           |                                     |
+| FLAGS                 |                                     |
 ------------------------|-------------------------------------|
 | -a, --animation-off   | Turn off animations                 |
 | --help                | Prints help information             |
@@ -208,107 +208,129 @@ Keybindings:
 Note: ```_``` means any key.
 
 ## Movement:
-Up(1)=k, Up
-Down(1)=j, Down
-Left=b, Left
-Right=f, Right
-Top=<, Home
-Bottom=>, End
-Up(10)=K
-Down(10)=J
-PageUp=C-v, PageUp
-PageDown=M-v, PageDown
+| Action    | Key           |
+|-----------|---------------|
+|Up(1)      | k, Up         |
+|Down(1)    | j, Down       |
+|Left       | b, Left       |
+|Right      | f, Right      |
+|Top        | <, Home       |
+|Bottom     | >, End        |
+|Up(10)     | K             |
+|Down(10)   | J             |
+|PageUp     | C-v, PageUp   |
+|PageDown   | M-v, PageDown |
 
 ## File Browser (global effects):
-Quit=q
-QuitWithDir=Q
-LeftColumnDown=]
-LeftColumnUp=[
-GotoHome=~
-TurboCd=/
-SelectExternal=M-Space
-EnterDirExternal=M-/
-RunInBackground=F
-GotoPrevCwd=-
-ShowBookmarks=`
-AddBookmark=b
-ShowProcesses=w
-ShowLog=g
-ShowQuickActions=a
-RunSubshell=z
-ToggleColumns=c
-ExecCmd=!
+| Action            | Key       |
+|-------------------|-----------|
+| Quit              | q         |
+| QuitWithDir       | Q         |
+| LeftColumnDown    | ]         |
+| LeftColumnUp      | [         |
+| GotoHome          | ~         |
+| TurboCd           | /         |
+| SelectExternal    | M-Space   |
+| EnterDirExternal  | M-/       |
+| RunInBackground   | F         |
+| GotoPrevCwd       | -         |
+| ShowBookmarks     | `         |
+| AddBookmark       | b         |
+| ShowProcesses     | w         |
+| ShowLog           | g         |
+| ShowQuickActions  | a         |
+| RunSubshell       | z         |
+| ToggleColumns     | c         |
+| ExecCmd           | !         |
 
 ## File List (affects current directory):
-Search=S
-SearchNext=M-s
-SearchPrev=M-S
-Filter=C-f
-Select=Space
-InvertSelection=v
-ClearSelection=V
-FilterSelection=M-V
-ToggleTag=t
-ToggleHidden=h
-ReverseSort=r
-CycleSort=s
-ToNextMtime=K
-ToPrevMtime=k
-ToggleDirsFirst=d
+| Action            | Key   |
+|-------------------|-------|
+| Search            | C-s   |
+| SearchNext        | M-s   |
+| SearchPrev        | M-S   |
+| Filter            | C-f   |
+| Select            | Space |
+| InvertSelection   | v     |
+| ClearSelection    | V     |
+| FilterSelection   | M-V   |
+| ToggleTag         | t     |
+| ToggleHidden      | h     |
+| ReverseSort       | r     |
+| CycleSort         | s     |
+| ToNextMtime       | K     |
+| ToPrevMtime       | k     |
+| ToggleDirsFirst   | d     |
 
 ## Tabs
-NewTab=C-t
-CloseTab=C-w
-NextTab=Tab
-PrevTab=BackTab
-GotoTab(_)=F_
+| Action     | Key      |
+|------------|----------|
+| NewTab     | C-t      |
+| CloseTab   | C-w      |
+| NextTab    | Tab      |
+| PrevTab    | BackTab  |
+| GotoTab(\_) | F_      |
 
 ## Media
-TogglePause=M-m
-ToggleMute=M-M
-SeekForward=M->
-SeekBackward=M-<
+| Action        | Key |
+|---------------|-----|
+| TogglePause   | M-m |
+| ToggleMute    | M-M |
+| SeekForward   | M-> |
+| SeekBackward  | M-< |
 
 ## Bookmarks
-GotoLastCwd=`
-Goto(_)=_
-Delete(_)=M-_
+| Action        | Key |
+|---------------|-----|
+| GotoLastCwd   | `   |
+| Goto(\_)      | _   |
+| Delete(\_)    | M-_ |
 
 ## Processes
-Close=w, Esc
-Remove=d
-Kill=k
-FollowOutput=f
-ScrollOutputUp=C-p
-ScrollOutputDown=C-n
-ScrollOutputPageUp=C-V
-ScrollOutputPageDown=C-v
-ScrollOutputTop=C-<
-ScrollOutputBottom=>
+| Action                | Key    |
+|-----------------------|--------|
+| Close                 | w, Esc |
+| Remove                | d      |
+| Kill                  | k      |
+| FollowOutput          | f      |
+| ScrollOutputUp        | C-p    |
+| ScrollOutputDown      | C-n    |
+| ScrollOutputPageUp    | C-V    |
+| ScrollOutputPageDown  | C-v    |
+| ScrollOutputTop       | C-<    |
+| ScrollOutputBottom    | >      |
 
 ## MiniBuffer
-InsertChar(_)=_
-InsertTab(_)=F_
-Cancel=C-c, Esc
-Finish=Enter
-Complete=Tab
-DeleteChar=C-d, Delete
-BackwardDeleteChar=Backspace
-CursorLeft=C-b, Left
-CursorRight=C-f, Right
-HistoryUp=C-p, M-p, Up
-HistoryDown=C-n, M-n, Down
-ClearLine=C-u
-DeleteWord=C-h
-CursorToStart=C-a, Home
-CursorToEnd=C-e, End
+| Action            | Key            |
+|-------------------|----------------|
+| InsertChar(\_)    | _              |
+| InsertTab(\_)     | F_             |
+| Cancel            | C-c, Esc       |
+| Finish            | Enter          |
+| Complete          | Tab            |
+| DeleteChar        | C-d, Delete    |
+| BackwardDeleteChar| Backspace      |
+| CursorLeft        | C-b, Left      |
+| CursorRight       | C-f, Right     |
+| HistoryUp         | C-p, M-p, Up   |
+| HistoryDown       | C-n, M-n, Down |
+| ClearLine         | C-u            |
+| DeleteWord        | C-h            |
+| CursorToStart     | C-a, Home      |
+| CursorToEnd       | C-e, End       |
 
 ## Folds
-ToggleFold=t,Tab
+| Action    | Key    |
+|-----------|--------|
+|ToggleFold | t, Tab |
 
 ## Log
-Close=g,Esc
+| Action  | Key    |
+|---------|--------|
+|Close    | g, Esc |
 
 ## QuickActions
-Close=a, Esc, C-a
-SelectOrRun(_)=_
+| Action          | Key         |
+|-----------------|-------------|
+|Close            | a, Esc, C-a |
+|SelectOrRun(\_)  | _           |
