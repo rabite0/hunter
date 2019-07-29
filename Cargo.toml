@@ -76,7 +76,7 @@ path = "src/main.rs"
 [[bin]]
 name = "hunter-media"
 path = "src/hunter-media.rs"
-required-features = ["img", "sixel"]
+required-features = ["img"]
 
 
 
