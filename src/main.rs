@@ -79,6 +79,12 @@ use trait_ext::PathBufMime;
 
 
 fn reset_screen(core: &mut WidgetCore) -> HResult<()> {
+    // Clean images to stop them from showing up later
+    let g_mode = core.config().graphics;
+    if g_mode == "kitty" || g_mode == "auto" {
+        print!("\x1b_Ga=d\x1b\\");
+    }
+
     core.screen.suspend()
 }
 
