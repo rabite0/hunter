@@ -634,8 +634,8 @@ impl Default for Bindings<Movement> {
             let key = match action {
                 Up(_) => Key::Char('k'),
                 Down(_) => Key::Char('j'),
-                Left => Key::Char('b'),
-                Right => Key::Char('f'),
+                Left => Key::Char('h'),
+                Right => Key::Char('l'),
                 Top => Key::Char('<'),
                 Bottom => Key::Char('>'),
                 PageUp => Key::PageUp,
