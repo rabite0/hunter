@@ -152,7 +152,7 @@ impl MediaView {
                     .arg(&path)
                     .stdin(std::process::Stdio::piped())
                     .stdout(std::process::Stdio::piped())
-                    .stderr(std::process::Stdio::inherit())
+                    .stderr(std::process::Stdio::null())
                     .spawn()
                     .map_err(|e| {
                         let msg = format!("Couldn't run {}{}{}! Error: {:?}",
