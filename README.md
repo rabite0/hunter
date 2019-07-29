@@ -124,6 +124,7 @@ select_cmd=find -type f | fzf -m
 cd_cmd=find -type d | fzf
 icons=off
 ratios=20,30,49
+animation_refresh_frequency=60
 media_autostart=off
 media_mute=off
 media_previewer=hunter-media
@@ -132,7 +133,11 @@ graphics_mode=auto
 
 ## Keys
 
-Keys can be configured in ```~/.config/hunter/keys```. Some actions can be further customized with arguments. For example, you can specify ```GotoTab(n)```, where n is a positive number to move up n times. Some keys like F1-F12 are represented as an enum like this: ```F(u8)```. You can take that u8 and stick it into the ```GotoTab``` action by using a placeholder binding like this: ```GotoTab(_)=F_```. This also works for key combinations, so you can specify ```C-_``` to bind all Ctrl-<key> combinations to some action like Delete(_) on bookmarks. To bind ```_``` itself escape like this: ```\_```. See the default configuration for more examples.
+Keys can be configured in ```~/.config/hunter/keys```. Some actions can be further customized with arguments. For example, you can specify a hard-coded ```Up(n)```, where n is a positive number to move up n times. This could look like ```Up(10)```=K``` to move up 10 times at once.
+
+Some keys like F1-F12 are represented as an enum like this: ```F(n)```. You can take that number n and stick it into the ```GotoTab(n)``` action by using a placeholder binding like this: ```GotoTab(_)=F_```. That way, all F(n) keys will be bound to move to the tab number extracted from the F(n) keys.
+
+This also works for key combinations, so you can specify ```C-_``` to bind all Ctrl-<key> combinations to some action like Delete(_) on bookmarks. To bind ```_``` itself escape it like this: ```\_```. See the default configuration for more examples.
 
 ## Previews
 Defining previews is easy. You just need a shell script that takes a path as first parameter and prints out what you want to see in the preview column. Put that shell script in
