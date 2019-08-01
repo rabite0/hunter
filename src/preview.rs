@@ -16,8 +16,8 @@ use crate::imgview::ImgView;
 use crate::mediaview::MediaView;
 
 
-pub type AsyncWidgetFn<W> = FnOnce(&Stale, WidgetCore)
-                                   -> HResult<W> + Send + Sync;
+pub type AsyncWidgetFn<W> = dyn FnOnce(&Stale, WidgetCore)
+                                       -> HResult<W> + Send + Sync;
 
 lazy_static! {
     static ref SUBPROC: Arc<Mutex<Option<u32>>> = { Arc::new(Mutex::new(None)) };
@@ -26,7 +26,19 @@ lazy_static! {
 fn kill_proc() -> HResult<()> {
     let mut pid = SUBPROC.lock()?;
     pid.map(|pid|
-        unsafe { libc::kill(pid as i32, 15); }
+            // Do this in another thread so we can wait on process to exit with SIGHUP
+            std::thread::spawn(move || {
+                let sleep_time = std::time::Duration::from_millis(50);
+
+                // Here be dragons
+                unsafe {
+                    // Kill using process group, to clean up all child processes, too
+                    // 15 = SIGTERM, 9 = SIGKILL
+                    libc::killpg(pid as i32, 15);
+                    std::thread::sleep(sleep_time);
+                    libc::killpg(pid as i32, 9);
+                }
+            })
     );
     *pid = None;
     Ok(())
@@ -499,13 +511,22 @@ impl Previewer {
     }
 
     fn run_external(cmd: PathBuf, file: &File, stale: &Stale) -> HResult<Vec<String>> {
-        let process =
+        use std::os::unix::process::CommandExt;
+
+        let process = unsafe {
             std::process::Command::new(cmd)
-            .arg(&file.path)
-            .stdin(std::process::Stdio::null())
-            .stdout(std::process::Stdio::piped())
-            .stderr(std::process::Stdio::null())
-            .spawn()?;
+                .arg(&file.path)
+                .stdin(std::process::Stdio::null())
+                .stdout(std::process::Stdio::piped())
+                .stderr(std::process::Stdio::null())
+                .pre_exec(|| {
+                    let pid = std::process::id();
+                    // To make killing subprocess possible create new process group
+                    libc::setpgid(pid as i32, pid as i32);
+                    Ok(())
+                })
+                .spawn()?
+        };
 
         let pid = process.id();
         {

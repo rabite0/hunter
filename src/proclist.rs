@@ -155,6 +155,9 @@ impl Process {
                     sender.send(Events::Status(status))?;
 
                     stdout.consume(len);
+
+                    // Wait a bit so hunter doesn't explode
+                    std::thread::sleep(std::time::Duration::from_millis(100));
                 }
             };
             processor(&cmd, &sender).log();
@@ -268,12 +271,16 @@ impl ListView<Vec<Process>> {
 
         self.core.show_status(&format!("Running: {}", &short_cmd)).log();
 
-        let handle = Command::new(real_cmd)
-            .args(args)
-            .stdin(std::process::Stdio::null())
-            .stdout(std::process::Stdio::piped())
-            .before_exec(|| unsafe { libc::dup2(1, 2); Ok(()) })
-            .spawn()?;
+        // Need pre_exec here to interleave stderr with stdout
+        let handle = unsafe {
+            Command::new(real_cmd)
+                .args(args)
+                .stdin(std::process::Stdio::null())
+                .stdout(std::process::Stdio::piped())
+                // Without this stderr would be separate which is no good for procview
+                .pre_exec(||  { libc::dup2(1, 2); Ok(()) })
+                .spawn()?
+        };
         let mut proc = Process {
             cmd: short_cmd,
             handle: Arc::new(Mutex::new(handle)),
