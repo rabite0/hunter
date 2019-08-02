@@ -66,7 +66,7 @@ If it works on a system not mentioned here, please open an issue. Also feel free
 hunter comes with definitions to enable previewing certain file types. To use this you need to install some programs first. You can also define your own. See below. Defaults are:
 
 * bat / highlight for syntax highlighting
-* 7z for archives
+* bsdtar / 7z / atool  for archives
 * w3m / links / elinks / lynx for html
 * pdftotext / mutool for pdf or pdftoppm in graphics mode
 
@@ -81,7 +81,7 @@ The easiest way to get a nightly compiler is with [rustup](https://rustup.rs/). 
 
 By default it will install a full-featured version with support for media-previews. You can control this using the feature flags ```img```, ```video``` and ```sixel```. These can be disabled by calling cargo with ```--no-default-features```. You can then enable image previews with ```--features=img``` and add video/audio with ```--feature=img,video```. Note that video requires img!
 
-Note that this only works if hunter can find the "hunter-media" tool somewhere in $PATH!
+Note that media previews only work if hunter can find the "hunter-media" tool somewhere in $PATH!
 
 ### Install rustup
 
@@ -128,7 +128,7 @@ animation_refresh_frequency=60
 media_autostart=off
 media_mute=off
 media_previewer=hunter-media
-graphics_mode=auto
+graphics_mode=auto (other choices: kitty/sixel/unicode)
 ```
 
 ## Keys
@@ -138,6 +138,9 @@ Keys can be configured in ```~/.config/hunter/keys```. Some actions can be furth
 Some keys like F1-F12 are represented as an enum like this: ```F(n)```. You can take that number n and stick it into the ```GotoTab(n)``` action by using a placeholder binding like this: ```GotoTab(_)=F_```. That way, all F(n) keys will be bound to move to the tab number extracted from the F(n) keys.
 
 This also works for key combinations, so you can specify ```C-_``` to bind all Ctrl-<key> combinations to some action like Delete(_) on bookmarks. To bind ```_``` itself escape it like this: ```\_```. See the default configuration for more examples.
+
+### NOTE
+hunter parses both ```M-``` and ```A-``` as Alt, so you can use whichever you like best. By default it uses ```M-```, because it came naturally and I think ```A-``` looks weird ;).
 
 ## Previews
 Defining previews is easy. You just need a shell script that takes a path as first parameter and prints out what you want to see in the preview column. Put that shell script in
@@ -192,7 +195,11 @@ You can set a few options when hunter starts. These override the configuration f
 | --help                | Prints help information             |
 | -i, --icons           | Show icons for different file types |
 | -h, --show-hidden     | Show hidden files                   |
+| -u, --update-config   | Updates previewers/actions          |
 | -V, --version         | Prints version information          |
+
+### WARNING
+If you made any changes to the built-in previewers/actions, those changes will be lost when using ```-u```. In that case it's better to just delete the previewer/action you want to update. On the next start hunter will reinstall the missing files automatically.
 
 
 ## Drop into hunter cwd on quit
