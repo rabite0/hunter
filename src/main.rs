@@ -72,7 +72,7 @@ mod keybind;
 
 use widget::{Widget, WidgetCore};
 use term::ScreenExt;
-use fail::{HResult, HError, MimeError};
+use fail::{HResult, HError, MimeError, ErrorLog};
 use file_browser::FileBrowser;
 use tabview::TabView;
 use trait_ext::PathBufMime;
@@ -97,9 +97,9 @@ fn main() -> HResult<()> {
     // do this early so it might be ready when needed
     crate::files::load_tags().ok();
 
-    parse_args().ok();
-
     let mut core = WidgetCore::new().expect("Can't create WidgetCore!");
+
+    parse_args(core.clone()).log();
 
     // Resets terminal when hunter crashes :(
     die_gracefully(&core);
@@ -117,6 +117,13 @@ fn main() -> HResult<()> {
 fn run(mut core: WidgetCore) -> HResult<()> {
     core.screen.clear()?;
 
+    let core2 = core.clone();
+
+    // I hate waiting!!!
+    std::thread::spawn(move || {
+        crate::config_installer::ensure_config(core2).log();
+    });
+
     let filebrowser = FileBrowser::new(&core, None)?;
     let mut tabview = TabView::new(&core);
     tabview.push_widget(filebrowser)?;
@@ -130,11 +137,17 @@ fn run(mut core: WidgetCore) -> HResult<()> {
 }
 
 
-fn parse_args() -> HResult<()> {
+fn parse_args(core: WidgetCore) -> HResult<()> {
     let args = App::new("Lag-free terminal file browser")
         .version(clap::crate_version!())
         .author(clap::crate_authors!("\n"))
         .about("Hunt your files at light-speed, armed with full $SHELL integration")
+        .arg(
+            Arg::with_name("update")
+                .short("u")
+                .long("update-conf")
+                .help("Update configuration (WARNING: Overwrites modified previewers/actions with default names! Main config/keys are safe!)")
+                .takes_value(false))
         .arg(
             Arg::with_name("animation-off")
                 .short("a")
@@ -185,11 +198,17 @@ fn parse_args() -> HResult<()> {
         std::process::exit(1)
     }
 
-    if let Some(path) = path {
-        std::env::set_current_dir(&path).ok();
+    if args.is_present("update") {
+        crate::config_installer::update_config(core, true).log();
     }
 
-    crate::config::set_argv_config(args).ok();
+    if let Some(path) = path {
+        std::env::set_current_dir(&path)
+            .map_err(HError::from)
+            .log();
+    }
+
+    crate::config::set_argv_config(args).log();
     Ok(())
 }
 

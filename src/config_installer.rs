@@ -4,7 +4,7 @@ use std::process::Command;
 use std::ffi::OsStr;
 use std::path::Path;
 
-use crate::fail::{HError, HResult};
+use crate::fail::{HError, HResult, ErrorLog};
 use crate::widget::WidgetCore;
 
 
@@ -77,16 +77,18 @@ fn install_config_all() -> HResult<()> {
     Ok(())
 }
 
-fn move_dir(from: &str, to: &Path) -> HResult<()> {
-    let success = Command::new("mv")
+fn copy(from: &Path, to: &Path) -> HResult<()> {
+    // Uses -a flag to preserve symlinks
+    let success = Command::new("cp")
+        .arg("-a")
         .arg(from)
         .arg(to.as_os_str())
         .status()
         .map(|s| s.success());
 
     if success.is_err() || !success.unwrap() {
-        HError::log(&format!("Couldn't move {} to {} !",
-                             from,
+        HError::log(&format!("Couldn't copy {} to {} !",
+                             from.to_string_lossy(),
                              to.to_string_lossy()))
     } else {
         Ok(())
@@ -97,7 +99,7 @@ fn install_config_previewers() -> HResult<()> {
     let hunter_dir = crate::paths::hunter_path()?;
     let archive_path = create_archive()?;
     extract_archive(Path::new("/tmp"), &archive_path)?;
-    move_dir("/tmp/hunter/previewers", &hunter_dir)?;
+    copy(Path::new("/tmp/hunter/previewers"), &hunter_dir)?;
     delete_archive(&archive_path)
 }
 
@@ -105,9 +107,73 @@ fn install_config_actions() -> HResult<()> {
     let hunter_dir = crate::paths::hunter_path()?;
     let archive_path = create_archive()?;
     extract_archive(Path::new("/tmp"), &archive_path)?;
-    move_dir("/tmp/hunter/actions", &hunter_dir)?;
+    copy(Path::new("/tmp/hunter/actions"), &hunter_dir)?;
     delete_archive(&archive_path)
 }
+
+fn update_previewer() -> HResult<()> {
+    let previewer_dir = crate::paths::previewers_path()?;
+    let archive_path = create_archive()?;
+
+    extract_archive(Path::new("/tmp"), &archive_path)?;
+
+    update_dir(Path::new("/tmp/hunter/previewers"), &previewer_dir).log();
+
+    delete_archive(&archive_path)?;
+
+    Ok(())
+}
+
+fn update_actions() -> HResult<()> {
+    let actions_dir = crate::paths::actions_path()?;
+    let archive_path = create_archive()?;
+
+    extract_archive(Path::new("/tmp"), &archive_path)?;
+
+    update_dir(Path::new("/tmp/hunter/actions"), &actions_dir).log();
+
+    delete_archive(&archive_path)?;
+
+    Ok(())
+}
+
+pub fn update_config(core: WidgetCore, force: bool) -> HResult<()> {
+    // First install whatever might be missing, makes sure all dirs are there
+    ensure_config(core).log();
+
+    // Just overwrite everything except core config/keys with the latest version
+    if force {
+        install_config_previewers().log();
+        install_config_actions().log();
+        return Ok(())
+    }
+
+    let archive_path = create_archive()?;
+    extract_archive(Path::new("/tmp"), &archive_path)?;
+    Ok(())
+}
+
+fn update_dir<P: AsRef<Path>>(source: P, target: P) -> HResult<()> {
+    for file in std::fs::read_dir(source)? {
+        let file_path = file?.path();
+        let file_name = file_path.file_name()?;
+        let target_path = target.as_ref().join(file_name);
+
+        if file_path.is_dir() {
+            // Check subdirectories recursively
+            update_dir(&file_path, &target_path).log();
+        } else {
+            if !target_path.exists() {
+                HError::log::<()>(&format!("Installing additional config file: {}",
+                                           file_path.to_string_lossy())).ok();
+                copy(&file_path, &target_path).log();
+            }
+        }
+    }
+
+    Ok(())
+}
+
 
 fn create_archive() -> HResult<&'static str> {
     let archive_path = "/tmp/hunter-config.tar.gz";
