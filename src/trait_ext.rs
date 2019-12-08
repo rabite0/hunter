@@ -36,7 +36,7 @@ impl PathBufMime for PathBuf {
         let mut file = File::new_from_path(&self, None)
             .map_err(|e| MimeError::AccessFailed(Box::new(e)))?;
         file.meta_sync()
-            .map_err(|e| MimeError::AccessFailed(Box::new(e)))?;;
+            .map_err(|e| MimeError::AccessFailed(Box::new(e)))?;
 
 
         file.get_mime()

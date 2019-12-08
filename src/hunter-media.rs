@@ -281,19 +281,19 @@ fn read_keys(gst: Gstreamer,
                 if let Some(ref renderer) = renderer {
                     let xsize = stdin.read_line()?
                         .unwrap_or(String::from("0"))
-                        .parse::<usize>()?;;
+                        .parse::<usize>()?;
                     let ysize = stdin.read_line()?
                         .unwrap_or(String::from("0"))
-                        .parse::<usize>()?;;
+                        .parse::<usize>()?;
                     let mut xpix = stdin.read_line()?
                         .unwrap_or(String::from("0"))
-                        .parse::<usize>()?;;
+                        .parse::<usize>()?;
                     let mut ypix = stdin.read_line()?
                         .unwrap_or(String::from("0"))
-                        .parse::<usize>()?;;
+                        .parse::<usize>()?;
                     let cell_ratio = stdin.read_line()?
                         .unwrap_or(String::from("0"))
-                        .parse::<f32>()?;;
+                        .parse::<f32>()?;
 
                     let mut renderer = renderer
                         .write()
@@ -722,10 +722,10 @@ impl RenderTarget {
         img.with_raw(move |raw| -> MResult<()> {
             let sixfail = |e| format_err!("Sixel failed with: {:?}", e);
             let encoder = Encoder::new()
-                .map_err(sixfail)?;;;
+                .map_err(sixfail)?;
 
             encoder.set_encode_policy(EncodePolicy::Fast)
-                .map_err(sixfail)?;;
+                .map_err(sixfail)?;
 
             let frame = QuickFrameBuilder::new()
                 .width(xpix)
@@ -816,7 +816,7 @@ impl Renderer {
     }
 
     #[cfg(feature = "video")]
-    fn send_media_meta(&self, frame: &(impl ImgSize)) -> MResult<()> {
+    fn send_media_meta(&self, frame: &impl ImgSize) -> MResult<()> {
         let (_, height) = self.max_size(frame);
 
         println!("{}", height+1);
