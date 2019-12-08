@@ -79,11 +79,6 @@ path = "src/hunter-media.rs"
 required-features = ["img"]
 
 
-
-
-[patch.crates-io]
-systemstat = { git = 'https://github.com/myfreeweb/systemstat', tag="v0.1.4" }
-
 # These options increase performance and generate a smaller binary
 [profile.release]
 lto = true
