@@ -76,10 +76,10 @@ impl FsExt for Filesystem {
     }
 
     fn get_total(&self) -> String {
-        self.total.to_string(false)
+        self.total.to_string_as(false)
     }
 
     fn get_free(&self) -> String {
-        self.avail.to_string(false)
+        self.avail.to_string_as(false)
     }
 }
