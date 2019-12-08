@@ -764,8 +764,8 @@ impl Renderer {
     fn new(target: RenderTarget,
            xsize: usize,
            ysize: usize,
-           mut xpix: usize,
-           mut ypix: usize,
+           xpix: usize,
+           ypix: usize,
            cell_ratio: f32) -> Renderer {
 
         #[cfg(feature = "sixel")]
