@@ -51,10 +51,10 @@ gstreamer-video = { version = "0.14", optional = true }
 gstreamer-base = { version = "0.14", optional = true }
 sixel-sys = { version="0.3.1" , optional = true }
 
+# Need extra section to avoid conflict with features
 [dependencies.sixel-rs]
 package = "sixel"
-git = "https://github.com/rabite0/sixel-rs"
-tag="v0.3.1"
+version = "0.3.2"
 optional = true
 
 [build-dependencies]

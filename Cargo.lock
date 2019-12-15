@@ -591,7 +591,7 @@ dependencies = [
  "rust-ini 0.13.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "rustc_version 0.2.3 (registry+https://github.com/rust-lang/crates.io-index)",
  "signal-notify 0.1.3 (registry+https://github.com/rust-lang/crates.io-index)",
- "sixel 0.3.1 (git+https://github.com/rabite0/sixel-rs?tag=v0.3.1)",
+ "sixel 0.3.2 (registry+https://github.com/rust-lang/crates.io-index)",
  "sixel-sys 0.3.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "strum 0.15.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "strum_macros 0.15.0 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -1244,8 +1244,8 @@ dependencies = [
 
 [[package]]
 name = "sixel"
-version = "0.3.1"
-source = "git+https://github.com/rabite0/sixel-rs?tag=v0.3.1#e94c283d920a6c2e73aadea9635ef9331e00ea8e"
+version = "0.3.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
 dependencies = [
  "lazy_static 0.2.11 (registry+https://github.com/rust-lang/crates.io-index)",
  "semver-parser 0.6.2 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -1669,7 +1669,7 @@ dependencies = [
 "checksum semver-parser 0.6.2 (registry+https://github.com/rust-lang/crates.io-index)" = "d8fff3c9c5a54636ab95acd8c1349926e04cb1eb8cd70b5adced8a1d1f703a67"
 "checksum semver-parser 0.7.0 (registry+https://github.com/rust-lang/crates.io-index)" = "388a1df253eca08550bef6c72392cfe7c30914bf41df5269b68cbd6ff8f570a3"
 "checksum signal-notify 0.1.3 (registry+https://github.com/rust-lang/crates.io-index)" = "847fbedad7c2e6fbb6077befa1fa61a6336658eaae2d9fe66cb94a0024742f4e"
-"checksum sixel 0.3.1 (git+https://github.com/rabite0/sixel-rs?tag=v0.3.1)" = "<none>"
+"checksum sixel 0.3.2 (registry+https://github.com/rust-lang/crates.io-index)" = "51e4bcd2d65122138405b83d3f7777df6b04b0dd5222c85972ed1fb0119aeaaa"
 "checksum sixel-sys 0.3.1 (registry+https://github.com/rust-lang/crates.io-index)" = "fb46e0cd5569bf910390844174a5a99d52dd40681fff92228d221d9f8bf87dea"
 "checksum slab 0.4.2 (registry+https://github.com/rust-lang/crates.io-index)" = "c111b5bd5695e56cffe5129854aa230b39c93a305372fdbb2668ca2394eea9f8"
 "checksum smallvec 0.6.13 (registry+https://github.com/rust-lang/crates.io-index)" = "f7b0758c52e15a8b5e3691eae6cc559f08eee9406e548a4477ba4e67770a82b6"
