@@ -240,7 +240,7 @@ impl MediaView {
                             imgview.set_image_data(frame);
                             sender.send(crate::widget::Events::WidgetReady)
                                 .map_err(|e| HError::from(e))
-                                .log();;
+                                .log();
                         }
 
                         line_buf.clear();

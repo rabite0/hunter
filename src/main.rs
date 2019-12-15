@@ -140,7 +140,7 @@ fn run(mut core: WidgetCore) -> HResult<()> {
 fn parse_args(core: WidgetCore) -> HResult<()> {
     let args = App::new("Lag-free terminal file browser")
         .version(clap::crate_version!())
-        .author(clap::crate_authors!("\n"))
+        .author(clap::crate_authors!())
         .about("Hunt your files at light-speed, armed with full $SHELL integration")
         .arg(
             Arg::with_name("update")

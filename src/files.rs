@@ -852,8 +852,8 @@ impl File {
 
     pub fn get_mime(&self) -> Option<mime_guess::Mime> {
         if let Some(ext) = self.path.extension() {
-            let mime = mime_guess::get_mime_type(&ext.to_string_lossy());
-            Some(mime)
+            let mime = mime_guess::from_ext(&ext.to_string_lossy()).first();
+            mime
         } else {
             // Fix crash in tree_magic when called on non-regular file
             self.meta()
