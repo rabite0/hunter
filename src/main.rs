@@ -94,12 +94,14 @@ fn die_gracefully(core: &WidgetCore) {
 }
 
 fn main() -> HResult<()> {
+    let args = parse_args();
+
     // do this early so it might be ready when needed
     crate::files::load_tags().ok();
 
     let mut core = WidgetCore::new().expect("Can't create WidgetCore!");
 
-    parse_args(core.clone()).log();
+    process_args(args, core.clone());
 
     // Resets terminal when hunter crashes :(
     die_gracefully(&core);
@@ -137,16 +139,17 @@ fn run(mut core: WidgetCore) -> HResult<()> {
 }
 
 
-fn parse_args(core: WidgetCore) -> HResult<()> {
-    let args = App::new("Lag-free terminal file browser")
+fn parse_args() -> clap::ArgMatches<'static> {
+    App::new(clap::crate_name!())
         .version(clap::crate_version!())
         .author(clap::crate_authors!())
-        .about("Hunt your files at light-speed, armed with full $SHELL integration")
+        .about(clap::crate_description!())
+        .setting(clap::AppSettings::ColoredHelp)
         .arg(
             Arg::with_name("update")
                 .short("u")
                 .long("update-conf")
-                .help("Update configuration (WARNING: Overwrites modified previewers/actions with default names! Main config/keys are safe!)")
+                .help("Update configuration\n(WARNING: Overwrites modified previewers/actions with default names!\nMain config/keys are safe!)")
                 .takes_value(false))
         .arg(
             Arg::with_name("animation-off")
@@ -184,9 +187,12 @@ fn parse_args(core: WidgetCore) -> HResult<()> {
             Arg::with_name("path")
                 .index(1)
                 .help("Start in <path>"))
-        .get_matches();
+        .get_matches()
+}
 
 
+
+fn process_args(args: clap::ArgMatches, core: WidgetCore) {
     let path = args.value_of("path");
 
     // Just print MIME and quit
@@ -209,7 +215,6 @@ fn parse_args(core: WidgetCore) -> HResult<()> {
     }
 
     crate::config::set_argv_config(args).log();
-    Ok(())
 }
 
 
