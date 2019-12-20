@@ -238,48 +238,54 @@ impl Files {
     }
 
     pub fn get_file_mut(&mut self, index: usize) -> Option<&mut File> {
+        self.iter_files_mut()
+            .nth(index)
+    }
+
+    pub fn iter_files(&self) -> impl Iterator<Item=&File> {
         let filter = self.filter.clone();
         let filter_selected = self.filter_selected;
         let show_hidden = self.show_hidden;
 
-        let file = self.files
-            .iter_mut()
-            .filter(|f|
-                    f.kind == Kind::Placeholder ||
-                    !(filter.is_some() &&
-                      !f.name.contains(filter.as_ref().unwrap())) &&
-                    (!filter_selected || f.selected))
-            .filter(|f| !(!show_hidden && f.name.starts_with(".")))
-            .nth(index);
-        file
-    }
-
-    pub fn get_files(&self) -> Vec<&File> {
         self.files
             .iter()
-            .filter(|f|
+            .filter(move |f|
                     f.kind == Kind::Placeholder ||
-                    !(self.filter.is_some() &&
-                      !f.name.contains(self.filter.as_ref().unwrap())) &&
-                    (!self.filter_selected || f.selected))
-            .filter(|f| !(!self.show_hidden && f.name.starts_with(".")))
-            .collect()
+                    !(filter.is_some() &&
+                      !f.name.contains(filter.as_ref().unwrap())) &&
+                    (!filter_selected || f.selected))
+            .filter(move |f| !(!show_hidden && f.name.starts_with(".")))
     }
 
-    pub fn get_files_mut(&mut self) -> Vec<&mut File> {
+    pub fn iter_files_mut(&mut self) -> impl Iterator<Item=&mut File> {
         let filter = self.filter.clone();
         let filter_selected = self.filter_selected;
         let show_hidden = self.show_hidden;
 
         self.files
             .iter_mut()
-            .filter(|f|
+            .filter(move |f|
                     f.kind == Kind::Placeholder ||
                     !(filter.is_some() &&
                       !f.name.contains(filter.as_ref().unwrap())) &&
                     (!filter_selected || f.selected))
-            .filter(|f| !(!show_hidden && f.name.starts_with(".")))
-            .collect()
+            .filter(move |f| !(!show_hidden && f.name.starts_with(".")))
+    }
+
+    #[allow(trivial_bounds)]
+    pub fn into_iter_files(self) -> impl Iterator<Item=File> {
+        let filter = self.filter;
+        let filter_selected = self.filter_selected;
+        let show_hidden = self.show_hidden;
+
+        self.files
+            .into_iter()
+            .filter(move |f|
+                    f.kind == Kind::Placeholder ||
+                    !(filter.is_some() &&
+                      !f.name.contains(filter.as_ref().unwrap())) &&
+                    (!filter_selected || f.selected))
+            .filter(move |f| !(!show_hidden && f.name.starts_with(".")))
     }
 
     pub fn sort(&mut self) {
@@ -454,10 +460,8 @@ impl Files {
     }
 
     pub fn find_file_with_name(&self, name: &str) -> Option<&File> {
-        self.get_files()
-            .iter()
+        self.iter_files()
             .find(|f| f.name.to_lowercase().contains(name))
-            .cloned()
     }
 
     pub fn find_file_with_path(&mut self, path: &Path) -> Option<&mut File> {
@@ -543,15 +547,12 @@ impl Files {
     }
 
     pub fn len(&self) -> usize {
-        self.get_files().len()
+        self.iter_files().count()
     }
 
-    pub fn get_selected(&self) -> Vec<&File> {
-        self.get_files()
-            .iter()
+    pub fn get_selected(&self) -> impl Iterator<Item=&File> {
+        self.iter_files()
             .filter(|f| f.is_selected())
-            .map(|f| *f)
-            .collect()
     }
 }
 

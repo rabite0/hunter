@@ -441,11 +441,11 @@ impl FileBrowser {
     pub fn move_down_left_widget(&mut self) -> HResult<()> {
         let left_files_pos = self.left_widget()?.get_selection();
 
-        let next_dir = self.get_left_files()?.get_files()
-            .iter()
+        let next_dir = self.get_left_files()?
+            .iter_files()
             .skip(left_files_pos + 1)
-            .find(|file| file.is_dir())
-            .cloned().cloned();
+            .find(|&file| file.is_dir())
+            .cloned();
 
         self.main_widget_goto(&next_dir?).log();
 
@@ -454,14 +454,15 @@ impl FileBrowser {
 
     pub fn move_up_left_widget(&mut self) -> HResult<()> {
         let left_files_pos = self.left_widget()?.get_selection();
-        let skip_files = self.get_left_files()?.len() - left_files_pos;
 
-        let next_dir = self.get_left_files()?.get_files()
-            .iter()
+        let next_dir = self.get_left_files()?
+            .iter_files()
+            .take(left_files_pos)
+            .collect::<Vec<&File>>()
+            .into_iter()
             .rev()
-            .skip(skip_files)
-            .find(|file| file.is_dir())
-            .cloned().cloned();
+            .find(|&file| file.is_dir())
+            .cloned();
 
         self.main_widget_goto(&next_dir?).log();
 
@@ -1170,7 +1171,10 @@ impl FileBrowser {
         let xsize = self.get_coordinates()?.xsize();
         let ypos = self.get_coordinates()?.position().y();
         let pos = self.main_widget()?.get_selection();
-        let file = self.main_widget()?.content.get_files().get(pos).cloned()?;
+        let file = self.main_widget()?
+            .content
+            .iter_files()
+            .nth(pos)?;
 
         let permissions = file.pretty_print_permissions().unwrap_or("NOPERMS".into());
         let user = file.pretty_user().unwrap_or("NOUSER".into());

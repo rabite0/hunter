@@ -222,14 +222,31 @@ impl ListView<Files>
 {
     pub fn selected_file(&self) -> &File {
         let selection = self.selection;
-        let file = &self.content.get_files()[selection];
-        file
+
+        &self.content
+            .iter_files()
+            .nth(selection)
+            .unwrap_or(&self.content.directory)
     }
 
     pub fn selected_file_mut(&mut self) -> &mut File {
         let selection = self.selection;
-        let file = self.content.get_file_mut(selection);
-        file.unwrap()
+
+        let file = self.content
+            .iter_files_mut()
+            .nth(selection)
+            .map(|f| f as *mut File);
+
+
+        // Work around annoying restriction until polonius borrow checker becomes default
+        // Since we only ever return one mutable borrow this is perfectly safe
+        // See also: https://github.com/rust-lang/rust/issues/21906
+        match file {
+            Some(file) => unsafe { return file.as_mut().unwrap() },
+            None => {
+                &mut self.content.directory
+            }
+        }
     }
 
     pub fn clone_selected_file(&self) -> File {
@@ -271,9 +288,8 @@ impl ListView<Files>
     pub fn select_file(&mut self, file: &File) {
         let pos = self
             .content
-            .get_files()
-            .iter()
-            .position(|item| item == &file)
+            .iter_files()
+            .position(|item| item == file)
             .unwrap_or(0);
         self.set_selection(pos);
     }
@@ -308,7 +324,7 @@ impl ListView<Files>
 
         self.select_file(&file);
 
-        if self.seeking == false || self.selection + 1 == self.content.len() {
+        if self.seeking == false || self.selection + 1 >= self.content.len() {
             self.selection = 0;
             self.offset = 0;
         } else {
@@ -390,7 +406,7 @@ impl ListView<Files>
     }
 
     pub fn invert_selection(&mut self) {
-        for file in self.content.get_files_mut() {
+        for file in self.content.iter_files_mut() {
             file.toggle_selection();
         }
 
@@ -404,7 +420,7 @@ impl ListView<Files>
     }
 
     pub fn clear_selections(&mut self) {
-        for file in self.content.get_files_mut() {
+        for file in self.content.iter_files_mut() {
             file.selected = false;
         }
         self.content.set_dirty();
@@ -632,9 +648,8 @@ impl ListView<Files>
 
     fn render(&self) -> Vec<String> {
         self.content
-            .get_files()
-            .iter()
-            .map(|file| self.render_line(&file))
+            .iter_files()
+            .map(|file| self.render_line(file))
             .collect()
     }
 }
