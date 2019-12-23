@@ -1,4 +1,5 @@
 use std::cmp::{Ord, Ordering};
+use std::collections::{HashMap, HashSet};
 use std::ops::Index;
 use std::fs::Metadata;
 use std::os::unix::fs::MetadataExt;
@@ -16,7 +17,6 @@ use users::{get_current_username,
             get_group_by_gid};
 use chrono::TimeZone;
 use failure::Error;
-use notify::DebouncedEvent;
 use rayon::{ThreadPool, ThreadPoolBuilder};
 use alphanumeric_sort::compare_str;
 use mime_guess;
@@ -28,6 +28,7 @@ use crate::fail::{HResult, HError, ErrorLog};
 use crate::dirty::{AsyncDirtyBit, DirtyBit, Dirtyable};
 use crate::widget::Events;
 use crate::icon::Icons;
+use crate::fscache::FsEvent;
 
 
 lazy_static! {
@@ -99,11 +100,147 @@ pub fn tags_loaded() -> HResult<()> {
 
 
 #[derive(PartialEq, Eq, Hash, Clone, Debug)]
+pub struct RefreshPackage {
+    pub new_files: Option<Vec<File>>,
+    pub new_buffer: Option<Vec<String>>,
+}
+
+
+
+
+impl RefreshPackage {
+    fn new(mut files: Files,
+           old_buffer: Vec<String>,
+           events: Vec<FsEvent>,
+           render_fn: impl Fn(&File) -> String) -> RefreshPackage {
+        use FsEvent::*;
+
+        // If there is only a placeholder at this point, remove it now
+        if files.len() == 1 {
+            files.remove_placeholder();
+        }
+
+        //To preallocate collections
+        let event_count = events.len();
+
+        // Need at least one copy for the hashmaps
+        let static_files = files.clone();
+
+        // Optimization to speed up access to array
+        let file_pos_map: HashMap<&File, usize> = static_files
+            .files
+            .iter()
+            .enumerate()
+            .map(|(i, file)| (file, i))
+            .collect();
+
+
+        // Need to know which line of the ListView buffer belongs to which file
+        let list_pos_map: HashMap<&File, usize> = static_files
+            .iter_files()
+            .enumerate()
+            .take_while(|&(i, _)| i < old_buffer.len())
+            .map(|(i, file)| (file, i))
+            .collect();
+
+        // Save new files to add them all at once later
+        let mut new_files = Vec::with_capacity(event_count);
+
+        // Files that need rerendering to make all changes visible (size, etc.)
+        let mut changed_files = HashSet::with_capacity(event_count);
+
+        // Save deletions to delete them efficiently later
+        let mut deleted_files = HashSet::with_capacity(event_count);
+
+        for event in events.into_iter() {
+            match event {
+                Create(mut file) => {
+                    let dirty_meta = files.dirty_meta.clone();
+                    file.dirty_meta = Some(dirty_meta);
+                    file.meta_sync().log();
+                    new_files.push(file);
+                }
+                Change(file) => {
+                    if let Some(&fpos) = file_pos_map.get(&file) {
+                        files.files[fpos].meta_sync().log();
+                        changed_files.insert(file);
+                    }
+                }
+                Rename(old, new) => {
+                    if let Some(&fpos) = file_pos_map.get(&old) {
+                        files.files[fpos].rename(&new.path).log();
+                        files.files[fpos].meta_sync().log();
+                    }
+                }
+                Remove(file) => {
+                    if let Some(_) = file_pos_map.get(&file) {
+                        deleted_files.insert(file);
+                    }
+                }
+            }
+        }
+
+        if deleted_files.len() > 0 {
+            files.files.retain(|file| !deleted_files.contains(file));
+        }
+
+        // Finally add all new files
+        files.files.extend(new_files);
+
+        // Need to unpack this to prevent issue with recursive Files type
+        // Also, if no files remain add placeholder
+        let files = if files.len() > 0 {
+            // Sort again to make sure new/changed files are in correct order
+            files.sort();
+            files.files
+        } else {
+            let placeholder = File::new_placeholder(&files.directory.path).unwrap();
+            files.files.push(placeholder);
+
+            // Need to sort because of possible hidden files
+            files.sort();
+            files.files
+        };
+
+        let mut old_buffer = old_buffer;
+
+        // Prerender new buffer in current thread
+        let new_buffer = files.iter()
+            .map(|file| {
+                match list_pos_map.get(&file) {
+                    Some(&old_pos) =>
+                        match changed_files.contains(&file) {
+                            true => render_fn(&file),
+                            false => std::mem::take(&mut old_buffer[old_pos])
+                        }
+                    None => render_fn(&file)
+                }
+            }).collect();
+
+
+
+        RefreshPackage {
+            new_files: Some(files),
+            new_buffer: Some(new_buffer),
+        }
+    }
+}
+
+
+#[derive(Derivative)]
+#[derivative(PartialEq, Eq, Hash, Clone, Debug)]
 pub struct Files {
     pub directory: File,
     pub files: Vec<File>,
+    #[derivative(Debug="ignore")]
+    #[derivative(PartialEq="ignore")]
+    #[derivative(Hash="ignore")]
+    pub pending_events: Arc<RwLock<Vec<FsEvent>>>,
+    #[derivative(Debug="ignore")]
+    #[derivative(PartialEq="ignore")]
+    #[derivative(Hash="ignore")]
+    pub refresh: Option<Async<RefreshPackage>>,
     pub meta_upto: Option<usize>,
-    pub meta_updated: bool,
     pub sort: SortBy,
     pub dirs_first: bool,
     pub reverse: bool,
@@ -158,8 +295,9 @@ impl Files {
         let mut files = Files {
             directory: File::new_from_path(&path, None)?,
             files: files,
+            pending_events: Arc::new(RwLock::new(vec![])),
+            refresh: None,
             meta_upto: None,
-            meta_updated: false,
             sort: SortBy::Name,
             dirs_first: true,
             reverse: false,
@@ -216,8 +354,9 @@ impl Files {
         let mut files = Files {
             directory: File::new_from_path(&path, None)?,
             files: files,
+            pending_events: Arc::new(RwLock::new(vec![])),
+            refresh: None,
             meta_upto: None,
-            meta_updated: false,
             sort: SortBy::Name,
             dirs_first: true,
             reverse: false,
@@ -375,77 +514,69 @@ impl Files {
         }
     }
 
-    pub fn replace_file(&mut self,
-                        old: Option<&File>,
-                        new: Option<File>) -> HResult<()> {
-        let (tag, selected) = if let Some(old) = old {
-            if let Some(old) = self.find_file_with_path(&old.path) {
-                (old.tag, old.selected)
-            } else {
-                (None, false)
-            }
-        } else {
-            (None, false)
-        };
-        old.map(|old| self.files.remove_item(old));
-        new.map(|mut new| {
-            new.tag = tag;
-            new.selected = selected;
-            self.files.push(new);
-        });
-
-        self.sort();
-
-        if self.len() == 0 {
-            let placeholder = File::new_placeholder(&self.directory.path)?;
-            self.files.push(placeholder);
-        } else {
-            self.remove_placeholder();
-        }
-
-        Ok(())
-    }
-
     fn remove_placeholder(&mut self) {
         let dirpath = self.directory.path.clone();
         self.find_file_with_path(&dirpath).cloned()
             .map(|placeholder| self.files.remove_item(&placeholder));
     }
 
-    pub fn handle_event(&mut self,
-                        event: &DebouncedEvent) -> HResult<()> {
-        match event {
-            DebouncedEvent::Create(path) => {
-                self.path_in_here(&path)?;
-                let file = File::new_from_path(&path,
-                                               Some(self.dirty_meta.clone()))?;
-                self.files.push(file);
-                self.sort();
-            },
-            DebouncedEvent::Write(path) | DebouncedEvent::Chmod(path) => {
-                self.path_in_here(&path)?;
-                let file = self.find_file_with_path(&path)?;
-                file.reload_meta()?;
-            },
-            DebouncedEvent::Remove(path) => {
-                self.path_in_here(&path)?;
-                let file = self.find_file_with_path(&path)?.clone();
-                self.files.remove_item(&file);
-            },
-            DebouncedEvent::Rename(old_path, new_path) => {
-                self.path_in_here(&new_path)?;
-                let mut file = self.find_file_with_path(&old_path)?;
-                file.name = new_path.file_name()?.to_string_lossy().to_string();
-                file.path = new_path.into();
-                file.reload_meta()?;
-            },
-            DebouncedEvent::Error(err, _path) => {
-                // Never seen this happen. Should reload affected dirs
-                HError::log::<()>(&format!("{}", err))?;
-            },
-            _ => {},
+    pub fn ready_to_refresh(&self) -> HResult<bool> {
+        let pending = self.pending_events.read()?.len();
+        let running = self.refresh.is_some();
+        Ok(pending > 0 && !running)
+    }
+
+    pub fn get_refresh(&mut self) -> HResult<Option<RefreshPackage>> {
+        if let Some(mut refresh) = self.refresh.take() {
+            if refresh.is_ready() {
+                refresh.pull_async()?;
+                let mut refresh = refresh.value?;
+                self.files = refresh.new_files.take()?;
+                return Ok(Some(refresh));
+            } else {
+                self.refresh.replace(refresh);
+            }
         }
-        self.set_dirty();
+
+        return Ok(None)
+    }
+
+    pub fn process_fs_events(&mut self,
+                             buffer: Vec<String>,
+                             sender: Sender<Events>,
+                             render_fn: impl Fn(&File) -> String + Send + 'static)
+                             -> HResult<()> {
+        let pending = self.pending_events.read()?.len();
+        if pending > 0 {
+            let pending = if pending >= 1000 {
+                1000
+            } else {
+                pending
+            };
+
+            let events = self.pending_events
+                .write()?
+                .drain(0..pending)
+                .collect::<Vec<_>>();
+            let files = self.clone();
+
+            let mut refresh = Async::new(move |_| {
+                let refresh = RefreshPackage::new(files,
+                                                  buffer,
+                                                  events,
+                                                  render_fn);
+                Ok(refresh)
+            });
+
+            refresh.on_ready(move |_,_| {
+                Ok(sender.send(Events::WidgetReady)?)
+            })?;
+
+            refresh.run()?;
+
+            self.refresh = Some(refresh);
+        }
+
         Ok(())
     }
 
@@ -465,17 +596,16 @@ impl Files {
     }
 
     pub fn find_file_with_path(&mut self, path: &Path) -> Option<&mut File> {
-        self.files.iter_mut().find(|file| file.path == path)
+        self.iter_files_mut().find(|file| file.path == path)
     }
 
     pub fn meta_all_sync(&mut self) -> HResult<()> {
-        for file in self.files.iter_mut() {
+        for file in self.iter_files_mut() {
             if !file.meta_processed {
                 file.meta_sync().log();
             }
         }
         self.set_dirty();
-        self.meta_updated = true;
         Ok(())
     }
 
@@ -508,10 +638,10 @@ impl Files {
             .filter(|f| !(!show_hidden && f.name.starts_with(".")))
             .take(meta_files) {
             if !file.meta_processed {
-                file.take_meta(&meta_pool, &mut self.meta_updated).ok();
+                file.take_meta(&meta_pool).ok();
             }
             if file.is_dir() {
-                file.take_dirsize(&meta_pool, &mut self.meta_updated).ok();
+                file.take_dirsize(&meta_pool).ok();
             }
         }
 
@@ -519,7 +649,7 @@ impl Files {
     }
 
     pub fn meta_set_fresh(&self) -> HResult<()> {
-        self.files.get(0)?.meta.set_fresh()?;
+        self.iter_files().nth(0)?.meta.set_fresh()?;
         Ok(())
     }
 
@@ -697,6 +827,12 @@ impl File {
         Ok(file)
     }
 
+    pub fn rename(&mut self, new_path: &Path) -> HResult<()> {
+        self.name = new_path.file_name()?.to_string_lossy().to_string();
+        self.path = new_path.into();
+        Ok(())
+    }
+
     pub fn meta_sync(&mut self) -> HResult<()> {
         let stale = self.meta.get_stale();
         let meta = std::fs::metadata(&self.path)?;
@@ -754,36 +890,32 @@ impl File {
     }
 
     fn take_dirsize(&mut self,
-                    pool: &ThreadPool,
-                    meta_updated: &mut bool) -> HResult<()> {
+                    pool: &ThreadPool) -> HResult<()> {
         let dirsize = self.dirsize.as_mut()?;
         if let Ok(_) = dirsize.value { return Ok(()) }
 
-        if !dirsize.is_running() {
+        if !dirsize.is_running() && !dirsize.is_ready() {
             dirsize.run_pooled(Some(&*pool))?;
         }
 
         if dirsize.is_ready() {
             dirsize.pull_async()?;
-            *meta_updated = true;
         }
 
         Ok(())
     }
 
     pub fn take_meta(&mut self,
-                     pool: &ThreadPool,
-                     meta_updated: &mut bool) -> HResult<()> {
+                     pool: &ThreadPool) -> HResult<()> {
         if self.meta_processed { return Ok(()) }
 
-        if !self.meta.is_running() {
+        if !self.meta.is_running() && !self.meta.is_ready() {
             self.meta.run_pooled(Some(&*pool))?;
         }
 
         if self.meta.is_ready() {
             self.meta.pull_async()?;
             self.process_meta()?;
-            *meta_updated = true;
         }
 
         Ok(())
@@ -857,10 +989,11 @@ impl File {
             mime
         } else {
             // Fix crash in tree_magic when called on non-regular file
+            // Also fix crash when a file doesn't exist any more
             self.meta()
                 .ok()
                 .and_then(|meta| {
-                    if meta.is_file() {
+                    if meta.is_file() && self.path.exists() {
                         let mime = tree_magic::from_filepath(&self.path);
                         mime::Mime::from_str(&mime).ok()
                     } else { None }

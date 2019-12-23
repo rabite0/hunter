@@ -97,6 +97,8 @@ impl Listable for ListView<Files> {
 
         self.content.meta_upto(visible_files, Some(sender.clone()));
 
+        self.refresh_files().log();
+
         if self.content.is_dirty() {
             self.content.set_clean();
             self.core.set_dirty();
@@ -239,7 +241,7 @@ impl ListView<Files>
 
 
         // Work around annoying restriction until polonius borrow checker becomes default
-        // Since we only ever return one mutable borrow this is perfectly safe
+        // Since only ever one mutable borrow is returned this is perfectly safe
         // See also: https://github.com/rust-lang/rust/issues/21906
         match file {
             Some(file) => unsafe { return file.as_mut().unwrap() },
@@ -581,76 +583,108 @@ impl ListView<Files>
     }
 
     fn render_line(&self, file: &File) -> String {
-        let icon = if self.core.config().icons {
-            file.icon()
-        } else { "" };
-
-        let name = String::from(icon) + &file.name;
-        let (size, unit) = file.calculate_size().unwrap_or((0, "".to_string()));
-
-
-
-        let tag = match file.is_tagged() {
-            Ok(true) => term::color_red() + "*",
-            _ => "".to_string()
-        };
-        let tag_len = if tag != "" { 1 } else { 0 };
-
-        let selection_gap = "  ".to_string();
-        let (name, selection_color) =  if file.is_selected() {
-            (selection_gap + &name, crate::term::color_yellow())
-        } else { (name.clone(), "".to_string()) };
-
-        let (link_indicator, link_indicator_len) = if file.target.is_some() {
-            (format!("{}{}{}",
-                     term::color_yellow(),
-                     "--> ".to_string(),
-                     term::highlight_color()),
-             4)
-        } else { ("".to_string(), 0) };
-
-        let xsize = self.get_coordinates().unwrap().xsize();
-        let sized_string = term::sized_string(&name, xsize);
-        let size_pos = xsize - (size.to_string().len() as u16
-                                + unit.to_string().len() as u16
-                                + link_indicator_len);
-        let padding = sized_string.len() - sized_string.width_cjk();
-        let padding = xsize - padding as u16;
-        let padding = padding - tag_len;
-
-        format!(
-            "{}{}{}{}{}{}{}{}",
-            termion::cursor::Save,
-            match &file.color {
-                Some(color) => format!("{}{}{}{:padding$}{}",
-                                       tag,
-                                       term::from_lscolor(color),
-                                       selection_color,
-                                       &sized_string,
-                                       term::normal_color(),
-                                       padding = padding as usize),
-                _ => format!("{}{}{}{:padding$}{}",
-                             tag,
-                             term::normal_color(),
-                             selection_color,
-                             &sized_string,
-                             term::normal_color(),
-                             padding = padding as usize),
-            } ,
-            termion::cursor::Restore,
-            termion::cursor::Right(size_pos),
-            link_indicator,
-            term::highlight_color(),
-            size,
-            unit
-        )
+        let render_fn = self.render_line_fn();
+        render_fn(file)
     }
+
+    #[allow(trivial_bounds)]
+    fn render_line_fn(&self) -> impl Fn(&File) -> String {
+        let xsize = self.get_coordinates().unwrap().xsize();
+        let icons = self.core.config().icons;
+
+        move |file| -> String {
+            let icon = if icons {
+                file.icon()
+            } else { "" };
+
+            let name = String::from(icon) + &file.name;
+            let (size, unit) = file.calculate_size().unwrap_or((0, "".to_string()));
+
+
+
+            let tag = match file.is_tagged() {
+                Ok(true) => term::color_red() + "*",
+                _ => "".to_string()
+            };
+            let tag_len = if tag != "" { 1 } else { 0 };
+
+            let selection_gap = "  ".to_string();
+            let (name, selection_color) =  if file.is_selected() {
+                (selection_gap + &name, crate::term::color_yellow())
+            } else { (name.clone(), "".to_string()) };
+
+            let (link_indicator, link_indicator_len) = if file.target.is_some() {
+                (format!("{}{}{}",
+                         term::color_yellow(),
+                         "--> ".to_string(),
+                         term::highlight_color()),
+                 4)
+            } else { ("".to_string(), 0) };
+
+
+            let sized_string = term::sized_string(&name, xsize);
+            let size_pos = xsize - (size.to_string().len() as u16
+                                    + unit.to_string().len() as u16
+                                    + link_indicator_len);
+            let padding = sized_string.len() - sized_string.width_cjk();
+            let padding = xsize - padding as u16;
+            let padding = padding - tag_len;
+
+            format!(
+                "{}{}{}{}{}{}{}{}",
+                termion::cursor::Save,
+                match &file.color {
+                    Some(color) => format!("{}{}{}{:padding$}{}",
+                                           tag,
+                                           term::from_lscolor(color),
+                                           selection_color,
+                                           &sized_string,
+                                           term::normal_color(),
+                                           padding = padding as usize),
+                    _ => format!("{}{}{}{:padding$}{}",
+                                 tag,
+                                 term::normal_color(),
+                                 selection_color,
+                                 &sized_string,
+                                 term::normal_color(),
+                                 padding = padding as usize),
+                } ,
+                termion::cursor::Restore,
+                termion::cursor::Right(size_pos),
+                link_indicator,
+                term::highlight_color(),
+                size,
+                unit
+            )
+        }
+    }
+
 
     fn render(&self) -> Vec<String> {
         self.content
             .iter_files()
             .map(|file| self.render_line(file))
             .collect()
+    }
+
+    fn refresh_files(&mut self) -> HResult<()> {
+        if let Ok(Some(mut refresh)) = self.content.get_refresh() {
+            let file = self.clone_selected_file();
+
+            self.buffer = refresh.new_buffer.take()?;
+            self.lines = self.buffer.len() - 1;
+
+            self.select_file(&file);
+        }
+
+        if self.content.ready_to_refresh()? {
+            let render_fn = self.render_line_fn();
+            self.content.process_fs_events(self.buffer.clone(),
+                                           self.core.get_sender(),
+                                           render_fn)?;
+        }
+
+        Ok(())
     }
 }
 
@@ -664,13 +698,16 @@ impl<T> Widget for ListView<T> where ListView<T>: Listable {
     }
     fn refresh(&mut self) -> HResult<()> {
         self.on_refresh().log();
-        self.lines = self.len();
 
-        if self.selection >= self.len() && self.selection != 0 {
-            self.selection = self.len() - 1;
+        let buffer_len = self.buffer.len();
+
+        self.lines = buffer_len;
+
+        if self.selection >= self.buffer.len() && self.buffer.len() != 0 {
+            self.selection = self.buffer.len() - 1;
         }
 
-        if self.core.is_dirty() || self.buffer.len() != self.len() {
+        if self.core.is_dirty() || buffer_len != self.len() {
             self.buffer = self.render();
             self.core.set_clean();
         }

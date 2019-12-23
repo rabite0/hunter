@@ -168,21 +168,6 @@ impl Tabbable for TabView<FileBrowser> {
     }
 
     fn on_refresh(&mut self) -> HResult<()> {
-        let fs_changes = self.active_tab_()
-            .fs_cache
-            .fs_changes
-            .write()?
-            .drain(..)
-            .collect::<Vec<_>>();
-
-        for tab in &mut self.widgets {
-            for (dir, old_file, new_file) in fs_changes.iter() {
-                tab.replace_file(&dir,
-                                 old_file.as_ref(),
-                                 new_file.as_ref()).log()
-            }
-        }
-
         let open_dirs = self.widgets
             .iter()
             .fold(HashSet::new(), |mut dirs, tab| {
@@ -503,7 +488,7 @@ impl FileBrowser {
     }
 
     pub fn main_widget_goto(&mut self, dir: &File) -> HResult<()> {
-        self.cache_files().log();
+        self.save_tab_settings().log();
 
         let dir = dir.clone();
         let cache = self.fs_cache.clone();
@@ -733,21 +718,14 @@ impl FileBrowser {
         Ok(&self.left_widget()?.content)
     }
 
-    pub fn cache_files(&mut self) -> HResult<()> {
-        if self.main_widget().is_ok() {
+    pub fn save_tab_settings(&mut self) -> HResult<()> {
+        if !self.main_async_widget_mut()?.ready() { return Ok(()) }
+
+        if self.main_widget()?.content.len() > 0 {
             let files = self.get_files()?;
             let selected_file = self.selected_file().ok();
-            self.fs_cache.put_files(files, selected_file).log();
-            self.main_widget_mut()?.content.meta_updated = false;
+            self.fs_cache.save_settings(files, selected_file).log();
         }
-
-
-        // if self.cwd.parent().is_some() {
-        //     let left_selection = self.left_widget()?.clone_selected_file();
-        //     let left_files = self.get_left_files()?;
-        //     self.fs_cache.put_files(left_files, Some(left_selection)).log();
-        //     self.left_widget_mut()?.content.meta_updated = false;
-        // }
 
         Ok(())
     }
@@ -767,22 +745,6 @@ impl FileBrowser {
         let widget = self.left_widget()?;
         let dir = &widget.content.directory;
         Ok(dir)
-    }
-
-    fn replace_file(&mut self,
-                    dir: &File,
-                    old: Option<&File>,
-                    new: Option<&File>) -> HResult<()> {
-        if &self.cwd == dir {
-            self.main_widget_mut()?.content.replace_file(old, new.cloned()).log();
-        }
-
-        self.preview_widget_mut()?.replace_file(dir, old, new).ok();
-
-        if &self.left_dir()? == &dir {
-            self.left_widget_mut()?.content.replace_file(old, new.cloned()).log();
-        }
-        Ok(())
     }
 
     pub fn selected_file(&self) -> HResult<File> {
@@ -1288,7 +1250,7 @@ impl Widget for FileBrowser {
         self.set_cwd().log();
         if !self.columns.zoom_active { self.update_preview().log(); }
         self.columns.refresh().log();
-        self.cache_files().log();
+        self.save_tab_settings().log();
         Ok(())
     }
 

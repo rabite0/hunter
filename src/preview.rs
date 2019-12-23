@@ -324,23 +324,6 @@ impl Previewer {
         }
     }
 
-    pub fn replace_file(&mut self, dir: &File,
-                        old: Option<&File>,
-                        new: Option<&File>) -> HResult<()> {
-        if self.file.as_ref() != Some(dir) { return Ok(()) }
-        self.widget.widget_mut().map(|widget| {
-            match widget {
-                PreviewWidget::FileList(filelist) => {
-                    filelist.content.replace_file(old, new.cloned()).map(|_| {
-                        filelist.refresh().ok();
-                    }).ok();
-
-                }
-                _ => {}
-            }
-        })
-    }
-
     pub fn put_preview_files(&mut self, files: Files) {
         let core = self.core.clone();
         let dir = files.directory.clone();
