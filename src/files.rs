@@ -103,6 +103,7 @@ pub fn tags_loaded() -> HResult<()> {
 pub struct RefreshPackage {
     pub new_files: Option<Vec<File>>,
     pub new_buffer: Option<Vec<String>>,
+    pub new_len: usize,
 }
 
 
@@ -187,6 +188,9 @@ impl RefreshPackage {
         // Finally add all new files
         files.files.extend(new_files);
 
+        // Files added, removed, renamed to hidden, etc...
+        files.recalculate_len();
+        let new_len = files.len();
         // Need to unpack this to prevent issue with recursive Files type
         // Also, if no files remain add placeholder
         let files = if files.len() > 0 {
@@ -222,6 +226,7 @@ impl RefreshPackage {
         RefreshPackage {
             new_files: Some(files),
             new_buffer: Some(new_buffer),
+            new_len: new_len
         }
     }
 }
@@ -232,6 +237,7 @@ impl RefreshPackage {
 pub struct Files {
     pub directory: File,
     pub files: Vec<File>,
+    pub len: usize,
     #[derivative(Debug="ignore")]
     #[derivative(PartialEq="ignore")]
     #[derivative(Hash="ignore")]
@@ -273,11 +279,33 @@ impl Dirtyable for Files {
     }
 }
 
+use std::default::Default;
+
+impl Default for Files {
+    fn default() -> Files {
+        Files {
+            directory: File::new_placeholder(Path::new("")).unwrap(),
+            files: vec![],
+            len: 0,
+            pending_events: Arc::new(RwLock::new(vec![])),
+            refresh: None,
+            meta_upto: None,
+            sort: SortBy::Name,
+            dirs_first: true,
+            reverse: false,
+            show_hidden: true,
+            filter: None,
+            filter_selected: false,
+            dirty: DirtyBit::new(),
+            dirty_meta: AsyncDirtyBit::new(),
+        }
+    }
+}
+
 
 impl Files {
     pub fn new_from_path(path: &Path) -> Result<Files, Error> {
         let direntries: Result<Vec<_>, _> = std::fs::read_dir(&path)?.collect();
-        let dirty = DirtyBit::new();
         let dirty_meta = AsyncDirtyBit::new();
 
         let files: Vec<_> = direntries?
@@ -292,29 +320,13 @@ impl Files {
             })
             .collect();
 
-        let mut files = Files {
-            directory: File::new_from_path(&path, None)?,
-            files: files,
-            pending_events: Arc::new(RwLock::new(vec![])),
-            refresh: None,
-            meta_upto: None,
-            sort: SortBy::Name,
-            dirs_first: true,
-            reverse: false,
-            show_hidden: true,
-            filter: None,
-            filter_selected: false,
-            dirty: dirty,
-            dirty_meta: dirty_meta,
-        };
+        let len = files.len();
 
-        files.sort();
+        let mut files = Files::default();
+        files.directory = File::new_from_path(&path, None)?;
+        files.len = len;
+        files.dirty_meta = dirty_meta;
 
-
-
-        if files.files.len() == 0 {
-            files.files = vec![File::new_placeholder(&path)?];
-        }
 
         Ok(files)
     }
@@ -351,9 +363,12 @@ impl Files {
             })?;
         }
 
-        let mut files = Files {
+        let len = files.len();
+
+        let files = Files {
             directory: File::new_from_path(&path, None)?,
             files: files,
+            len: len,
             pending_events: Arc::new(RwLock::new(vec![])),
             refresh: None,
             meta_upto: None,
@@ -367,13 +382,11 @@ impl Files {
             dirty_meta: dirty_meta,
         };
 
-        files.sort();
-
-        if files.files.len() == 0 {
-            files.files = vec![File::new_placeholder(&path)?];
-        }
-
         Ok(files)
+    }
+
+    pub fn recalculate_len(&mut self) {
+        self.len = self.iter_files().count();
     }
 
     pub fn get_file_mut(&mut self, index: usize) -> Option<&mut File> {
@@ -511,13 +524,19 @@ impl Files {
 
         if self.show_hidden == true && self.len() > 1 {
             self.remove_placeholder();
+        } else {
+            // avoid doing this twice, since remove_placeholder() does it too
+            self.recalculate_len();
         }
     }
 
     fn remove_placeholder(&mut self) {
         let dirpath = self.directory.path.clone();
         self.find_file_with_path(&dirpath).cloned()
-            .map(|placeholder| self.files.remove_item(&placeholder));
+            .map(|placeholder| {
+                self.files.remove_item(&placeholder);
+                self.recalculate_len();
+            });
     }
 
     pub fn ready_to_refresh(&self) -> HResult<bool> {
@@ -532,6 +551,9 @@ impl Files {
                 refresh.pull_async()?;
                 let mut refresh = refresh.value?;
                 self.files = refresh.new_files.take()?;
+                if refresh.new_len != self.len() {
+                    self.len = refresh.new_len;
+                }
                 return Ok(Some(refresh));
             } else {
                 self.refresh.replace(refresh);
@@ -658,6 +680,7 @@ impl Files {
         if self.len() == 0 {
             let placeholder = File::new_placeholder(&self.directory.path).unwrap();
             self.files.push(placeholder);
+            self.len = 1;
         }
 
         self.set_dirty();
@@ -672,7 +695,7 @@ impl Files {
     }
 
     pub fn len(&self) -> usize {
-        self.iter_files().count()
+        self.len
     }
 
     pub fn get_selected(&self) -> impl Iterator<Item=&File> {

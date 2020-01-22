@@ -707,7 +707,7 @@ impl<T> Widget for ListView<T> where ListView<T>: Listable {
             self.selection = self.buffer.len() - 1;
         }
 
-        if self.core.is_dirty() || buffer_len != self.len() {
+        if self.core.is_dirty() {
             self.buffer = self.render();
             self.core.set_clean();
         }

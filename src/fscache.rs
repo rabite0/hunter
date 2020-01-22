@@ -176,6 +176,7 @@ impl FsCache {
                 cache.fs_event_dispatcher.add_target(&dir,
                                                      &files.pending_events).log();
                 FsCache::apply_settingss(&cache, &mut files).ok();
+                files.sort();
                 Ok(files)
             });
             Ok((selection, files))
@@ -184,8 +185,7 @@ impl FsCache {
 
     pub fn get_files_sync(&self, dir: &File) -> HResult<Files> {
         let files = self.get_files(&dir, Stale::new())?.1;
-        let mut files = files.run_sync()?;
-        FsCache::apply_settingss(&self, &mut files).ok();
+        let files = files.run_sync()?;
         let files = FsCache::ensure_not_empty(files)?;
         Ok(files)
     }
@@ -268,7 +268,6 @@ impl FsCache {
                 }
             }
 
-            files.sort();
             let files = FsCache::ensure_not_empty(files)?;
             Ok(files)
         });
@@ -285,12 +284,20 @@ impl FsCache {
         if tab_settings.is_none() { return Ok(()) }
         let tab_settings = tab_settings?;
 
+        if files.show_hidden != tab_settings.dir_settings.show_hidden ||
+            files.filter != tab_settings.dir_settings.filter ||
+            files.filter_selected != tab_settings.dir_settings.filter_selected {
+                files.recalculate_len();
+            }
+
         files.sort = tab_settings.dir_settings.sort;
         files.dirs_first = tab_settings.dir_settings.dirs_first;
         files.reverse = tab_settings.dir_settings.reverse;
         files.show_hidden = tab_settings.dir_settings.show_hidden;
         files.filter = tab_settings.dir_settings.filter.clone();
         files.filter_selected = tab_settings.dir_settings.filter_selected;
+
+
 
         if tab_settings.multi_selections.len() > 0 {
             for file in &mut files.files {
@@ -302,7 +309,6 @@ impl FsCache {
             }
         }
 
-        files.sort();
         Ok(())
     }
 
@@ -311,6 +317,7 @@ impl FsCache {
             let path = &files.directory.path;
             let placeholder = File::new_placeholder(&path)?;
             files.files.push(placeholder);
+            files.len = 1;
         }
         Ok(files)
     }
