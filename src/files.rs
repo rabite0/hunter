@@ -547,13 +547,8 @@ impl Files {
                              render_fn: impl Fn(&File) -> String + Send + 'static)
                              -> HResult<()> {
         let pending = self.pending_events.read()?.len();
-        if pending > 0 {
-            let pending = if pending >= 1000 {
-                1000
-            } else {
-                pending
-            };
 
+        if pending > 0 {
             let events = self.pending_events
                 .write()?
                 .drain(0..pending)
