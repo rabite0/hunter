@@ -3,12 +3,12 @@ use std::sync::mpsc::Sender;
 use std::process::{Child, Command};
 use std::os::unix::process::{CommandExt, ExitStatusExt};
 use std::io::{BufRead, BufReader};
-use std::ffi::{OsString, OsStr};
-use std::os::unix::ffi::{OsStringExt, OsStrExt};
+use std::ffi::OsString;
+use std::os::unix::ffi::OsStrExt;
 
 use termion::event::Key;
 use unicode_width::UnicodeWidthStr;
-use osstrtools::OsStrTools;
+use osstrtools::{OsStringTools, OsStrTools, OsStrConcat};
 use async_value::Stale;
 
 use crate::listview::{Listable, ListView};
@@ -46,21 +46,27 @@ pub struct Cmd {
 
 impl Cmd {
     fn process(&mut self) -> Vec<OsString> {
-        let cmd = self.cmd.clone().split(&OsString::from(" "));
+        // Split the string now, so inserted files aren't screwed up by substitutions
+        let cmd = self.cmd.split(" ")
+            .into_iter()
+            .map(|s| s.to_os_string())
+            .collect();
+
         let cmd = self.substitute_cwd_files(cmd);
         let cmd = self.substitute_tab_files(cmd);
         let cmd = self.substitute_tab_paths(cmd);
+
         cmd
     }
 
-    fn substitute_cwd_files(&mut self, cmd: Vec<OsString>) -> Vec<OsString> {
-        if self.cwd_files.is_none() { return cmd; }
+    fn perform_substitution(&self,
+                            cmd: Vec<OsString>,
+                            pat: &str,
+                            files: Vec<File>) -> Vec<OsString> {
+        if !self.cmd.contains(pat) { return cmd; }
 
-        let cwd_pat = OsString::from("$s");
-        let cwd_files =  self.cwd_files
-            .take()
-            .unwrap() // There always is a file, even if just place holder
-            .iter()
+        let files =  files
+            .into_iter()
             .map(|file|
                  // strip out the cwd part to make path shorter
                  file.strip_prefix(&self.cwd)
@@ -69,55 +75,46 @@ impl Cmd {
                  .escape_single_quote())
             .collect::<Vec<OsString>>();
 
-        cmd.iter()
-            .map(|part| part.splice_quoted_single(&cwd_pat,
-                                                  cwd_files.clone()))
-            .flatten().collect()
+        cmd.into_iter()
+            .map(|part| {
+                // If this part isn't the pattern, just return it as is
+                match part != pat {
+                    true => part,
+                    false => part.splice(pat,
+                                         &files)
+                        .assemble_with_sep_and_wrap(" ", "'")
+                }
+            })
+            .collect()
+    }
+
+    fn substitute_cwd_files(&mut self, cmd: Vec<OsString>) -> Vec<OsString> {
+        if self.cwd_files.is_none() { return cmd; }
+        let files = self.cwd_files.take().unwrap();
+        self.perform_substitution(cmd, "$s", files)
     }
 
     fn substitute_tab_files(&mut self, cmd: Vec<OsString>) -> Vec<OsString> {
         if self.tab_files.is_none() { return cmd; }
-
         let tab_files = self.tab_files.take().unwrap();
 
         tab_files.into_iter()
             .enumerate()
             .fold(cmd, |cmd, (i, tab_files)| {
-                let tab_files_pat = OsString::from(format!("${}s", i));
-                let tab_file_paths = tab_files.iter()
-                    .map(|file|
-                         // strip out the cwd part to make path shorter
-                         file.strip_prefix(&self.cwd)
-                         .into_os_string()
-                         // escape single quotes so file names with them work
-                         .escape_single_quote())
-                    .collect::<Vec<OsString>>();
-
-                cmd.iter().map(|part| {
-                    part.splice_quoted_single(&tab_files_pat,
-                                              tab_file_paths.clone())
-                }).flatten().collect()
+                let tab_files_pat = String::from(format!("${}s", i));
+                self.perform_substitution(cmd, &tab_files_pat, tab_files)
             })
     }
 
     fn substitute_tab_paths(&mut self, cmd: Vec<OsString>) -> Vec<OsString> {
         if self.tab_paths.is_none() { return cmd; }
-
         let tab_paths = self.tab_paths.take().unwrap();
 
         tab_paths.into_iter()
             .enumerate()
             .fold(cmd, |cmd, (i, tab_path)| {
-                let tab_path_pat = OsString::from(format!("${}", i));
-                let tab_path = tab_path.strip_prefix(&self.cwd)
-                    .into_os_string()
-                    // escape single quotes so file names with them work
-                    .escape_single_quote();
-
-                cmd.iter().map(|part| {
-                    part.splice_quoted_single(&tab_path_pat,
-                                              vec![tab_path.clone()])
-                }).flatten().collect()
+                let tab_path_pat = String::from(format!("${}", i));
+                self.perform_substitution(cmd, &tab_path_pat, vec![tab_path])
             })
     }
 }
@@ -218,34 +215,29 @@ impl ListView<Vec<Process>> {
     fn run_proc_subshell(&mut self, mut cmd: Cmd) -> HResult<()> {
         let shell = std::env::var("SHELL").unwrap_or("sh".into());
         let home = crate::paths::home_path()?.into_os_string();
-        let fg = cmd.cmd.as_bytes().ends_with(b"! ");
+        let fg = cmd.cmd.as_bytes().ends_with(b"!");
 
         if fg {
-            // remove that last !
-            let real_len = cmd.cmd.as_bytes().len() - 2;
-            cmd.cmd = OsString::from_vec(cmd.cmd.as_bytes()[0..real_len].to_vec());
-            // workaround until split is fixed
-            cmd.cmd.push(" ");
+            // Remove that last !
+            cmd.cmd = cmd.cmd.trim_end("!");
         }
 
-        let cmd_args = cmd.process();
+        let cmd_args = cmd.process().concat(" ");
 
-        let short = OsStr::from_bytes("~".as_bytes());
-        let short_cmd = cmd_args
-            .concat()
-            .replace(&home, &short)
-            .replace(OsStr::from_bytes("'\''".as_bytes()),
-                     OsStr::from_bytes("'".as_bytes()))
-            .replace(OsStr::from_bytes("\"".as_bytes()),
-                     OsStr::from_bytes("".as_bytes()))
+        // Nicer for display
+        let short = "~";
+        let short_cmd = cmd_args.clone()
+            .replace(&home, short)
+            .replace("'\''", "'")
+            .replace("\"", "")
             .to_string_lossy()
             .to_string();
 
-        let shell_args = cmd_args.concat();
+        let shell_args = cmd_args;
         let shell_args = vec![OsString::from("-c"), shell_args.clone()];
 
         cmd.cmd = OsString::from(shell.clone());
-        cmd.args = Some(shell_args.clone());
+        cmd.args = Some(shell_args);
         cmd.short_cmd = Some(short_cmd);
 
         if !fg {
@@ -279,8 +271,19 @@ impl ListView<Vec<Process>> {
                 .stdout(std::process::Stdio::piped())
                 // Without this stderr would be separate which is no good for procview
                 .pre_exec(||  { libc::dup2(1, 2); Ok(()) })
-                .spawn()?
+                .spawn()
         };
+
+        let handle = match handle {
+            Ok(handle) => handle,
+            Err(e) => {
+                let msg = format!("Error! Failed to start process: {}",
+                                  e);
+                self.core.show_status(&msg)?;
+                return Err(e)?;
+            }
+        };
+
         let mut proc = Process {
             cmd: short_cmd,
             handle: Arc::new(Mutex::new(handle)),
@@ -672,51 +675,6 @@ impl Widget for ProcView {
 }
 
 
-trait ConcatOsString {
-    fn concat(&self) -> OsString;
-    fn concat_quoted(&self) -> OsString;
-}
-
-impl ConcatOsString for Vec<OsString> {
-    fn concat(&self) -> OsString {
-        let len = self.len();
-        self.iter().enumerate().fold(OsString::new(), |string, (i, part)| {
-            let mut string = string.into_vec();
-            let mut space = " ".as_bytes().to_vec();
-            let mut part = part.clone().into_vec();
-
-            string.append(&mut part);
-
-            if i != len {
-                string.append(&mut space);
-            }
-
-            OsString::from_vec(string)
-        })
-    }
-
-    fn concat_quoted(&self) -> OsString {
-        let len = self.len();
-        self.iter().enumerate().fold(OsString::new(), |string, (i, part)| {
-            let mut string = string.into_vec();
-            let mut space = " ".as_bytes().to_vec();
-            let mut quote = "\"".as_bytes().to_vec();
-            let mut part = part.clone().into_vec();
-
-
-            string.append(&mut quote.clone());
-            string.append(&mut part);
-            string.append(&mut quote);
-
-
-            if i+1 != len {
-                string.append(&mut space);
-            }
-
-            OsString::from_vec(string)
-        })
-    }
-}
 
 use crate::keybind::*;
 

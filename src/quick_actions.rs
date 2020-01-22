@@ -378,7 +378,7 @@ impl QuickAction {
 
         let cwd = files.get(0)?.parent_as_file()?;
 
-        let files = files.iter()
+        let files: Vec<OsString> = files.iter()
             .map(|f| OsString::from(&f.path))
             .collect();
 

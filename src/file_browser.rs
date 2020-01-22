@@ -1005,7 +1005,7 @@ impl FileBrowser {
                     let cwd = &self.cwd.path;
 
                     let path_string = OsString::from_vec(cmd_result.stdout);
-                    let path_string = path_string.trim_end_newlines();
+                    let path_string = path_string.trim_end("\n");
                     let path = PathBuf::from(path_string);
                     let path = if path.is_absolute() {
                         path
@@ -1043,7 +1043,7 @@ impl FileBrowser {
         let selected_file = self.selected_file().ok();
         let selected_files = self.selected_files().ok();
 
-        let cmd = self.core.minibuffer("exec")?.to_string() + " ";
+        let cmd = self.core.minibuffer("exec")?.to_string();
 
         let cwd_files = selected_files.map(|selected_files| {
             if selected_files.len() == 0 {
