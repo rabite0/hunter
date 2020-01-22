@@ -160,10 +160,16 @@ impl ListView<Vec<QuickActions>> {
         let selection = self.get_selection();
         let selected_action_index = selection - fold_start_pos;
 
+        // Fixes crash when "running" first description and nicer to use
+        if self.is_description_selected() {
+            self.toggle_fold()?;
+            return Ok(());
+        }
+
         self.content[current_fold]
             .actions
             // -1 because fold description takes one slot
-            .get()?[selected_action_index-1]
+            .get()?[selected_action_index - 1]
             .run(self.content[0].files.clone(),
                  &self.core,
                  self.content[0].proc_view.clone())?;
