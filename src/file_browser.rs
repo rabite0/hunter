@@ -87,9 +87,12 @@ pub struct FileBrowser {
 }
 
 impl Tabbable for TabView<FileBrowser> {
-    fn new_tab(&mut self) -> HResult<()> {
-        let cur_tab = self.active_tab_();
+    type Tab = FileBrowser;
 
+    fn new_tab(&mut self) -> HResult<()> {
+        self.active_tab_mut().save_tab_settings().log();
+
+        let cur_tab = self.active_tab();
         let settings = cur_tab.fs_cache.tab_settings.read()?.clone();
         let cache = cur_tab.fs_cache.new_client(settings).ok();
 
@@ -136,11 +139,11 @@ impl Tabbable for TabView<FileBrowser> {
         }).collect()
     }
 
-    fn active_tab(& self) -> & dyn Widget {
+    fn active_tab(& self) -> &Self::Tab {
         self.active_tab_()
     }
 
-    fn active_tab_mut(&mut self) -> &mut dyn Widget {
+    fn active_tab_mut(&mut self) -> &mut Self::Tab {
         self.active_tab_mut_()
     }
 
@@ -274,6 +277,7 @@ impl FileBrowser {
 
             let mut list = ListView::new(&core_m.clone(),
                                          files);
+
             selected_file.map(|f| list.select_file(&f));
 
 
@@ -342,8 +346,7 @@ impl FileBrowser {
                          bookmarks: Arc::new(Mutex::new(bookmarks)),
                          log_view: Arc::new(Mutex::new(log_view)),
                          fs_cache: fs_cache,
-                         fs_stat: Arc::new(RwLock::new(fs_stat))
-        })
+                         fs_stat: Arc::new(RwLock::new(fs_stat)) })
     }
 
     pub fn enter_dir(&mut self) -> HResult<()> {
@@ -486,8 +489,6 @@ impl FileBrowser {
     }
 
     pub fn main_widget_goto(&mut self, dir: &File) -> HResult<()> {
-        self.save_tab_settings().log();
-
         let dir = dir.clone();
         let cache = self.fs_cache.clone();
 
@@ -728,6 +729,12 @@ impl FileBrowser {
 
     pub fn get_left_files(&self) -> HResult<&Files> {
         Ok(&self.left_widget()?.content)
+    }
+
+    pub fn save_selected_file(&self) -> HResult<()> {
+        self.selected_file()
+            .map(|f| self.fs_cache.set_selection(self.cwd.clone(),
+                                                 f))?
     }
 
     pub fn save_tab_settings(&mut self) -> HResult<()> {
@@ -1144,11 +1151,8 @@ impl FileBrowser {
     pub fn get_footer(&self) -> HResult<String> {
         let xsize = self.get_coordinates()?.xsize();
         let ypos = self.get_coordinates()?.position().y();
-        let pos = self.main_widget()?.get_selection();
-        let file = self.main_widget()?
-            .content
-            .iter_files()
-            .nth(pos)?;
+        let file = self.selected_file()?;
+
 
         let permissions = file.pretty_print_permissions().unwrap_or("NOPERMS".into());
         let user = file.pretty_user().unwrap_or("NOUSER".into());
@@ -1262,7 +1266,6 @@ impl Widget for FileBrowser {
         self.set_cwd().log();
         if !self.columns.zoom_active { self.update_preview().log(); }
         self.columns.refresh().log();
-        self.save_tab_settings().log();
         Ok(())
     }
 
@@ -1274,6 +1277,9 @@ impl Widget for FileBrowser {
         match self.do_key(key) {
             Err(HError::WidgetUndefinedKeyError{..}) => {
                 match self.main_widget_mut()?.on_key(key) {
+                    Ok(_) => {
+                        self.save_tab_settings()?;
+                    }
                     Err(HError::WidgetUndefinedKeyError{..}) => {
                         self.preview_widget_mut()?.on_key(key)?
                     }
@@ -1303,7 +1309,11 @@ impl Acting for FileBrowser {
         match movement {
             Left => self.go_back(),
             Right => self.enter_dir(),
-            _ => self.main_widget_mut()?.movement(movement)
+            _ => {
+                self.main_widget_mut()?.movement(movement)?;
+                self.save_selected_file()?;
+                Ok(())
+            }
         }
     }
 

@@ -401,7 +401,7 @@ impl Files {
                     !(filter.is_some() &&
                       !f.name.contains(filter.as_ref().unwrap())) &&
                     (!filter_selected || f.selected))
-            .filter(move |f| !(!show_hidden && f.name.starts_with(".")))
+            .filter(move |f| !(!show_hidden && f.hidden))
     }
 
     pub fn iter_files_mut(&mut self) -> impl Iterator<Item=&mut File> {
@@ -416,7 +416,7 @@ impl Files {
                     !(filter.is_some() &&
                       !f.name.contains(filter.as_ref().unwrap())) &&
                     (!filter_selected || f.selected))
-            .filter(move |f| !(!show_hidden && f.name.starts_with(".")))
+            .filter(move |f| !(!show_hidden && f.hidden))
     }
 
     #[allow(trivial_bounds)]
@@ -750,12 +750,18 @@ impl std::fmt::Debug for File {
     }
 }
 
+impl std::default::Default for File {
+    fn default() -> File {
+        File::new_placeholder(Path::new("")).unwrap()
+    }
+}
 
 
 #[derive(Clone)]
 pub struct File {
     pub name: String,
     pub path: PathBuf,
+    pub hidden: bool,
     pub kind: Kind,
     pub dirsize: Option<Async<usize>>,
     pub target: Option<PathBuf>,
@@ -772,6 +778,7 @@ impl File {
         name: &str,
         path: PathBuf,
         dirty_meta: Option<AsyncDirtyBit>) -> File {
+        let hidden = name.starts_with(".");
         let tag = check_tag(&path).ok();
         let meta = File::make_async_meta(&path, dirty_meta.clone(), None);
         let dirsize = if path.is_dir() {
@@ -780,6 +787,7 @@ impl File {
 
         File {
             name: name.to_string(),
+            hidden: hidden,
             kind: if path.is_dir() { Kind::Directory } else { Kind::File },
             path: path,
             dirsize: dirsize,
@@ -797,6 +805,7 @@ impl File {
                           path: PathBuf,
                           dirty_meta: Option<AsyncDirtyBit>,
                           stale: Stale) -> File {
+        let hidden = name.starts_with(".");
         let tag = check_tag(&path).ok();
         let meta = File::make_async_meta(&path,
                                          dirty_meta.clone(),
@@ -809,6 +818,7 @@ impl File {
 
         File {
             name: name.to_string(),
+            hidden: hidden,
             kind: if path.is_dir() { Kind::Directory } else { Kind::File },
             path: path,
             dirsize: dirsize,

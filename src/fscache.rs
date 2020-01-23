@@ -191,7 +191,22 @@ impl FsCache {
     }
 
     pub fn get_selection(&self, dir: &File) -> HResult<File> {
-        Ok(self.tab_settings.read()?.get(&dir).as_ref()?.selection.as_ref()?.clone())
+        Ok(self.tab_settings
+           .read()?
+           .get(&dir)
+           .as_ref()?
+           .selection
+           .as_ref()?
+           .clone())
+    }
+
+    pub fn set_selection(&self, dir: File, selection: File) -> HResult<()> {
+        self.tab_settings.write()
+            .map(|mut settings| {
+                let setting = settings.entry(dir).or_insert(TabSettings::new());
+                setting.selection = Some(selection);
+            })?;
+        Ok(())
     }
 
     pub fn save_settings(&self, files: &Files, selection: Option<File>) -> HResult<()> {

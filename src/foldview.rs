@@ -326,6 +326,7 @@ where
     ListView<Vec<F>>: FoldableWidgetExt,
     Bindings<<ListView<Vec<F>> as ActingExt>::Action>: Default
 {
+    type Item = ();
 
     fn len(&self) -> usize {
         self.content.iter().map(|f| f.lines()).sum()

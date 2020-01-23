@@ -199,6 +199,7 @@ impl Process {
 }
 
 impl Listable for ListView<Vec<Process>> {
+    type Item = ();
     fn len(&self) -> usize { self.content.len() }
     fn render(&self) -> Vec<String> {
         self.content.iter().map(|proc| {

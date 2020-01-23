@@ -1,3 +1,4 @@
+use std::fmt::Debug;
 use termion::event::Key;
 use unicode_width::UnicodeWidthStr;
 
@@ -10,6 +11,7 @@ use crate::widget::{Widget, WidgetCore};
 use crate::dirty::Dirtyable;
 
 pub trait Listable {
+    type Item: Debug + PartialEq + Default;
     fn len(&self) -> usize;
     fn render(&self) -> Vec<String>;
     fn render_header(&self) -> HResult<String> { Ok("".to_string()) }
@@ -32,6 +34,8 @@ impl Acting for ListView<Files> {
     fn movement(&mut self, movement: &Movement) -> HResult<()> {
         use Movement::*;
 
+        let pos = self.get_selection();
+
         match movement {
             Up(n) => { for _ in 0..*n { self.move_up(); }; self.refresh()?; }
             Down(n) => { for _ in 0..*n { self.move_down(); }; self.refresh()?; }
@@ -42,11 +46,17 @@ impl Acting for ListView<Files> {
             Left | Right => {}
         }
 
+        if pos != self.get_selection() {
+            self.update_selected_file();
+        }
+
         Ok(())
     }
 
     fn do_action(&mut self, action: &Self::Action) -> HResult<()> {
         use FileListAction::*;
+
+        let pos = self.get_selection();
 
         match action {
             Search => self.search_file()?,
@@ -65,11 +75,18 @@ impl Acting for ListView<Files> {
             ToPrevMtime => self.select_prev_mtime(),
             ToggleDirsFirst => self.toggle_dirs_first(),
         }
+
+        if pos != self.get_selection() {
+            self.update_selected_file();
+        }
+
         Ok(())
     }
 }
 
 impl Listable for ListView<Files> {
+    type Item = File;
+
     fn len(&self) -> usize {
         self.content.len()
     }
@@ -81,6 +98,12 @@ impl Listable for ListView<Files> {
     fn on_new(&mut self) -> HResult<()> {
         let show_hidden = self.core.config().show_hidden();
         self.content.show_hidden = show_hidden;
+        let file = self.content
+            .iter_files()
+            .nth(0)
+            .cloned()
+            .unwrap_or_default();
+        self.current_item = Some(file);
         Ok(())
     }
 
@@ -117,9 +140,12 @@ impl Listable for ListView<Files> {
 }
 
 #[derive(Debug, PartialEq)]
-pub struct ListView<T> where ListView<T>: Listable
+pub struct ListView<T>
+where
+    ListView<T>: Listable
 {
     pub content: T,
+    pub current_item: Option<<ListView<T> as Listable>::Item>,
     pub lines: usize,
     selection: usize,
     pub offset: usize,
@@ -137,6 +163,7 @@ where
     pub fn new(core: &WidgetCore, content: T) -> ListView<T> {
         let mut view = ListView::<T> {
             content: content,
+            current_item: None,
             lines: 0,
             selection: 0,
             offset: 0,
@@ -222,13 +249,19 @@ where
 
 impl ListView<Files>
 {
-    pub fn selected_file(&self) -> &File {
-        let selection = self.selection;
+    pub fn update_selected_file(&mut self) {
+        let pos = self.selection;
 
-        &self.content
+        let file = self.content
             .iter_files()
-            .nth(selection)
-            .unwrap_or(&self.content.directory)
+            .nth(pos)
+            .map(|f| f.clone());
+
+        self.current_item = file;
+    }
+
+    pub fn selected_file(&self) -> &File {
+        self.current_item.as_ref().unwrap()
     }
 
     pub fn selected_file_mut(&mut self) -> &mut File {
@@ -288,6 +321,8 @@ impl ListView<Files>
     }
 
     pub fn select_file(&mut self, file: &File) {
+        self.current_item = Some(file.clone());
+
         let pos = self
             .content
             .iter_files()
@@ -375,6 +410,8 @@ impl ListView<Files>
         self.content.toggle_hidden();
         self.select_file(&file);
         self.refresh().log();
+        self.core.show_status(&format!("Showing hidden files: {}",
+                                        self.content.show_hidden)).log();
     }
 
     fn toggle_dirs_first(&mut self) {
@@ -390,9 +427,13 @@ impl ListView<Files>
     fn multi_select_file(&mut self) {
         self.selected_file_mut().toggle_selection();
 
+        // Create mutable clone to render change
+        let mut file = self.clone_selected_file();
+        file.toggle_selection();
+
         if !self.content.filter_selected {
             let selection = self.get_selection();
-            let line = self.render_line(self.selected_file());
+            let line = self.render_line(&file);
             self.buffer[selection] = line;
 
             self.move_down();
@@ -432,8 +473,12 @@ impl ListView<Files>
     fn toggle_tag(&mut self) -> HResult<()> {
         self.selected_file_mut().toggle_tag()?;
 
+        // Create a mutable clone to render changes into buffer
+        let mut file = self.clone_selected_file();
+        file.toggle_tag()?;
+
+        let line = self.render_line(&file);
         let selection = self.get_selection();
-        let line = self.render_line(self.selected_file());
         self.buffer[selection] = line;
 
         self.move_down();
@@ -689,7 +734,10 @@ impl ListView<Files>
 }
 
 
-impl<T> Widget for ListView<T> where ListView<T>: Listable {
+impl<T> Widget for ListView<T>
+where
+    ListView<T>: Listable
+{
     fn get_core(&self) -> HResult<&WidgetCore> {
         Ok(&self.core)
     }

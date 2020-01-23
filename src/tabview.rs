@@ -5,6 +5,7 @@ use crate::fail::{HResult, HError, ErrorLog};
 use crate::coordinates::Coordinates;
 
 pub trait Tabbable {
+    type Tab: Widget;
     fn new_tab(&mut self) -> HResult<()>;
     fn close_tab(&mut self) -> HResult<()>;
     fn next_tab(&mut self) -> HResult<()>;
@@ -14,8 +15,8 @@ pub trait Tabbable {
         Ok(())
     }
     fn get_tab_names(&self) -> Vec<Option<String>>;
-    fn active_tab(&self) -> &dyn Widget;
-    fn active_tab_mut(&mut self) -> &mut dyn Widget;
+    fn active_tab(&self) -> &Self::Tab;
+    fn active_tab_mut(&mut self) -> &mut Self::Tab;
     fn on_key_sub(&mut self, key: Key) -> HResult<()>;
     fn on_key(&mut self, key: Key) -> HResult<()> {
         self.on_key_sub(key)
