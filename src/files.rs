@@ -190,26 +190,12 @@ impl RefreshPackage {
 
         // Files added, removed, renamed to hidden, etc...
         files.recalculate_len();
-        let new_len = files.len();
-        // Need to unpack this to prevent issue with recursive Files type
-        // Also, if no files remain add placeholder
-        let files = if files.len() > 0 {
-            // Sort again to make sure new/changed files are in correct order
-            files.sort();
-            files.files
-        } else {
-            let placeholder = File::new_placeholder(&files.directory.path).unwrap();
-            files.files.push(placeholder);
-
-            // Need to sort because of possible hidden files
-            files.sort();
-            files.files
-        };
-
-        let mut old_buffer = old_buffer;
+        files.sort();
 
         // Prerender new buffer in current thread
-        let new_buffer = files.iter()
+        let mut old_buffer = old_buffer;
+
+        let new_buffer = files.iter_files()
             .map(|file| {
                 match list_pos_map.get(&file) {
                     Some(&old_pos) =>
@@ -221,6 +207,15 @@ impl RefreshPackage {
                 }
             }).collect();
 
+        // Need to unpack this to prevent issue with recursive Files type
+        // Also, if no files remain add placeholder and set len
+        let (files, new_len) = if files.len() > 0 {
+            (files.files, files.len)
+        } else {
+            let placeholder = File::new_placeholder(&files.directory.path).unwrap();
+            files.files.push(placeholder);
+            (files.files, 1)
+        };
 
 
         RefreshPackage {

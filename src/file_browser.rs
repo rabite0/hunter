@@ -255,7 +255,7 @@ impl FileBrowser {
         let left_path = main_path.parent().map(|p| p.to_path_buf());
 
         let cache = fs_cache.clone();
-        let main_widget = AsyncWidget::new(&core, move |_| {
+        let main_widget = AsyncWidget::new(&core, move |stale| {
             let name = if main_path.parent().is_none() {
                 "root".to_string()
             } else {
@@ -266,16 +266,16 @@ impl FileBrowser {
             let main_dir = File::new(&name,
                                      main_path.clone(),
                                      None);
-            let mut files = cache.get_files_sync(&main_dir)?;
-            let selection = cache.get_selection(&main_dir).ok();
+            let (selected_file, files) = cache.get_files(&main_dir,
+                                                     stale.clone())?;
+            let mut files = files.run_sync()?;
 
             files.meta_all();
 
             let mut list = ListView::new(&core_m.clone(),
                                          files);
-            if let Some(file) = selection {
-                list.select_file(&file);
-            }
+            selected_file.map(|f| list.select_file(&f));
+
 
             list.refresh().log();
 
@@ -284,7 +284,7 @@ impl FileBrowser {
 
         let cache = fs_cache.clone();
         if let Some(left_path) = left_path {
-            let left_widget = AsyncWidget::new(&core, move |_| {
+            let left_widget = AsyncWidget::new(&core, move |stale| {
                 let name = if left_path.parent().is_none() {
                     "root".to_string()
                 } else {
@@ -295,14 +295,12 @@ impl FileBrowser {
                 let left_dir = File::new(&name,
                                          left_path.clone(),
                                          None);
-                let files = cache.get_files_sync(&left_dir)?;
-                let selection = cache.get_selection(&left_dir).ok();
-                let mut list = ListView::new(&core_l,
-                                             files);
-                if let Some(file) = selection {
-                    list.select_file(&file);
-                }
+                let (selected_file, files) = cache.get_files(&left_dir,
+                                                             stale.clone())?;
+                let files = files.run_sync()?;
+                let mut list = ListView::new(&core_l, files);
 
+                selected_file.map(|f| list.select_file(&f));
                 list.refresh().log();
 
                 Ok(list)
@@ -375,20 +373,20 @@ impl FileBrowser {
             let core = self.core.clone();
             let cache = self.fs_cache.clone();
 
-            let main_widget = AsyncWidget::new(&core.clone(), move |_| {
-                let files = match previewer_files {
-                    Some(files) => files,
-                    None => cache.get_files_sync(&dir)?
+            let main_widget = AsyncWidget::new(&core.clone(), move |stale| {
+                let (selected_file, files) = match previewer_files {
+                    Some(files) => (None, files),
+                    None => {
+                        let (selected_file, files) = cache.get_files(&dir,
+                                                                     stale.clone())?;
+                        let files = files.run_sync()?;
+                        (selected_file, files)
+                    }
                 };
-
-                let selection = cache.get_selection(&dir).ok();
 
                 let mut list = ListView::new(&core, files);
 
-                if let Some(file) = selection {
-                    list.select_file(&file);
-                }
-
+                selected_file.map(|f| list.select_file(&f));
                 list.content.meta_all();
 
                 Ok(list)
@@ -557,9 +555,12 @@ impl FileBrowser {
 
             if let Ok(left_dir) = new_cwd.parent_as_file() {
                 let cache = self.fs_cache.clone();
-                let left_widget = AsyncWidget::new(&core.clone(), move |_| {
-                    let files = cache.get_files_sync(&left_dir)?;
-                    let list = ListView::new(&core, files);
+                let left_widget = AsyncWidget::new(&core.clone(), move |stale| {
+                    let (selected_file, files) = cache.get_files(&left_dir,
+                                                                 stale.clone())?;
+                    let files = files.run_sync()?;
+                    let mut list = ListView::new(&core, files);
+                    selected_file.map(|f| list.select_file(&f));
                     Ok(list)
                 });
 
@@ -674,7 +675,7 @@ impl FileBrowser {
         }
 
         let preview = self.preview_widget_mut()?;
-        preview.set_file(file).log();
+        preview.set_file(&file).log();
         Ok(())
     }
 
