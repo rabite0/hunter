@@ -77,22 +77,6 @@ impl MediaView {
     pub fn new_from_file(core: WidgetCore,
                          file: &Path,
                          media_type: MediaType) -> HResult<MediaView> {
-        // Check if previewer is present, or bail out to show message
-        let media_previewer = core.config().media_previewer;
-        if crate::minibuffer::find_bins(&media_previewer).is_err() {
-            let msg = format!("Couldn't find previewer: {}{}{}!",
-                              crate::term::color_red(),
-                              media_previewer,
-                              crate::term::normal_color());
-
-
-            core.show_status(&msg).log();
-
-            return Err(MediaError::NoPreviewer(msg))?;
-        }
-
-
-
         let imgview = ImgView {
             core: core.clone(),
             buffer: vec![],

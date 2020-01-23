@@ -91,6 +91,7 @@ pub struct Config {
     pub media_autoplay: bool,
     pub media_mute: bool,
     pub media_previewer: String,
+    pub media_previewer_exists: bool,
     pub ratios: Vec::<usize>,
     pub graphics: String,
     pub keybinds: KeyBinds,
@@ -115,6 +116,7 @@ impl Config {
             media_autoplay: false,
             media_mute: false,
             media_previewer: "hunter-media".to_string(),
+            media_previewer_exists: false,
             ratios: vec![20,30,49],
             graphics: detect_g_mode(),
             keybinds: KeyBinds::default(),
@@ -157,20 +159,36 @@ impl Config {
                 Ok(("media_mute", "on")) => config.media_mute = true,
                 Ok(("media_mute", "off")) => config.media_mute = false,
                 Ok(("media_previewer", cmd)) => {
+                    use crate::minibuffer::find_bins;
+
                     let cmd = cmd.to_string();
                     config.media_previewer = cmd;
+
+                    let previewer = std::path::Path::new(&config.media_previewer);
+                    let exists = match previewer.is_absolute() {
+                        true => previewer.exists(),
+                        false => find_bins(&config.media_previewer).is_ok()
+                    };
+
+                    config.media_previewer_exists = exists;
+
                 },
                 Ok(("ratios", ratios)) => {
                     let ratios_str = ratios.to_string();
                     if ratios_str.chars().all(|x| x.is_digit(10) || x.is_whitespace()
                         || x == ':' || x == ',' ) {
-                            let ratios: Vec<usize> = ratios_str.split([',', ':'].as_ref())
-                                .map(|r| r.trim().parse::<usize>().unwrap()).collect();
-                            let ratios_sum: usize = ratios.iter().sum();
-                            if ratios.len() == 3 && ratios_sum > 0 && ratios.iter()
-                                .filter(|&r| *r > u16::max_value() as usize).next() == None {
-                                    config.ratios = ratios;
-                        }
+                        let ratios: Vec<usize> = ratios_str.split([',', ':'].as_ref())
+                            .map(|r| r.trim()
+                                 .parse().unwrap())
+                            .collect();
+                        let ratios_sum: usize = ratios.iter().sum();
+                        if ratios.len() == 3 && ratios_sum > 0 &&
+                            ratios
+                            .iter()
+                            .filter(|&r| *r > u16::max_value() as usize)
+                            .next() == None {
+                                config.ratios = ratios;
+                            }
                     }
                 }
                 #[cfg(feature = "sixel")]
@@ -211,6 +229,10 @@ impl Config {
 
     pub fn show_hidden(&self) -> bool {
         self.show_hidden
+    }
+
+    pub fn media_available(&self) -> bool {
+        self.media_previewer_exists
     }
 }
 

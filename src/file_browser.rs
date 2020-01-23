@@ -661,9 +661,20 @@ impl FileBrowser {
                 self.preview_widget_mut()?.set_stale().log();
                 return Ok(());
             }
-        let file = self.selected_file()?.clone();
+
+        let file = self.selected_file()?;
+
+        // Don't even call previewer on empty files to save CPU cycles
+        match (file.is_dir(), file.calculate_size()) {
+            (false, Ok((size, unit))) => if size == 0 && unit.as_str() == "" {
+                self.preview_widget_mut()?.set_stale().log();
+                return Ok(());
+            },
+            _ => {}
+        }
+
         let preview = self.preview_widget_mut()?;
-        preview.set_file(&file).log();
+        preview.set_file(file).log();
         Ok(())
     }
 

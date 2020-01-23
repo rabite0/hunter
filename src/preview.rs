@@ -355,6 +355,7 @@ impl Previewer {
         let core = self.core.clone();
         let cache = self.cache.clone();
         let animator = self.animator.clone();
+        let has_media = self.core.config().media_available();
 
         self.widget.set_stale().ok();
 
@@ -390,19 +391,19 @@ impl Previewer {
                     let is_gif = mime.subtype() == "gif";
 
                     match mime_type {
-                        _ if mime_type == "video" || is_gif => {
+                        _ if mime_type == "video" || is_gif && has_media => {
                             let media_type = crate::mediaview::MediaType::Video;
                             let mediaview = MediaView::new_from_file(core.clone(),
                                                                      &file.path,
                                                                      media_type)?;
                             return Ok(PreviewWidget::MediaView(mediaview));
                         }
-                        "image" => {
+                        "image" if has_media => {
                             let imgview = ImgView::new_from_file(core.clone(),
                                                                  &file.path())?;
                             return Ok(PreviewWidget::ImgView(imgview));
                         }
-                        "audio" => {
+                        "audio" if has_media => {
                             let media_type = crate::mediaview::MediaType::Audio;
                             let mediaview = MediaView::new_from_file(core.clone(),
                                                                      &file.path,
