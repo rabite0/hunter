@@ -1,6 +1,7 @@
 use termion::event::Key;
 
 use std::collections::HashMap;
+use std::ffi::{OsStr, OsString};
 
 use crate::coordinates::{Coordinates};
 use crate::widget::{Widget, WidgetCore};
@@ -134,7 +135,7 @@ pub struct MiniBuffer {
     input: String,
     position: usize,
     history: History,
-    completions: Vec<String>,
+    completions: Vec<OsString>,
     last_completion: Option<String>,
     continuous: bool
 }
@@ -202,30 +203,32 @@ impl MiniBuffer {
                 .take(1)
                 .map(|s| s.to_string())
                 .collect::<String>();
-            let completions = find_files(part.clone());
+            let completions = find_files(&part);
 
             if let Ok(mut completions) = completions {
                 let completion = completions.pop()?;
+                let completion = completion.to_string_lossy();
 
                 self.input
                     = self.input[..self.input.len() - part.len()].to_string();
                 self.input.push_str(&completion);
                 self.position += &completion.len() - part.len();
 
-                self.last_completion = Some(completion);
+                self.last_completion = Some(completion.to_string());
                 self.completions = completions;
             } else {
                 let completions = find_bins(&part);
 
                 if let Ok(mut completions) = completions {
                     let completion = completions.pop()?;
+                    let completion = completion.to_string_lossy();
 
                     self.input = self.input[..self.input.len()
                                             - part.len()].to_string();
                     self.input.push_str(&completion);
                     self.position += &completion.len() - part.len();
 
-                    self.last_completion = Some(completion);
+                    self.last_completion = Some(completion.to_string());
                     self.completions = completions;
                 }
             }
@@ -244,9 +247,10 @@ impl MiniBuffer {
         self.position -= last_len;
 
         let next_comp = self.completions.pop()?;
+        let next_comp = next_comp.to_string_lossy();
         self.input.push_str(&next_comp);
         self.position += next_comp.len();
-        self.last_completion = Some(next_comp);
+        self.last_completion = Some(next_comp.to_string());
         Ok(())
     }
 
@@ -349,62 +353,74 @@ impl MiniBuffer {
     }
 }
 
-pub fn find_bins(comp_name: &str) -> HResult<Vec<String>> {
-    let paths = std::env::var_os("PATH")?
-        .to_string_lossy()
-        .split(":")
-        .map(|s| s.to_string())
-        .collect::<Vec<String>>();
+pub fn find_bins(comp_name: &str) -> HResult<Vec<OsString>> {
+    use osstrtools::OsStrTools;
+
+    let paths = std::env::var_os("PATH")?;
+    let paths = paths.split(":");
 
     let completions = paths.iter().map(|path| {
-        if let Ok(read_dir) = std::fs::read_dir(path) {
+        std::fs::read_dir(path).map(|read_dir| {
             read_dir.map(|file| {
-                let file = file.unwrap();
-                let name = file.file_name().into_string().unwrap();
-                if name.starts_with(comp_name) {
+                let file = file?;
+                let name = file.file_name();
+
+                // If length is different that means the file starts with comp_name
+                if &name.trim_start(&name).len() != &comp_name.len() {
                     Ok(name)
                 } else {
                     Err(HError::NoCompletionsError)
                 }
-            }).collect::<Vec<HResult<String>>>()
-        } else { vec![Err(HError::NoCompletionsError)] }
+
+            })
+        })
     }).flatten()
-        .filter(|result| result.is_ok())
-        .map(|result| result.unwrap())
-        .collect::<Vec<String>>();
+        .flatten()
+        .filter_map(|s| s.ok())
+        .collect::<Vec<OsString>>();
+
     if completions.is_empty() { return Err(HError::NoCompletionsError); }
+
     Ok(completions)
 }
 
-pub fn find_files(comp_name: String) -> HResult<Vec<String>> {
-    let mut path = std::env::current_dir().unwrap();
+pub fn find_files(comp_name: &str) -> HResult<Vec<OsString>> {
+    use osstrtools::OsStrTools;
+
+    let mut path = std::env::current_dir()?;
     let comp_path = std::path::PathBuf::from(&comp_name);
     path.push(&comp_path);
 
-    let filename_part = path.file_name()?.to_string_lossy().to_string();
+    let comp_name = OsStr::new(comp_name);
+    let filename_part = path.file_name()?;
 
-    let dir = if path.is_dir() { &path } else { path.parent().unwrap() };
+    let dir = if path.is_dir() { &path } else { path.parent()? };
     let dir = std::path::PathBuf::from(dir);
 
-    let prefix = comp_name.trim_end_matches(&filename_part);
+    let prefix = comp_name.trim_end(&filename_part);
 
     let reader = std::fs::read_dir(&dir)?;
 
     let completions = reader.map(|file| {
         let file = file?;
-        let name = file.file_name().into_string().unwrap();
-        if name.starts_with(&filename_part) {
-            if file.file_type().unwrap().is_dir() {
-                Ok(format!("{}{}/", prefix, name))
+        let name = file.file_name();
+        if name.trim_start(&filename_part).len() != name.len() {
+            let mut completion = OsString::new();
+            if file.file_type()?.is_dir() {
+                completion.push(prefix.trim_end("/"));
+                completion.push("/");
+                completion.push(name);
+                Ok(completion)
             } else {
-                Ok(format!("{}{}", prefix, name))
+                completion.push(prefix);
+                completion.push(name);
+                Ok(completion)
             }
         } else {
             Err(HError::NoCompletionsError)
         }
-    }).filter(|res| res.is_ok() )
-      .map(|res| res.unwrap() )
-      .collect::<Vec<String>>();
+    }).filter_map(|res| res.ok())
+      .collect::<Vec<OsString>>();
     if completions.is_empty() { return Err(HError::NoCompletionsError); }
     Ok(completions)
 }
