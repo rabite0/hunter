@@ -209,12 +209,13 @@ impl RefreshPackage {
 
         // Need to unpack this to prevent issue with recursive Files type
         // Also, if no files remain add placeholder and set len
-        let (files, new_len) = if files.len() > 0 {
-            (files.files, files.len)
+        let (files, new_len, new_buffer) = if files.len() > 0 {
+            (files.files, files.len, new_buffer)
         } else {
             let placeholder = File::new_placeholder(&files.directory.path).unwrap();
+            let buffer = vec![render_fn(&placeholder)];
             files.files.push(placeholder);
-            (files.files, 1)
+            (files.files, 1, buffer)
         };
 
 

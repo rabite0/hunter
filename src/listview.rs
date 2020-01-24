@@ -112,6 +112,7 @@ impl Listable for ListView<Files> {
             let path = &self.content.directory.path;
             let placeholder = File::new_placeholder(&path)?;
             self.content.files.push(placeholder);
+            self.content.len = 1;
         }
 
         let sender = self.core.get_sender();
