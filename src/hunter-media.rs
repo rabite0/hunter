@@ -14,10 +14,7 @@ use gstreamer::prelude::*;
 #[cfg(feature = "video")]
 use gstreamer_app;
 
-use failure::Error;
-#[cfg(feature = "video")]
-use failure::format_err;
-
+use failure::{Error, format_err};
 
 use std::io::Write;
 #[cfg(feature = "video")]
@@ -51,10 +48,12 @@ fn main() -> MResult<()> {
         .expect("Provide preview type")
         .parse::<String>()
         .unwrap();
+    #[allow(unused_variables)]
     let autoplay = args.get(7)
         .expect("Autoplay?")
         .parse::<bool>()
         .unwrap();
+    #[allow(unused_variables)]
     let mute = args.get(8)
         .expect("Muted?")
         .parse::<bool>()
