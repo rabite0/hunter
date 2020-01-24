@@ -14,22 +14,12 @@ use crate::mediaview::MediaError;
 
 pub type HResult<T> = Result<T, HError>;
 
-pub type Backtrace = Arc<failure::Backtrace>;
 
-pub trait ArcBacktrace {
-    fn new_arced() -> Backtrace;
-}
-
-impl ArcBacktrace for Backtrace {
-    fn new_arced() -> Backtrace {
-        Arc::new(failure::Backtrace::new())
-    }
-}
 
 #[derive(Fail, Debug, Clone)]
 pub enum HError {
     #[fail(display = "IO error: {} ", _0)]
-    IoError(String, Backtrace),
+    IoError(String),
     #[fail(display = "Mutex failed")]
     MutexError,
     #[fail(display = "Can't lock!")]
@@ -47,11 +37,11 @@ pub enum HError {
     #[fail(display = "Accessed stale value")]
     StaleError,
     #[fail(display = "Failed: {}", _0)]
-    Error(String, Backtrace),
+    Error(String),
     #[fail(display = "Was None!")]
-    NoneError(Backtrace),
+    NoneError,
     #[fail(display = "Async Error: {}", _0)]
-    AError(async_value::AError, Backtrace),
+    AError(async_value::AError),
     #[fail(display = "No widget found")]
     NoWidgetError,
     #[fail(display = "Path: {:?} not in this directory: {:?}", path, dir)]
@@ -75,7 +65,7 @@ pub enum HError {
     #[fail(display = "Strip Prefix Error: {}", error)]
     StripPrefixError{#[cause] error: std::path::StripPrefixError},
     #[fail(display = "INofify failed: {}", _0)]
-    INotifyError(String, Backtrace),
+    INotifyError(String),
     #[fail(display = "Tags not loaded yet")]
     TagsNotLoadedYetError,
     #[fail(display = "Input cancelled!")]
@@ -276,17 +266,14 @@ where E: Into<HError> + Clone {
 
 impl From<std::io::Error> for HError {
     fn from(error: std::io::Error) -> Self {
-        let err = HError::IoError(format!("{}", error),
-                                  Backtrace::new_arced());
+        let err = HError::IoError(format!("{}", error));
         err
     }
 }
 
 impl From<failure::Error> for HError {
     fn from(error: failure::Error) -> Self {
-        let err = HError::Error(format!("{}", error),
-                                Backtrace::new_arced()
-        );
+        let err = HError::Error(format!("{}", error));
         err
     }
 }
@@ -328,7 +315,7 @@ impl<T> From<std::sync::TryLockError<T>> for HError {
 
 impl From<std::option::NoneError> for HError {
     fn from(_error: std::option::NoneError) -> Self {
-        let err = HError::NoneError(Backtrace::new_arced());
+        let err = HError::NoneError;
         err
     }
 }
@@ -342,16 +329,14 @@ impl From<std::path::StripPrefixError> for HError {
 
 impl From<notify::Error> for HError {
     fn from(error: notify::Error) -> Self {
-        let err = HError::INotifyError(format!("{}", error),
-                                       Backtrace::new_arced());
+        let err = HError::INotifyError(format!("{}", error));
         err
     }
 }
 
 impl From<async_value::AError> for HError {
     fn from(error: async_value::AError) -> Self {
-        let err = HError::AError(error,
-                                 Backtrace::new_arced());
+        let err = HError::AError(error);
         err
     }
 }

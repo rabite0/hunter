@@ -98,11 +98,16 @@ impl Listable for ListView<Files> {
     fn on_new(&mut self) -> HResult<()> {
         let show_hidden = self.core.config().show_hidden();
         self.content.show_hidden = show_hidden;
-        let file = self.content
+        let mut file = self.content
             .iter_files()
             .nth(0)
             .cloned()
             .unwrap_or_default();
+
+        if !file.meta.value.is_ok() {
+            file.meta_sync().log();
+        }
+
         self.current_item = Some(file);
         Ok(())
     }

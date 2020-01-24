@@ -10,7 +10,7 @@ use std::path::PathBuf;
 
 use crate::files::{Files, File, SortBy};
 use crate::widget::Events;
-use crate::fail::{HResult, HError, ErrorLog, Backtrace, ArcBacktrace};
+use crate::fail::{HResult, HError, ErrorLog};
 
 pub type CachedFiles = (Option<File>, Async<Files>);
 
@@ -263,7 +263,7 @@ impl FsCache {
             let mut files = file_cache.read()
                 .map_err(|e| HError::from(e))?
                 .get(&dir)
-                .ok_or(HError::NoneError(Backtrace::new_arced()))?
+                .ok_or(HError::NoneError)?
                 .clone();
             let tab_settings = &tab_settings;
 
@@ -406,11 +406,9 @@ impl TryFrom<DebouncedEvent> for FsEvent {
                                    File::new_from_path(&new_path, None)?),
 
             DebouncedEvent::Error(err, path)
-                => Err(HError::INotifyError(format!("{}, {:?}", err, path),
-                                            Backtrace::new_arced()))?,
+                => Err(HError::INotifyError(format!("{}, {:?}", err, path)))?,
             DebouncedEvent::Rescan
-                => Err(HError::INotifyError("Need to rescan".to_string(),
-                                            Backtrace::new_arced()))?,
+                => Err(HError::INotifyError("Need to rescan".to_string()))?,
             // Ignore NoticeRemove/NoticeWrite
             _ => None?,
         };
@@ -499,11 +497,9 @@ impl PathFromEvent for DebouncedEvent {
             DebouncedEvent::NoticeRemove(path)  => Ok(path),
             DebouncedEvent::Rename(old_path, _) => Ok(old_path),
             DebouncedEvent::Error(err, path)
-                => Err(HError::INotifyError(format!("{}, {:?}", err, path),
-                                            Backtrace::new_arced())),
+                => Err(HError::INotifyError(format!("{}, {:?}", err, path))),
             DebouncedEvent::Rescan
-                => Err(HError::INotifyError("Need to rescan".to_string(),
-                                            Backtrace::new_arced()))
+                => Err(HError::INotifyError("Need to rescan".to_string()))
 
         }
     }
