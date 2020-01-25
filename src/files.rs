@@ -300,9 +300,10 @@ impl Default for Files {
 
 
 impl Files {
-    pub fn new_from_path(path: &Path) -> Result<Files, Error> {
+    pub fn new_from_path(path: &Path) -> HResult<Files> {
         let direntries: Result<Vec<_>, _> = std::fs::read_dir(&path)?.collect();
         let dirty_meta = AsyncDirtyBit::new();
+        let tags = &TAGS.read().ok()?.1;
 
         let files: Vec<_> = direntries?
             .iter()
@@ -310,9 +311,11 @@ impl Files {
                 let name = file.file_name();
                 let name = name.to_string_lossy();
                 let path = file.path();
-                File::new(&name,
-                          path,
-                          Some(dirty_meta.clone()))
+                let mut file = File::new(&name,
+                                         path,
+                                         Some(dirty_meta.clone()));
+                file.set_tag_status(&tags);
+                Some(file)
             })
             .collect();
 
@@ -329,10 +332,11 @@ impl Files {
 
     pub fn new_from_path_cancellable(path: &Path,
                                      stale: Stale)
-                                     -> Result<Files, Error> {
+                                     -> HResult<Files> {
         let direntries: Result<Vec<_>, _> = std::fs::read_dir(&path)?.collect();
         let dirty = DirtyBit::new();
         let dirty_meta = AsyncDirtyBit::new();
+        let tags = &TAGS.read().ok()?.1;
 
         let files: Vec<_> = direntries?
             .iter()
@@ -343,10 +347,12 @@ impl Files {
                     let name = file.file_name();
                     let name = name.to_string_lossy();
                     let path = file.path();
-                    Some(File::new_with_stale(&name,
-                                              path,
-                                              Some(dirty_meta.clone()),
-                                              stale.clone()))
+                    let mut file = File::new_with_stale(&name,
+                                                        path,
+                                                        Some(dirty_meta.clone()),
+                                                        stale.clone());
+                    file.set_tag_status(&tags);
+                    Some(file)
                 }
             })
             .fuse()
@@ -780,7 +786,6 @@ impl File {
         path: PathBuf,
         dirty_meta: Option<AsyncDirtyBit>) -> File {
         let hidden = name.starts_with(".");
-        let tag = check_tag(&path).ok();
         let meta = File::make_async_meta(&path, dirty_meta.clone(), None);
         let dirsize = if path.is_dir() {
             Some(File::make_async_dirsize(&path, dirty_meta.clone(), None))
@@ -798,7 +803,7 @@ impl File {
             dirty_meta: dirty_meta,
             color: None,
             selected: false,
-            tag: tag,
+            tag: None,
         }
     }
 
@@ -807,7 +812,6 @@ impl File {
                           dirty_meta: Option<AsyncDirtyBit>,
                           stale: Stale) -> File {
         let hidden = name.starts_with(".");
-        let tag = check_tag(&path).ok();
         let meta = File::make_async_meta(&path,
                                          dirty_meta.clone(),
                                          Some(stale.clone()));
@@ -829,7 +833,7 @@ impl File {
             dirty_meta: dirty_meta,
             color: None,
             selected: false,
-            tag: tag,
+            tag: None,
         }
     }
 
@@ -1052,7 +1056,7 @@ impl File {
         self.kind == Kind::Directory
     }
 
-    pub fn read_dir(&self) -> Result<Files, Error> {
+    pub fn read_dir(&self) -> HResult<Files> {
         Files::new_from_path(&self.path)
     }
 
@@ -1086,6 +1090,13 @@ impl File {
         }
         let tag = check_tag(&self.path)?;
         Ok(tag)
+    }
+
+    pub fn set_tag_status(&mut self, tags: &[PathBuf]) {
+        match tags.contains(&self.path) {
+            true => self.tag = Some(true),
+            false => self.tag = Some(false)
+        }
     }
 
     pub fn toggle_tag(&mut self) -> HResult<()> {
