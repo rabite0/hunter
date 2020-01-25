@@ -712,9 +712,10 @@ impl ListView<Files>
 
 
     fn render(&self) -> Vec<String> {
+        let render_fn = self.render_line_fn();
         self.content
             .iter_files()
-            .map(|file| self.render_line(file))
+            .map(|file| render_fn(file))
             .collect()
     }
 
