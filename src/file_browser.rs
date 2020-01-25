@@ -692,35 +692,19 @@ impl FileBrowser {
     }
 
     pub fn take_main_files(&mut self) -> HResult<Files> {
-        let core = self.core.clone();
-        let blank = AsyncWidget::new(&core.clone(), move |_| {
-            HError::no_files()
-        });
-        let blank = FileBrowserWidgets::Blank(blank);
-
-        let old_widget = self.columns.replace_widget(1, blank);
-
-        if let FileBrowserWidgets::FileList(main_widget) = old_widget {
-            let files = main_widget.take_widget()?.content;
-            return Ok(files)
-        }
-        HError::no_files()
+        let mut w = self.main_widget_mut()?;
+        w.lines = 0;
+        w.buffer.clear();
+        let files = std::mem::take(&mut w.content);
+        Ok(files)
     }
 
     pub fn take_left_files(&mut self) -> HResult<Files> {
-        let core = self.core.clone();
-        let blank = AsyncWidget::new(&core.clone(), move |_| {
-            HError::no_files()
-        });
-        let blank = FileBrowserWidgets::FileList(blank);
-
-        let old_widget = self.columns.replace_widget(0, blank);
-
-        if let FileBrowserWidgets::FileList(left_widget) = old_widget {
-            let files = left_widget.take_widget()?.content;
-            return Ok(files)
-        }
-        HError::no_files()
+        let mut w = self.left_widget_mut()?;
+        w.lines = 0;
+        w.buffer.clear();
+        let files = std::mem::take(&mut w.content);
+        Ok(files)
     }
 
     pub fn get_files(&self) -> HResult<&Files> {

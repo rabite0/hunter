@@ -307,17 +307,9 @@ impl Previewer {
     }
 
     pub fn take_files(&mut self) -> HResult<Files> {
-        let core = self.core.clone();
-        let mut widget = AsyncWidget::new(&core.clone(), move |_| {
-            let widget = TextView::new_blank(&core);
-            let widget = PreviewWidget::TextView(widget);
-            Ok(widget)
-        });
-        std::mem::swap(&mut self.widget, &mut widget);
-
-        match widget.take_widget() {
+        match self.widget.widget_mut() {
             Ok(PreviewWidget::FileList(file_list)) => {
-                let files = file_list.content;
+                let files = std::mem::take(&mut file_list.content);
                 Ok(files)
             }
             _ => HError::no_files()?
