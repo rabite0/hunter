@@ -631,6 +631,8 @@ impl Files {
     pub fn meta_all(&mut self) {
         let len = self.len();
         self.meta_upto(len, None);
+        self.dirty_meta.set_dirty();
+        self.meta_set_fresh().log();
     }
 
     pub fn meta_upto(&mut self, to: usize, sender: Option<Sender<Events>>) {

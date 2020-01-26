@@ -6,7 +6,7 @@ use std::path::PathBuf;
 
 use crate::files::{File, Files, Kind};
 use crate::fscache::FsCache;
-use crate::listview::ListView;
+use crate::listview::{ListView, FileSource};
 use crate::textview::TextView;
 use crate::widget::{Widget, WidgetCore};
 use crate::coordinates::Coordinates;
@@ -295,6 +295,7 @@ impl Previewer {
     }
 
     pub fn set_stale(&mut self) -> HResult<()> {
+        self.cancel_animation()?;
         self.widget.set_stale()
     }
 
@@ -316,25 +317,31 @@ impl Previewer {
         }
     }
 
-    pub fn put_preview_files(&mut self, files: Files) {
-        let core = self.core.clone();
+    pub fn put_preview_files(&mut self,
+                             files: Files,
+                             selected_file: Option<File>) {
         let dir = files.directory.clone();
         let cache = self.cache.clone();
         self.file = Some(dir);
 
-        self.widget = AsyncWidget::new(&self.core, move |_| {
-            let selected_file = cache.get_selection(&files.directory);
-            let mut filelist = ListView::new(&core, files);
+        self.widget.change_to(move |stale, core| {
+            let source = crate::listview::FileSource::Files(files);
 
-            selected_file.map(|file| filelist.select_file(&file)).log();
+            let list = ListView::builder(core.clone(), source)
+                .prerender()
+                .with_cache(cache)
+                .with_stale(stale.clone())
+                .select(selected_file)
+                .build()?;
 
-            Ok(PreviewWidget::FileList(filelist))
-        });
+            Ok(PreviewWidget::FileList(list))
+        }).log();
     }
 
     pub fn set_file(&mut self,
                     file: &File) -> HResult<()> {
         if Some(file) == self.file.as_ref() && !self.widget.is_stale()? { return Ok(()) }
+        self.widget.set_stale().ok();
 
         let same_dir = self.file
             .as_ref()
@@ -348,8 +355,6 @@ impl Previewer {
         let cache = self.cache.clone();
         let animator = self.animator.clone();
         let has_media = self.core.config().media_available();
-
-        self.widget.set_stale().ok();
 
         if same_dir {
             self.animator.set_fresh().ok();
@@ -430,7 +435,7 @@ impl Previewer {
     }
 
     pub fn reload(&mut self) {
-        if let Some(file) = self.file.clone() {
+        if let Some(file) = self.file.take() {
             self.file = None;
             self.set_file(&file).log();
         }
@@ -448,19 +453,17 @@ impl Previewer {
                    stale: &Stale,
                    animator: &Stale)
                    -> HResult<PreviewWidget> {
-        let (selection, cached_files) = cache.get_files(&file, stale.clone())?;
+        if stale.is_stale()? { return Previewer::preview_failed(&file) }
+        let source = FileSource::Path(file.clone());
 
-        let files = cached_files.run_sync()?;
+        let mut file_list = ListView::builder(core.clone(), source)
+                    .prerender()
+                    .with_cache(cache)
+                    .with_stale(stale.clone())
+                    .build()?;
 
         if stale.is_stale()? { return Previewer::preview_failed(&file) }
 
-        let mut file_list = ListView::new(&core, files);
-        if let Some(selection) = selection {
-            file_list.select_file(&selection);
-        }
-        file_list.set_coordinates(&core.coordinates)?;
-        file_list.refresh()?;
-        if stale.is_stale()? { return Previewer::preview_failed(&file) }
         file_list.animate_slide_up(Some(animator))?;
         Ok(PreviewWidget::FileList(file_list))
     }
