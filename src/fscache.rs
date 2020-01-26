@@ -183,6 +183,13 @@ impl FsCache {
         }
     }
 
+    pub fn get_files_sync_stale(&self, dir: &File, stale: Stale) -> HResult<Files> {
+        let files = self.get_files(&dir, stale)?.1;
+        let files = files.run_sync()?;
+        let files = FsCache::ensure_not_empty(files)?;
+        Ok(files)
+    }
+
     pub fn get_files_sync(&self, dir: &File) -> HResult<Files> {
         let files = self.get_files(&dir, Stale::new())?.1;
         let files = files.run_sync()?;

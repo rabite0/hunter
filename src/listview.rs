@@ -1,14 +1,18 @@
 use std::fmt::Debug;
+use std::path::{Path, PathBuf};
+
 use termion::event::Key;
 use unicode_width::UnicodeWidthStr;
 
-use std::path::{Path, PathBuf};
+use async_value::{Stale, StopIter};
 
 use crate::files::{File, Files};
 use crate::fail::{HResult, HError, ErrorLog};
 use crate::term;
 use crate::widget::{Widget, WidgetCore};
 use crate::dirty::Dirtyable;
+use crate::fscache::FsCache;
+
 
 pub trait Listable {
     type Item: Debug + PartialEq + Default;
@@ -253,8 +257,125 @@ where
 
 }
 
+pub enum FileSource {
+    Path(File),
+    Files(Files)
+}
+
+
+pub struct FileListBuilder {
+    core: WidgetCore,
+    source: FileSource,
+    cache: Option<crate::fscache::FsCache>,
+    selected_file: Option<File>,
+    stale: Option<Stale>,
+    meta_upto: usize,
+    meta_all: bool,
+    prerender: bool
+}
+
+impl FileListBuilder {
+    pub fn new(core: WidgetCore, source: FileSource) -> Self {
+        FileListBuilder {
+            core: core,
+            source: source,
+            cache: None,
+            selected_file: None,
+            stale: None,
+            meta_upto: 0,
+            meta_all: false,
+            prerender: false
+        }
+    }
+
+    pub fn select(mut self, file: impl Into<Option<File>>) -> Self {
+        self.selected_file = file.into();
+        self
+    }
+
+    pub fn with_cache(mut self, cache: impl Into<Option<FsCache>>) -> Self {
+        self.cache = cache.into();
+        self
+    }
+
+    pub fn with_stale(mut self, stale: impl Into<Option<Stale>>) -> Self {
+        self.stale = stale.into();
+        self
+    }
+
+    pub fn meta_upto(mut self, upto: impl Into<Option<usize>>) -> Self {
+        self.meta_upto = upto.into().unwrap_or(0);
+        self
+    }
+
+    pub fn meta_all(mut self) -> Self {
+        self.meta_all = true;
+        self
+    }
+
+    pub fn prerender(mut self) -> Self {
+        self.prerender = true;
+        self
+    }
+
+    pub fn build(self) -> HResult<ListView<Files>> {
+        let c = &self.cache;
+        let s = self.stale.clone();
+        let mut files = match self.source {
+            FileSource::Files(f) => Ok(f),
+            FileSource::Path(f) => {
+                c.as_ref()
+                 .map_or_else(| | Files::new_from_path(&f.path),
+                              |c| s.map_or_else(| | c.get_files_sync(&f),
+                                                |s| c.get_files_sync_stale(&f, s)))
+            }
+        }?;
+
+        if self.meta_all {
+            files.meta_all();
+        } else if self.meta_upto > 0 {
+            files.meta_upto(self.meta_upto, Some(self.core.get_sender()));
+        }
+
+        let selected_file = match self.selected_file {
+            Some(f) => Some(f),
+            None => {
+                c.as_ref()
+                 .map(|c| c.get_selection(&files.directory).ok())
+                 .flatten()
+            }
+        };
+
+        let mut view = ListView::new(&self.core, files);
+
+        selected_file.map(|mut f| {
+            f.meta_sync().log();
+            view.select_file(&f);
+        });
+
+        if self.prerender {
+            view.refresh().log();
+
+
+            match self.stale {
+                Some(s) => view.render_buffer_stale(s)?,
+                None => view.render_buffer()?
+            }
+
+            if view.buffer.len() > 0 {
+                view.lines = view.buffer.len() - 1;
+            }
+        };
+
+        Ok(view)
+    }
+}
+
 impl ListView<Files>
 {
+    pub fn builder(core: WidgetCore, source: FileSource) -> FileListBuilder {
+        FileListBuilder::new(core, source)
+    }
     pub fn update_selected_file(&mut self) {
         let pos = self.selection;
 
@@ -327,12 +448,13 @@ impl ListView<Files>
     }
 
     pub fn select_file(&mut self, file: &File) {
-        self.current_item = Some(file.clone());
+        let file = file.clone();
+        self.current_item = Some(file);
 
         let pos = self
             .content
             .iter_files()
-            .position(|item| item == file)
+            .position(|item| item == self.selected_file())
             .unwrap_or(0);
         self.set_selection(pos);
     }
@@ -717,6 +839,38 @@ impl ListView<Files>
             .iter_files()
             .map(|file| render_fn(file))
             .collect()
+    }
+
+    fn render_buffer(&mut self) -> HResult<()> {
+        let render_fn = self.render_line_fn();
+        self.buffer = self.content
+                         .iter_files()
+                         .enumerate()
+                         .map(|(_, file)| {
+                             render_fn(file)
+                         })
+                         .collect();
+        Ok(())
+    }
+
+    fn render_buffer_stale(&mut self, stale: Stale) -> HResult<()> {
+        let render_fn = self.render_line_fn();
+        let buffer = self.content
+                         .iter_files()
+                         .stop_stale(stale.clone())
+                         .enumerate()
+                         .map(|(_, file)| {
+                             render_fn(file)
+                         })
+                         .collect();
+
+        if stale.is_stale()
+                .unwrap_or(true) {
+                    return HError::stale();
+                } else {
+                    self.buffer = buffer;
+                    return Ok(())
+                }
     }
 
     fn refresh_files(&mut self) -> HResult<()> {
