@@ -244,7 +244,7 @@ impl MiniBuffer {
         let last_len = last_comp.len();
 
         self.input = self.input.trim_end_matches(last_comp).to_string();
-        self.position -= last_len;
+        self.position = self.position.saturating_sub(last_len);
 
         let next_comp = self.completions.pop()?;
         let next_comp = next_comp.to_string_lossy();
@@ -366,7 +366,7 @@ pub fn find_bins(comp_name: &str) -> HResult<Vec<OsString>> {
                 let name = file.file_name();
 
                 // If length is different that means the file starts with comp_name
-                if &name.trim_start(&name).len() != &comp_name.len() {
+                if &name.trim_start(comp_name).len() != &name.len() {
                     Ok(name)
                 } else {
                     Err(HError::NoCompletionsError)
@@ -375,9 +375,10 @@ pub fn find_bins(comp_name: &str) -> HResult<Vec<OsString>> {
             })
         })
     }).flatten()
-        .flatten()
-        .filter_map(|s| s.ok())
-        .collect::<Vec<OsString>>();
+      .flatten()
+      .filter(|s| s.is_ok())
+      .map(|s| s.unwrap())
+      .collect::<Vec<OsString>>();
 
     if completions.is_empty() { return Err(HError::NoCompletionsError); }
 
