@@ -212,7 +212,6 @@ impl Tabbable for TabView<FileBrowser> {
                         .map(|mut w| {
                             w.content.show_hidden = show_hidden;
                             w.content.dirty_meta.set_dirty();
-                            w.content.sort();
                             w.refresh().log();
                         }).ok();
                     Ok(())

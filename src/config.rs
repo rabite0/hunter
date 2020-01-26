@@ -159,19 +159,8 @@ impl Config {
                 Ok(("media_mute", "on")) => config.media_mute = true,
                 Ok(("media_mute", "off")) => config.media_mute = false,
                 Ok(("media_previewer", cmd)) => {
-                    use crate::minibuffer::find_bins;
-
                     let cmd = cmd.to_string();
                     config.media_previewer = cmd;
-
-                    let previewer = std::path::Path::new(&config.media_previewer);
-                    let exists = match previewer.is_absolute() {
-                        true => previewer.exists(),
-                        false => find_bins(&config.media_previewer).is_ok()
-                    };
-
-                    config.media_previewer_exists = exists;
-
                 },
                 Ok(("ratios", ratios)) => {
                     let ratios_str = ratios.to_string();
@@ -200,6 +189,12 @@ impl Config {
                     "auto")) => config.graphics = detect_g_mode(),
                 _ => { HError::config_error::<Config>(line.to_string()).log(); }
             }
+
+            #[cfg(feature = "img")]
+            match has_media_previewer(&config.media_previewer) {
+                t @ _ => config.media_previewer_exists = t
+            }
+
             config
         });
 
@@ -244,4 +239,13 @@ fn detect_g_mode() -> String {
         "xterm" => "sixel",
         _ => "unicode"
     }.to_string()
+}
+
+fn has_media_previewer(name: &str) -> bool {
+    use crate::minibuffer::find_bins;
+    let previewer = std::path::Path::new(name);
+    match previewer.is_absolute() {
+        true => previewer.exists(),
+        false => find_bins(name).is_ok()
+    }
 }

@@ -11,7 +11,6 @@ use crate::textview::TextView;
 use crate::widget::{Widget, WidgetCore};
 use crate::coordinates::Coordinates;
 use crate::fail::{HResult, HError, ErrorLog};
-use crate::dirty::Dirtyable;
 use crate::imgview::ImgView;
 use crate::mediaview::MediaView;
 
@@ -354,7 +353,6 @@ impl Previewer {
         let core = self.core.clone();
         let cache = self.cache.clone();
         let animator = self.animator.clone();
-        let has_media = self.core.config().media_available();
 
         if same_dir {
             self.animator.set_fresh().ok();
@@ -386,6 +384,7 @@ impl Previewer {
                 if let Some(mime) = file.get_mime() {
                     let mime_type = mime.type_().as_str();
                     let is_gif = mime.subtype() == "gif";
+                    let has_media = core.config().media_available();
 
                     match mime_type {
                         _ if mime_type == "video" || is_gif && has_media => {
@@ -436,7 +435,6 @@ impl Previewer {
 
     pub fn reload(&mut self) {
         if let Some(file) = self.file.take() {
-            self.file = None;
             self.set_file(&file).log();
         }
     }
@@ -583,11 +581,25 @@ impl Widget for Previewer {
     }
 
     fn config_loaded(&mut self) -> HResult<()> {
-        let show_hidden = self.core.config().show_hidden();
-        if let PreviewWidget::FileList(filelist) = self.widget.widget_mut()? {
-            filelist.content.show_hidden = show_hidden;
-            filelist.content.dirty_meta.set_dirty();
+        use PreviewWidget::*;
+
+        let show_hidden = self.core
+                              .config()
+                              .show_hidden();
+
+        match self.widget.widget_mut() {
+            Ok(FileList(filelist)) => {
+                let setting = filelist.content.show_hidden;
+
+                if setting != show_hidden {
+                    self.reload();
+                }
+
+            }
+            Ok(_) => {},
+            Err(_) => self.reload(),
         }
+
         Ok(())
     }
 
