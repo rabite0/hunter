@@ -336,22 +336,16 @@ impl Files {
         let direntries: Result<Vec<_>, _> = std::fs::read_dir(&path)?.collect();
         let dirty = DirtyBit::new();
         let dirty_meta = AsyncDirtyBit::new();
-        let tags = &TAGS.read().ok()?.1;
 
         let files: Vec<_> = direntries?
-            .iter()
+            .into_iter()
             .map(|file| {
                 if stale.is_stale().ok()? {
                     None
                 } else {
-                    let name = file.file_name();
-                    let name = name.to_string_lossy();
-                    let path = file.path();
-                    let mut file = File::new_with_stale(&name,
-                                                        path,
-                                                        Some(dirty_meta.clone()),
-                                                        stale.clone());
-                    file.set_tag_status(&tags);
+                    let file = File::new_from_direntry(file,
+                                                       Some(dirty_meta.clone()),
+                                                       stale.clone());
                     Some(file)
                 }
             })
@@ -660,12 +654,9 @@ impl Files {
         self.dirty_meta.set_clean();
 
         let meta_pool = make_pool(sender.clone());
-        let show_hidden = self.show_hidden;
 
-        for file in self.files
-            .iter_mut()
-            .filter(|f| !(!show_hidden && f.name.starts_with(".")))
-            .take(meta_files) {
+        for file in self.iter_files_mut()
+                        .take(meta_files) {
             if !file.meta_processed {
                 file.take_meta(&meta_pool).ok();
             }
@@ -847,6 +838,50 @@ impl File {
         }
     }
 
+    pub fn new_from_direntry(direntry: std::fs::DirEntry,
+                             dirty_meta: Option<AsyncDirtyBit>,
+                             stale: Stale) -> File {
+        let path = direntry.path();
+        let name = direntry.file_name()
+                           .to_string_lossy()
+                           .to_string();
+        let hidden = name.chars().nth(0) == Some('.');
+
+        let kind = match direntry.file_type() {
+            Ok(ftype) => match ftype.is_file() {
+                true => Kind::File,
+                false => Kind::Directory
+            }
+            _ => Kind::Placeholder
+        };
+
+        let meta = File::make_async_meta(&path,
+                                         dirty_meta.clone(),
+                                         Some(stale.clone()));
+
+        let dirsize = match kind {
+            Kind::Directory => Some(File::make_async_dirsize(&path,
+                                                             dirty_meta.clone(),
+                                                             Some(stale.clone()))),
+            _ => None
+        };
+
+        File {
+            name: name,
+            hidden: hidden,
+            kind: kind,
+            path: path,
+            dirsize: dirsize,
+            target: None,
+            meta: meta,
+            meta_processed: false,
+            dirty_meta: dirty_meta,
+            color: None,
+            selected: false,
+            tag: None,
+        }
+    }
+
     pub fn new_from_path(path: &Path,
                          dirty_meta: Option<AsyncDirtyBit>) -> HResult<File> {
         let pathbuf = path.to_path_buf();
@@ -876,7 +911,16 @@ impl File {
         let meta = std::fs::metadata(&self.path)?;
         self.meta = Async::new_with_value(meta);
         self.meta.put_stale(stale);
-        self.process_meta()
+        self.process_meta().log();
+
+        if self.is_dir() {
+            let dirsize = self.dirsize
+                              .take()
+                              .map(|s| s.run_sync())??;
+            self.dirsize = Some(Async::new_with_value(dirsize));
+        }
+
+        Ok(())
     }
 
     pub fn make_async_meta(path: &PathBuf,
