@@ -331,32 +331,41 @@ impl FileListBuilder {
             }
         }?;
 
-        if self.meta_all {
-            files.meta_all();
-        } else if self.meta_upto > 0 {
-            files.meta_upto(self.meta_upto, Some(self.core.get_sender()));
-        }
+        let mut view = ListView::new(&self.core, files);
 
         let selected_file = match self.selected_file {
             Some(f) => Some(f),
             None => {
                 c.as_ref()
-                 .map(|c| c.get_selection(&files.directory).ok())
+                 .map(|c| c.get_selection(&view.content.directory).ok())
                  .flatten()
             }
         };
-
-        let mut view = ListView::new(&self.core, files);
 
         selected_file.map(|mut f| {
             f.meta_sync().log();
             view.select_file(&f);
         });
 
+        let from = match self.meta_all {
+            true => 0,
+            false => view.offset,
+        };
+
+        let ysize = view.core.coordinates.ysize_u();
+        let upto = match self.meta_all {
+            true => view.content.len,
+            false => from + ysize + 1
+        };
+
+        view.content
+            .iter_files_mut()
+            .skip(from)
+            .take(upto)
+            .for_each(|f| f.meta_sync().log());
+        view.content.meta_upto = Some(view.content.len);
+
         if self.prerender {
-            view.refresh().log();
-
-
             match self.stale {
                 Some(s) => view.render_buffer_stale(s)?,
                 None => view.render_buffer()?
@@ -366,6 +375,10 @@ impl FileListBuilder {
                 view.lines = view.buffer.len() - 1;
             }
         };
+
+        view.content.set_clean();
+        view.content.dirty_meta.set_clean();
+        view.core.set_clean();
 
         Ok(view)
     }

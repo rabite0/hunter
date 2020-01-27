@@ -451,6 +451,8 @@ impl Previewer {
                    stale: &Stale,
                    animator: &Stale)
                    -> HResult<PreviewWidget> {
+        use crate::dirty::Dirtyable;
+
         if stale.is_stale()? { return Previewer::preview_failed(&file) }
         let source = FileSource::Path(file.clone());
 
@@ -463,6 +465,8 @@ impl Previewer {
         if stale.is_stale()? { return Previewer::preview_failed(&file) }
 
         file_list.animate_slide_up(Some(animator))?;
+        file_list.core.set_clean();
+
         Ok(PreviewWidget::FileList(file_list))
     }
 
