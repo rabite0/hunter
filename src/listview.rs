@@ -124,12 +124,6 @@ impl Listable for ListView<Files> {
             self.content.len = 1;
         }
 
-        let sender = self.core.get_sender();
-
-        let visible_files = self.core.coordinates.size_u().1 + self.offset + 1;
-
-        self.content.meta_upto(visible_files, Some(sender.clone()));
-
         self.refresh_files().log();
 
         if self.content.is_dirty() {
@@ -137,10 +131,6 @@ impl Listable for ListView<Files> {
             self.core.set_dirty();
         }
 
-        if self.content.dirty_meta.is_dirty() {
-            self.content.meta_upto(visible_files, Some(sender.clone()));
-            self.core.set_dirty();
-        }
         Ok(())
     }
 
