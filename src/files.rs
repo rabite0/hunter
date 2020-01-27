@@ -1,4 +1,4 @@
-use std::cmp::{Ord, Ordering};
+use std::cmp::Ord;
 use std::collections::{HashMap, HashSet};
 use std::ops::Index;
 use std::fs::Metadata;
@@ -443,69 +443,77 @@ impl Files {
     }
 
     pub fn sort(&mut self) {
+        use std::cmp::Ordering::*;
+
+        let dirs_first = self.dirs_first;
+
         match self.sort {
             SortBy::Name => self
                 .files
-                .sort_by(|a, b| {
-                    compare_str(&a.name, &b.name)
+                .sort_unstable_by(|a, b| {
+                    if dirs_first {
+                        match (a.is_dir(),  b.is_dir()) {
+                            (true, false) => Less,
+                            (false, true) => Greater,
+                            _ => compare_str(&a.name, &b.name),
+                        }
+                    } else {
+                        compare_str(&a.name, &b.name)
+                    }
                 }),
             SortBy::Size => {
-                self.meta_all_sync().log();
-                self.files.sort_by(|a, b| {
-                    match (a.meta(), b.meta()) {
-                        (Ok(a_meta), Ok(b_meta)) => {
-                            if a_meta.size() == b_meta.size() {
-                                compare_str(&b.name, &a.name)
-                            } else {
-                                a_meta.size().cmp(&b_meta.size()).reverse()
-                            }
+                if self.meta_upto < Some(self.len()) {
+                    self.meta_all_sync().log();
+                }
 
+                self.files.sort_unstable_by(|a, b| {
+                    if dirs_first {
+                        match (a.is_dir(),  b.is_dir()) {
+                            (true, false) => return Less,
+                            (false, true) => return Greater,
+                            _ => {}
                         }
-                        _ => return std::cmp::Ordering::Equal
                     }
 
-
-                });
+                    match (a.meta(), b.meta()) {
+                        (Ok(a_meta), Ok(b_meta)) => {
+                            match a_meta.size() == b_meta.size() {
+                                true => compare_str(&b.name, &a.name),
+                                false => b_meta.size()
+                                               .cmp(&a_meta.size())
+                            }
+                        }
+                        _ => Equal
+                    }
+                })
             }
             SortBy::MTime => {
-                self.meta_all_sync().log();
-                self.files.sort_by(|a, b| {
+                if self.meta_upto < Some(self.len()) {
+                    self.meta_all_sync().log();
+                }
+
+                self.files.sort_unstable_by(|a, b| {
+                    if dirs_first {
+                        match (a.is_dir(),  b.is_dir()) {
+                            (true, false) => return Less,
+                            (false, true) => return Greater,
+                            _ => {}
+                        }
+                    }
+
                     match (a.meta(), b.meta()) {
                         (Ok(a_meta), Ok(b_meta)) => {
-                            if a_meta.mtime() == b_meta.mtime() {
-                                compare_str(&b.name, &a.name)
-                            } else {
-                                a_meta.mtime().cmp(&b_meta.mtime()).reverse()
+                            match a_meta.mtime() == b_meta.mtime() {
+                                true => compare_str(&b.name, &a.name),
+                                false => b_meta.mtime()
+                                               .cmp(&a_meta.mtime())
                             }
-
                         }
-                        _ => return std::cmp::Ordering::Equal
+                        _ => Equal
                     }
-                });
+                })
             }
-        };
-
-        if self.dirs_first {
-            self.files.sort_by(|a, b| {
-                if a.is_dir() && !b.is_dir() {
-                    Ordering::Less
-                } else {
-                    Ordering::Equal
-                }
-            });
-            self.files.sort_by(|a, b| {
-                if a.name.starts_with(".") && !b.name.starts_with(".") {
-                    Ordering::Less
-                } else {
-                    Ordering::Equal
-                }
-            });
         }
-
-        if self.reverse {
-            self.files.reverse();
-        }
-        self.set_dirty();
     }
 
     pub fn cycle_sort(&mut self) {
