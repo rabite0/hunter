@@ -1240,7 +1240,7 @@ impl Widget for FileBrowser {
 
         let pretty_path = format!("{}/{}{}", path, &color, name );
         let sized_path = crate::term::sized_string(&pretty_path, xsize);
-        Ok(sized_path)
+        Ok(sized_path.to_string())
     }
     fn render_footer(&self) -> HResult<String> {
         let xsize = term::xsize_u();

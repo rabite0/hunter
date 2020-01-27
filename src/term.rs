@@ -220,15 +220,25 @@ pub fn cell_ratio() -> HResult<f32> {
     Ok(ratio)
 }
 
-pub fn sized_string(string: &str, xsize: u16) -> String {
-    string.chars().fold("".to_string(), |acc, ch| {
-        let width: usize = unicode_width::UnicodeWidthStr::width(acc.as_str());
-        if width + 1 >= xsize as usize {
-            acc
-        } else {
-            acc + &ch.to_string()
-        }
-    })
+pub fn sized_string(string: &str, xsize: u16) -> &str {
+    let len = string.char_indices()
+                    .map(|(i, ch)| {
+                        if ch.is_ascii() {
+                            (i, 1)
+                        } else {
+                            (i, UnicodeWidthChar::width(ch).unwrap_or(0))
+                        }
+                    })
+                    .scan(0, |slen, (i, chlen)| {
+                        *slen += chlen;
+                        Some((i, *slen))
+                    })
+                    .take_while(|(_, slen)| slen < &(xsize as usize))
+                    .map(|(i,_)| i)
+                    .last()
+                    .unwrap_or(0);
+
+    &string[0..len+1]
 }
 
 #[derive(Debug)]
