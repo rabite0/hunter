@@ -20,9 +20,10 @@ use failure::Error;
 use rayon::{ThreadPool, ThreadPoolBuilder};
 use alphanumeric_sort::compare_str;
 use mime_guess;
+use rayon::prelude::*;
 
 use pathbuftools::PathBufTools;
-use async_value::{Async, Stale};
+use async_value::{Async, Stale, StopIter};
 
 use crate::fail::{HResult, HError, ErrorLog};
 use crate::dirty::{AsyncDirtyBit, DirtyBit, Dirtyable};
@@ -339,17 +340,13 @@ impl Files {
 
         let files: Vec<_> = direntries?
             .into_iter()
+            .stop_stale(stale.clone())
+            .par_bridge()
             .map(|file| {
-                if stale.is_stale().ok()? {
-                    None
-                } else {
-                    let file = File::new_from_direntry(file,
-                                                       Some(dirty_meta.clone()));
-                    Some(file)
-                }
+                let file = File::new_from_direntry(file,
+                                                   Some(dirty_meta.clone()));
+                file
             })
-            .fuse()
-            .flatten()
             .collect();
 
         if stale.is_stale()? {
@@ -620,16 +617,21 @@ impl Files {
     }
 
     pub fn meta_all_sync(&mut self) -> HResult<()> {
-        let mut same = true;
+        let same = Mutex::new(true);
 
-        for file in self.iter_files_mut() {
-            if !file.meta_processed {
-                file.meta_sync().log();
-                same = false;
-            }
-        }
+        self.iter_files_mut()
+            .par_bridge()
+            .for_each(|f| {
+                if !f.meta_processed {
+                    f.meta_sync().log();
+                    same.lock()
+                        .map(|mut t| *t = false)
+                        .map_err(HError::from)
+                        .log();
+                }
+            });
 
-        if !same {
+        if !*same.lock()? {
             self.set_dirty();
         }
 

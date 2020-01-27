@@ -3,6 +3,7 @@ use std::path::{Path, PathBuf};
 
 use termion::event::Key;
 use unicode_width::UnicodeWidthStr;
+use rayon::prelude::*;
 
 use async_value::{Stale, StopIter};
 
@@ -352,6 +353,7 @@ impl FileListBuilder {
             .iter_files_mut()
             .skip(from)
             .take(upto)
+            .par_bridge()
             .for_each(|f| f.meta_sync().log());
         view.content.meta_upto = Some(view.content.len);
 
