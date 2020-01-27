@@ -344,8 +344,7 @@ impl Files {
                     None
                 } else {
                     let file = File::new_from_direntry(file,
-                                                       Some(dirty_meta.clone()),
-                                                       stale.clone());
+                                                       Some(dirty_meta.clone()));
                     Some(file)
                 }
             })
@@ -470,7 +469,7 @@ impl Files {
                     }
 
                     match (a.meta(), b.meta()) {
-                        (Ok(a_meta), Ok(b_meta)) => {
+                        (Some(a_meta), Some(b_meta)) => {
                             match a_meta.size() == b_meta.size() {
                                 true => compare_str(&b.name, &a.name),
                                 false => b_meta.size()
@@ -496,7 +495,7 @@ impl Files {
                     }
 
                     match (a.meta(), b.meta()) {
-                        (Ok(a_meta), Ok(b_meta)) => {
+                        (Some(a_meta), Some(b_meta)) => {
                             match a_meta.mtime() == b_meta.mtime() {
                                 true => compare_str(&b.name, &a.name),
                                 false => b_meta.mtime()
@@ -621,58 +620,21 @@ impl Files {
     }
 
     pub fn meta_all_sync(&mut self) -> HResult<()> {
+        let mut same = true;
+
         for file in self.iter_files_mut() {
             if !file.meta_processed {
                 file.meta_sync().log();
-            }
-        }
-        self.set_dirty();
-        Ok(())
-    }
-
-    pub fn meta_all(&mut self) {
-        let len = self.len();
-        self.meta_upto(len, None);
-        self.dirty_meta.set_dirty();
-        self.meta_set_fresh().log();
-    }
-
-    pub fn meta_upto(&mut self, to: usize, sender: Option<Sender<Events>>) {
-        let meta_files = if self.meta_upto > Some(to) {
-            self.meta_upto.unwrap()
-        } else {
-            if to > self.len() {
-                self.len()
-            } else {
-                to
-            }
-        };
-
-        if self.meta_upto >= Some(meta_files) && !self.dirty_meta.is_dirty() { return }
-
-        self.set_dirty();
-        self.dirty_meta.set_clean();
-
-        let meta_pool = make_pool(sender.clone());
-
-        for file in self.iter_files_mut()
-                        .take(meta_files) {
-            if !file.meta_processed {
-                file.take_meta(&meta_pool).ok();
-            }
-            if file.is_dir() {
-                file.take_dirsize(&meta_pool).ok();
+                same = false;
             }
         }
 
-        self.meta_upto = Some(meta_files);
-    }
+        if !same {
+            self.set_dirty();
+        }
 
-    pub fn meta_set_fresh(&self) -> HResult<()> {
-        self.iter_files().nth(0)?.meta.set_fresh()?;
         Ok(())
     }
-
 
     pub fn set_filter(&mut self, filter: Option<String>) {
         self.filter = filter;
@@ -771,10 +733,10 @@ pub struct File {
     pub path: PathBuf,
     pub hidden: bool,
     pub kind: Kind,
-    pub dirsize: Option<Async<usize>>,
+    pub dirsize: Option<usize>,
     pub target: Option<PathBuf>,
     pub color: Option<lscolors::Color>,
-    pub meta: Async<Metadata>,
+    pub meta: Option<Metadata>,
     pub dirty_meta: Option<AsyncDirtyBit>,
     pub meta_processed: bool,
     pub selected: bool,
@@ -787,19 +749,15 @@ impl File {
         path: PathBuf,
         dirty_meta: Option<AsyncDirtyBit>) -> File {
         let hidden = name.starts_with(".");
-        let meta = File::make_async_meta(&path, dirty_meta.clone(), None);
-        let dirsize = if path.is_dir() {
-            Some(File::make_async_dirsize(&path, dirty_meta.clone(), None))
-        } else { None };
 
         File {
             name: name.to_string(),
             hidden: hidden,
             kind: if path.is_dir() { Kind::Directory } else { Kind::File },
             path: path,
-            dirsize: dirsize,
+            dirsize: None,
             target: None,
-            meta: meta,
+            meta: None,
             meta_processed: false,
             dirty_meta: dirty_meta,
             color: None,
@@ -810,26 +768,17 @@ impl File {
 
     pub fn new_with_stale(name: &str,
                           path: PathBuf,
-                          dirty_meta: Option<AsyncDirtyBit>,
-                          stale: Stale) -> File {
+                          dirty_meta: Option<AsyncDirtyBit>) -> File {
         let hidden = name.starts_with(".");
-        let meta = File::make_async_meta(&path,
-                                         dirty_meta.clone(),
-                                         Some(stale.clone()));
-        let dirsize = if path.is_dir() {
-            Some(File::make_async_dirsize(&path,
-                                          dirty_meta.clone(),
-                                          Some(stale)))
-        } else { None };
 
         File {
             name: name.to_string(),
             hidden: hidden,
             kind: if path.is_dir() { Kind::Directory } else { Kind::File },
             path: path,
-            dirsize: dirsize,
+            dirsize: None,
             target: None,
-            meta: meta,
+            meta: None,
             meta_processed: false,
             dirty_meta: dirty_meta,
             color: None,
@@ -839,8 +788,7 @@ impl File {
     }
 
     pub fn new_from_direntry(direntry: std::fs::DirEntry,
-                             dirty_meta: Option<AsyncDirtyBit>,
-                             stale: Stale) -> File {
+                             dirty_meta: Option<AsyncDirtyBit>) -> File {
         let path = direntry.path();
         let name = direntry.file_name()
                            .to_string_lossy()
@@ -855,25 +803,14 @@ impl File {
             _ => Kind::Placeholder
         };
 
-        let meta = File::make_async_meta(&path,
-                                         dirty_meta.clone(),
-                                         Some(stale.clone()));
-
-        let dirsize = match kind {
-            Kind::Directory => Some(File::make_async_dirsize(&path,
-                                                             dirty_meta.clone(),
-                                                             Some(stale.clone()))),
-            _ => None
-        };
-
         File {
             name: name,
             hidden: hidden,
             kind: kind,
             path: path,
-            dirsize: dirsize,
+            dirsize: None,
             target: None,
-            meta: meta,
+            meta: None,
             meta_processed: false,
             dirty_meta: dirty_meta,
             color: None,
@@ -907,104 +844,24 @@ impl File {
     }
 
     pub fn meta_sync(&mut self) -> HResult<()> {
-        let stale = self.meta.get_stale();
-        let meta = std::fs::metadata(&self.path)?;
-        self.meta = Async::new_with_value(meta);
-        self.meta.put_stale(stale);
+        let meta = std::fs::symlink_metadata(&self.path)?;
+        self.meta = Some(meta);
         self.process_meta().log();
 
         if self.is_dir() {
-            let dirsize = self.dirsize
-                              .take()
-                              .map(|s| s.run_sync())??;
-            self.dirsize = Some(Async::new_with_value(dirsize));
+            let dirsize = std::fs::read_dir(&self.path)?.count();
+            self.dirsize = Some(dirsize);
         }
 
         Ok(())
     }
 
-    pub fn make_async_meta(path: &PathBuf,
-                           dirty_meta: Option<AsyncDirtyBit>,
-                           stale_preview: Option<Stale>) -> Async<Metadata> {
-        let path = path.clone();
-
-        let mut meta = Async::new(move |stale: &Stale| {
-            if stale.is_stale()? { HError::stale()? }
-            Ok(std::fs::symlink_metadata(&path)?)
-        });
-
-        stale_preview.map(|s| meta.put_stale(s));
-
-        dirty_meta.map(|mut d|
-            meta.on_ready(move |_,_| {
-                d.set_dirty();
-
-                Ok(())
-            }).log()
-        );
-        meta
-    }
-
-    pub fn make_async_dirsize(path: &PathBuf,
-                              dirty_meta: Option<AsyncDirtyBit>,
-                              stale_preview: Option<Stale>) -> Async<usize> {
-        let path = path.clone();
-
-        let mut dirsize = Async::new(move |stale: &Stale| {
-            if stale.is_stale()? { HError::stale()? }
-            Ok(std::fs::read_dir(&path)?.count())
-        });
-
-        stale_preview.map(|s| dirsize.put_stale(s));
-
-        dirty_meta.map(|mut d|
-            dirsize.on_ready(move |_,_| {
-                d.set_dirty();
-
-                Ok(())
-            }).log()
-        );
-        dirsize
-    }
-
-    pub fn meta(&self) -> HResult<&Metadata> {
-        Ok(self.meta.get()?)
-    }
-
-    fn take_dirsize(&mut self,
-                    pool: &ThreadPool) -> HResult<()> {
-        let dirsize = self.dirsize.as_mut()?;
-        if let Ok(_) = dirsize.value { return Ok(()) }
-
-        if !dirsize.is_running() && !dirsize.is_ready() {
-            dirsize.run_pooled(Some(&*pool))?;
-        }
-
-        if dirsize.is_ready() {
-            dirsize.pull_async()?;
-        }
-
-        Ok(())
-    }
-
-    pub fn take_meta(&mut self,
-                     pool: &ThreadPool) -> HResult<()> {
-        if self.meta_processed { return Ok(()) }
-
-        if !self.meta.is_running() && !self.meta.is_ready() {
-            self.meta.run_pooled(Some(&*pool))?;
-        }
-
-        if self.meta.is_ready() {
-            self.meta.pull_async()?;
-            self.process_meta()?;
-        }
-
-        Ok(())
+    pub fn meta(&self) -> Option<&Metadata> {
+        self.meta.as_ref()
     }
 
     pub fn process_meta(&mut self) -> HResult<()> {
-        if let Ok(meta) = self.meta.get() {
+        if let Some(ref meta) = self.meta {
             let color = self.get_color(&meta);
             let target = if meta.file_type().is_symlink() {
                 self.path.read_link().ok()
@@ -1019,18 +876,7 @@ impl File {
 
     pub fn reload_meta(&mut self) -> HResult<()> {
         self.meta_processed = false;
-        self.meta = File::make_async_meta(&self.path,
-                                          self.dirty_meta.clone(),
-                                          None);
-        self.meta.run()?;
-
-        if self.dirsize.is_some() {
-            self.dirsize = Some(File::make_async_dirsize(&self.path,
-                                                         self.dirty_meta.clone(),
-                                                         None));
-            self.dirsize.as_mut()?.run()?;
-        }
-        Ok(())
+        self.meta_sync()
     }
 
     fn get_color(&self, meta: &std::fs::Metadata) -> Option<lscolors::Color> {
@@ -1042,7 +888,7 @@ impl File {
 
     pub fn calculate_size(&self) -> HResult<(u32, &str)> {
         if let Some(ref dirsize) = self.dirsize {
-            return Ok((*dirsize.value.as_ref().unwrap_or(&0) as u32, ""))
+            return Ok((*dirsize as u32, ""))
         }
 
 
@@ -1073,7 +919,6 @@ impl File {
             // Fix crash in tree_magic when called on non-regular file
             // Also fix crash when a file doesn't exist any more
             self.meta()
-                .ok()
                 .and_then(|meta| {
                     if meta.is_file() && self.path.exists() {
                         let mime = tree_magic::from_filepath(&self.path);
@@ -1239,7 +1084,7 @@ impl File {
     }
 
     pub fn pretty_user(&self) -> Option<String> {
-        if self.meta().is_err() { return None }
+        if self.meta().is_none() { return None }
         let uid = self.meta().unwrap().uid();
         let file_user = users::get_user_by_uid(uid)?;
         let cur_user = users::get_current_username()?;
@@ -1252,7 +1097,7 @@ impl File {
     }
 
     pub fn pretty_group(&self) -> Option<String> {
-        if self.meta().is_err() { return None }
+        if self.meta().is_none() { return None }
         let gid = self.meta().unwrap().gid();
         let file_group = users::get_group_by_gid(gid)?;
         let cur_group = users::get_current_groupname()?;
@@ -1265,7 +1110,7 @@ impl File {
     }
 
     pub fn pretty_mtime(&self) -> Option<String> {
-        if self.meta().is_err() { return None }
+        if self.meta().is_none() { return None }
         let time: chrono::DateTime<chrono::Local>
             = chrono::Local.timestamp(self.meta().unwrap().mtime(), 0);
         Some(time.format("%F %R").to_string())

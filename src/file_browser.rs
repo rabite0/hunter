@@ -476,22 +476,20 @@ impl FileBrowser {
 
         self.prev_cwd = Some(self.cwd.clone());
         self.cwd = dir.clone();
+	let file_source = FileSource::Path(self.cwd.clone());
 
-        let main_async_widget = self.main_async_widget_mut()?;
-        main_async_widget.change_to(move |stale: &Stale, core| {
-            let (selected_file, files) = cache.get_files(&dir, stale.clone())?;
-            let files = files.run_sync()?;
+	let main_async_widget = self.main_async_widget_mut()?;
+	main_async_widget.change_to(move |stale: &Stale, core| {
+	    let view = ListView::builder(core, file_source)
+		.meta_all()
+		.prerender()
+		.with_cache(cache)
+		.with_stale(stale.clone())
+		.build()?;
 
-            let mut list = ListView::new(&core, files);
+	    Ok(view)
+	}).log();
 
-            list.content.meta_set_fresh().log();
-            list.content.meta_all();
-
-            if let Some(file) = selected_file {
-                list.select_file(&file);
-            }
-            Ok(list)
-        }).log();
 
         if let Ok(grand_parent) = self.cwd()?.parent_as_file() {
             self.left_widget_goto(&grand_parent).log();
@@ -505,27 +503,28 @@ impl FileBrowser {
     }
 
     pub fn left_widget_goto(&mut self, dir: &File) -> HResult<()> {
-        // Check if we're in the correct directory already and return
-        // if we are
-        let left_dir = &self.left_widget()?.content.directory;
-        if self.left_widget().is_ok() && left_dir == dir {
-            return Ok(());
-        }
+	// Check if we're in the correct directory already and return
+	// if we are
+	let left_dir = &self.left_widget()?.content.directory;
+	if self.left_widget().is_ok() && left_dir == dir {
+	    return Ok(());
+	}
 
-        let cache = self.fs_cache.clone();
-        let dir = dir.clone();
+	let cache = self.fs_cache.clone();
+	let file_source = FileSource::Path(dir.clone());
+	let left_async_widget = self.left_async_widget_mut()?;
+	left_async_widget.change_to(move |stale, core| {
+	    let view = ListView::builder(core, file_source)
+		.meta_all()
+		.prerender()
+		.with_cache(cache)
+		.with_stale(stale.clone())
+		.build()?;
 
-        let left_async_widget = self.left_async_widget_mut()?;
-        left_async_widget.change_to(move |stale, core| {
-            let cached_files = cache.get_files(&dir, stale.clone())?;
-            let (_, files) = cached_files;
+	    Ok(view)
+	}).log();
 
-            let files = files.run_sync()?;
-
-            let list = ListView::new(&core, files);
-            Ok(list)
-        })?;
-        Ok(())
+	Ok(())
     }
 
     pub fn go_back(&mut self) -> HResult<()> {

@@ -108,7 +108,7 @@ impl Listable for ListView<Files> {
             .cloned()
             .unwrap_or_default();
 
-        if !file.meta.value.is_ok() {
+        if file.meta.is_none() {
             file.meta_sync().log();
         }
 
@@ -311,7 +311,7 @@ impl FileListBuilder {
     pub fn build(self) -> HResult<ListView<Files>> {
         let c = &self.cache;
         let s = self.stale.clone();
-        let mut files = match self.source {
+        let files = match self.source {
             FileSource::Files(f) => Ok(f),
             FileSource::Path(f) => {
                 c.as_ref()
