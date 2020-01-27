@@ -795,19 +795,14 @@ impl ListView<Files>
                 Err(_) => (0 as u32, "")
             };
 
-            let tag = match file.is_tagged() {
-                Ok(true) => Some(term::color_red() + "*"),
-                _ => None
+            let (tag, tag_len) = match file.is_tagged() {
+                Ok(true) => (Some(term::color_red() + "*"), 1),
+                _ => (None, 0)
             };
+
             let tag = tag.as_ref()
                          .map(|t| t.as_str())
                          .unwrap_or("");
-
-            let tag_len = match tag {
-                "*" => 1,
-                "" => 0,
-                _ => unreachable!()
-            };
 
             let selection_color = crate::term::color_yellow();
             let (selection_gap, selection_color) = match file.is_selected() {
