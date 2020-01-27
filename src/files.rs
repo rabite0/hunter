@@ -988,9 +988,9 @@ impl File {
         }
     }
 
-    pub fn calculate_size(&self) -> HResult<(u64, String)> {
+    pub fn calculate_size(&self) -> HResult<(u32, &str)> {
         if let Some(ref dirsize) = self.dirsize {
-            return Ok((dirsize.value.clone()? as u64, "".to_string()))
+            return Ok((*dirsize.value.as_ref().unwrap_or(&0) as u32, ""))
         }
 
 
@@ -1008,9 +1008,9 @@ impl File {
             4 => " TB",
             5 => " wtf are you doing",
             _ => "",
-        }
-        .to_string();
-        Ok((size, unit))
+        };
+
+        Ok((size as u32, unit))
     }
 
     pub fn get_mime(&self) -> Option<mime_guess::Mime> {

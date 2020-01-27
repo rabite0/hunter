@@ -671,7 +671,7 @@ impl FileBrowser {
 
         // Don't even call previewer on empty files to save CPU cycles
         match (file.is_dir(), file.calculate_size()) {
-            (false, Ok((size, unit))) => if size == 0 && unit.as_str() == "" {
+            (false, Ok((size, unit))) => if size == 0 && unit == "" {
                 self.preview_widget_mut()?.set_stale().log();
                 return Ok(());
             },

@@ -762,73 +762,106 @@ impl ListView<Files>
 
     #[allow(trivial_bounds)]
     fn render_line_fn(&self) -> impl Fn(&File) -> String {
+        use std::fmt::Write;
         let xsize = self.get_coordinates().unwrap().xsize();
         let icons = self.core.config().icons;
 
         move |file| -> String {
-            let icon = if icons {
-                file.icon()
-            } else { "" };
+            let mut line = String::with_capacity(500);
 
-            let name = String::from(icon) + &file.name;
-            let (size, unit) = file.calculate_size().unwrap_or((0, "".to_string()));
+            let icon = match icons {
+                true => file.icon(),
+                false => ""
+            };
 
+            let name = &file.name;
 
+            let size = file.calculate_size();
+            let (size, unit) = match size {
+                Ok((size, unit)) => (size, unit),
+                Err(_) => (0 as u32, "")
+            };
 
             let tag = match file.is_tagged() {
-                Ok(true) => term::color_red() + "*",
-                _ => "".to_string()
+                Ok(true) => Some(term::color_red() + "*"),
+                _ => None
             };
-            let tag_len = if tag != "" { 1 } else { 0 };
+            let tag = tag.as_ref()
+                         .map(|t| t.as_str())
+                         .unwrap_or("");
 
-            let selection_gap = "  ".to_string();
-            let (name, selection_color) =  if file.is_selected() {
-                (selection_gap + &name, crate::term::color_yellow())
-            } else { (name.clone(), "".to_string()) };
+            let tag_len = match tag {
+                "*" => 1,
+                "" => 0,
+                _ => unreachable!()
+            };
 
-            let (link_indicator, link_indicator_len) = if file.target.is_some() {
-                (format!("{}{}{}",
-                         term::color_yellow(),
-                         "--> ".to_string(),
-                         term::highlight_color()),
-                 4)
-            } else { ("".to_string(), 0) };
+            let selection_color = crate::term::color_yellow();
+            let (selection_gap, selection_color) = match file.is_selected() {
+                true => (" ", selection_color.as_str()),
+                false => ("", "")
+            };
 
+            let (link_indicator, link_indicator_len) = match file.target {
+                Some(_) => (Some(format!("{}{}{}",
+                                         term::color_yellow(),
+                                         "--> ",
+                                         term::highlight_color())), Some(4)),
+                None => (None, None)
+            };
+
+            let link_indicator = link_indicator.as_ref()
+                                               .map(|l| l.as_str())
+                                               .unwrap_or("");
+            let link_indicator_len = link_indicator_len.unwrap_or(0);
 
             let sized_string = term::sized_string(&name, xsize);
-            let size_pos = xsize - (size.to_string().len() as u16
-                                    + unit.to_string().len() as u16
-                                    + link_indicator_len);
+
+            let size = size.to_string();
+            let size_pos = xsize - (size.len() as u16 +
+                                    unit.len() as u16 +
+                                    link_indicator_len as u16);
+
             let padding = sized_string.len() - sized_string.width_cjk();
             let padding = xsize - padding as u16;
             let padding = padding - tag_len;
 
-            format!(
-                "{}{}{}{}{}{}{}{}",
-                termion::cursor::Save,
-                match &file.color {
-                    Some(color) => format!("{}{}{}{:padding$}{}",
-                                           tag,
-                                           term::from_lscolor(color),
-                                           selection_color,
-                                           &sized_string,
-                                           term::normal_color(),
-                                           padding = padding as usize),
-                    _ => format!("{}{}{}{:padding$}{}",
-                                 tag,
-                                 term::normal_color(),
-                                 selection_color,
-                                 &sized_string,
-                                 term::normal_color(),
-                                 padding = padding as usize),
-                } ,
-                termion::cursor::Restore,
-                termion::cursor::Right(size_pos),
-                link_indicator,
-                term::highlight_color(),
-                size,
-                unit
-            )
+            write!(&mut line, "{}", termion::cursor::Save).unwrap();
+
+            match &file.color {
+                Some(color) => write!(&mut line,
+                                      "{}{}{}{}{}{:padding$}{}",
+                                      tag,
+                                      term::from_lscolor(color),
+                                      selection_color,
+                                      selection_gap,
+                                      icon,
+                                      &sized_string,
+                                      term::normal_color(),
+                                      padding = padding as usize),
+                None => write!(&mut line,
+                               "{}{}{}{}{}{:padding$}{}",
+                               tag,
+                               term::normal_color(),
+                               selection_color,
+                               selection_gap,
+                               icon,
+                               &sized_string,
+                               term::normal_color(),
+                               padding = padding as usize),
+            }.unwrap();
+
+            write!(&mut line,
+                   "{}{}{}{}{}{}",
+                   termion::cursor::Restore,
+                   termion::cursor::Right(size_pos),
+                   link_indicator,
+                   term::highlight_color(),
+                   size,
+                   unit).unwrap();
+
+
+            line
         }
     }
 
