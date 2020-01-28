@@ -221,24 +221,25 @@ pub fn cell_ratio() -> HResult<f32> {
 }
 
 pub fn sized_string(string: &str, xsize: u16) -> &str {
-    let len = string.char_indices()
-                    .map(|(i, ch)| {
+    let len = string.chars()
+                    .map(|ch| {
                         if ch.is_ascii() {
-                            (i, 1)
+                            (1, 1)
                         } else {
-                            (i, UnicodeWidthChar::width(ch).unwrap_or(0))
+                            (UnicodeWidthChar::width(ch).unwrap_or(0), ch.len_utf8())
                         }
                     })
-                    .scan(0, |slen, (i, chlen)| {
-                        *slen += chlen;
-                        Some((i, *slen))
+                    .scan((0,0), |(str_width, str_len), (ch_width, ch_len)| {
+                        *str_width += ch_width;
+                        *str_len += ch_len;
+                        Some((*str_width, *str_len))
                     })
-                    .take_while(|(_, slen)| slen < &(xsize as usize))
-                    .map(|(i,_)| i)
+                    .take_while(|(str_width, _)| *str_width < xsize as usize)
+                    .map(|(_, str_len)| str_len)
                     .last()
                     .unwrap_or(0);
 
-    &string[0..len+1]
+    &string[0..len]
 }
 
 #[derive(Debug)]
