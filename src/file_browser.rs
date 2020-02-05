@@ -708,9 +708,9 @@ impl FileBrowser {
 
     pub fn take_left_files(&mut self) -> HResult<Files> {
         let mut w = self.left_widget_mut()?;
-        w.content.len = 0;
         //w.buffer.clear();
         let files = std::mem::take(&mut w.content);
+        w.content.len = 0;
         Ok(files)
     }
 
