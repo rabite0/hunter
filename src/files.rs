@@ -378,14 +378,46 @@ impl Files {
     }
 
     pub fn recalculate_len(&mut self) {
-        self.len = self.iter_files().count();
+        self.len = self.par_iter_files().count();
     }
 
     pub fn get_file_mut(&mut self, index: usize) -> Option<&mut File> {
-        self.iter_files_mut()
-            .nth(index)
+        self.par_iter_files_mut()
+            .find_first(|(i, _)| *i == index)
+            .map(|(_, f)| f)
     }
 
+    pub fn par_iter_files(&self) -> impl ParallelIterator<Item=&File> {
+        let filter = self.filter.clone();
+        let filter_selected = self.filter_selected;
+        let show_hidden = self.show_hidden;
+
+        self.files
+            .par_iter()
+            .filter(move |f|
+                    f.kind == Kind::Placeholder ||
+                    !(filter.is_some() &&
+                      !f.name.contains(filter.as_ref().unwrap())) &&
+                    (!filter_selected || f.selected))
+            .filter(move |f| !(!show_hidden && f.hidden))
+    }
+
+    pub fn par_iter_files_mut(&mut self) -> impl ParallelIterator<Item=(usize,
+                                                                        &mut File)> {
+        let filter = self.filter.clone();
+        let filter_selected = self.filter_selected;
+        let show_hidden = self.show_hidden;
+
+        self.files
+            .par_iter_mut()
+            .enumerate()
+            .filter(move |(_,f)|
+                    f.kind == Kind::Placeholder ||
+                    !(filter.is_some() &&
+                      !f.name.contains(filter.as_ref().unwrap())) &&
+                    (!filter_selected || f.selected))
+            .filter(move |(_,f)| !(!show_hidden && f.hidden))
+    }
     pub fn iter_files(&self) -> impl Iterator<Item=&File> {
         let filter = self.filter.clone();
         let filter_selected = self.filter_selected;
@@ -440,7 +472,7 @@ impl Files {
         match self.sort {
             SortBy::Name => self
                 .files
-                .sort_unstable_by(|a, b| {
+                .par_sort_unstable_by(|a, b| {
                     if dirs_first {
                         match (a.is_dir(),  b.is_dir()) {
                             (true, false) => Less,
@@ -456,7 +488,7 @@ impl Files {
                     self.meta_all_sync().log();
                 }
 
-                self.files.sort_unstable_by(|a, b| {
+                self.files.par_sort_unstable_by(|a, b| {
                     if dirs_first {
                         match (a.is_dir(),  b.is_dir()) {
                             (true, false) => return Less,
@@ -482,7 +514,7 @@ impl Files {
                     self.meta_all_sync().log();
                 }
 
-                self.files.sort_unstable_by(|a, b| {
+                self.files.par_sort_unstable_by(|a, b| {
                     if dirs_first {
                         match (a.is_dir(),  b.is_dir()) {
                             (true, false) => return Less,
