@@ -8,6 +8,7 @@ use std::sync::{Arc, Mutex, RwLock};
 use std::sync::mpsc::Sender;
 use std::hash::{Hash, Hasher};
 use std::str::FromStr;
+use std::sync::atomic::{AtomicU32, Ordering};
 
 use lscolors::LsColors;
 use tree_magic;
@@ -157,8 +158,6 @@ impl RefreshPackage {
         for event in events.into_iter() {
             match event {
                 Create(mut file) => {
-                    let dirty_meta = files.dirty_meta.clone();
-                    file.dirty_meta = Some(dirty_meta);
                     file.meta_sync().log();
                     new_files.push(file);
                 }
@@ -251,7 +250,6 @@ pub struct Files {
     pub filter: Option<String>,
     pub filter_selected: bool,
     pub dirty: DirtyBit,
-    pub dirty_meta: AsyncDirtyBit,
 }
 
 impl Index<usize> for Files {
@@ -294,7 +292,6 @@ impl Default for Files {
             filter: None,
             filter_selected: false,
             dirty: DirtyBit::new(),
-            dirty_meta: AsyncDirtyBit::new(),
         }
     }
 }
@@ -325,8 +322,6 @@ impl Files {
         let mut files = Files::default();
         files.directory = File::new_from_path(&path, None)?;
         files.len = len;
-        files.dirty_meta = dirty_meta;
-
 
         Ok(files)
     }
@@ -371,7 +366,6 @@ impl Files {
             filter: None,
             filter_selected: false,
             dirty: dirty,
-            dirty_meta: dirty_meta,
         };
 
         Ok(files)
@@ -418,6 +412,7 @@ impl Files {
                     (!filter_selected || f.selected))
             .filter(move |(_,f)| !(!show_hidden && f.hidden))
     }
+
     pub fn iter_files(&self) -> impl Iterator<Item=&File> {
         let filter = self.filter.clone();
         let filter_selected = self.filter_selected;
@@ -761,13 +756,14 @@ impl std::default::Default for File {
 }
 
 
+
 #[derive(Clone)]
 pub struct File {
     pub name: String,
     pub path: PathBuf,
     pub hidden: bool,
     pub kind: Kind,
-    pub dirsize: Option<usize>,
+    pub dirsize: Option<Arc<AtomicU32>>,
     pub target: Option<PathBuf>,
     pub color: Option<lscolors::Color>,
     pub meta: Option<Metadata>,
@@ -882,12 +878,25 @@ impl File {
         self.meta = Some(meta);
         self.process_meta().log();
 
-        if self.is_dir() {
-            let dirsize = std::fs::read_dir(&self.path)?.count();
-            self.dirsize = Some(dirsize);
-        }
+        // if self.is_dir() {
+        //     let dirsize = std::fs::read_dir(&self.path)?.count();
+        //     self.dirsize = Some(dirsize);
+        // }
 
         Ok(())
+    }
+
+    pub fn run_dirsize(&mut self) {
+        let dirsize = Arc::new(AtomicU32::new(0));
+        self.dirsize = Some(dirsize.clone());
+        let path = self.path.clone();
+        rayon::spawn(move || {
+            std::fs::read_dir(&path)
+                .map(|dirs| {
+                    let size = dirs.count();
+                    dirsize.store(size as u32, Ordering::Release);
+                });
+        });
     }
 
     pub fn meta(&self) -> Option<&Metadata> {
@@ -921,8 +930,13 @@ impl File {
     }
 
     pub fn calculate_size(&self) -> HResult<(u32, &str)> {
-        if let Some(ref dirsize) = self.dirsize {
-            return Ok((*dirsize as u32, ""))
+        if self.is_dir() {
+            let size = match self.dirsize {
+                Some(ref size) => (size.load(Ordering::Acquire), ""),
+                None => (0, ""),
+            };
+
+            return Ok(size);
         }
 
 
@@ -964,6 +978,18 @@ impl File {
 
     pub fn is_text(&self) -> bool {
         tree_magic::match_filepath("text/plain", &self.path)
+    }
+
+    pub fn is_filtered(&self, filter: &str, filter_selected: bool) -> bool {
+        self.kind == Kind::Placeholder ||
+            !(// filter.is_some() &&
+              !self.name.contains(filter// .as_ref().unwrap()
+              )) &&
+            (!filter_selected || self.selected)
+    }
+
+    pub fn is_hidden(&self) -> bool {
+        self.hidden
     }
 
 

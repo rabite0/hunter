@@ -65,7 +65,7 @@ pub struct AsyncWidget<W: Widget + Send + 'static> {
 
 impl<W: Widget + Send + 'static> AsyncWidget<W> {
     pub fn new(core: &WidgetCore,
-               closure: impl FnOnce(&Stale) -> HResult<W> + Send + Sync + 'static)
+               closure: impl FnOnce(&Stale) -> HResult<W> + Send + 'static)
                -> AsyncWidget<W> {
         let sender = Arc::new(Mutex::new(core.get_sender()));
         let mut widget = Async::new(move |stale|
@@ -86,7 +86,7 @@ impl<W: Widget + Send + 'static> AsyncWidget<W> {
     pub fn change_to(&mut self,
                      closure: impl FnOnce(&Stale,
                                           WidgetCore)
-                                          -> HResult<W> + Send + Sync + 'static)
+                                          -> HResult<W> + Send + 'static)
                      -> HResult<()> {
         self.set_stale().log();
 
@@ -327,7 +327,7 @@ impl Previewer {
             let source = crate::listview::FileSource::Files(files);
 
             let list = ListView::builder(core.clone(), source)
-                .prerender()
+                // .prerender()
                 .with_cache(cache)
                 .with_stale(stale.clone())
                 .select(selected_file)
@@ -457,7 +457,7 @@ impl Previewer {
         let source = FileSource::Path(file.clone());
 
         let mut file_list = ListView::builder(core.clone(), source)
-                    .prerender()
+                    // .prerender()
                     .with_cache(cache)
                     .with_stale(stale.clone())
                     .build()?;

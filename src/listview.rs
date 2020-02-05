@@ -147,10 +147,10 @@ where
 {
     pub content: T,
     pub current_item: Option<<ListView<T> as Listable>::Item>,
-    pub lines: usize,
+    // pub lines: usize,
     selection: usize,
     pub offset: usize,
-    pub buffer: Vec<String>,
+    //pub buffer: Vec<String>,
     pub core: WidgetCore,
     seeking: bool,
     searching: Option<String>,
@@ -165,10 +165,10 @@ where
         let mut view = ListView::<T> {
             content: content,
             current_item: None,
-            lines: 0,
+            // lines: 0,
             selection: 0,
             offset: 0,
-            buffer: Vec::new(),
+            // buffer: Vec::new(),
             core: core.clone(),
             seeking: false,
             searching: None
@@ -190,10 +190,10 @@ where
         self.seeking = false;
     }
     pub fn move_down(&mut self) {
-        let lines = self.lines;
+        let lines = self.len();
         let y_size = self.get_coordinates().unwrap().ysize() as usize;
 
-        if self.lines == 0 || self.selection == lines - 1 {
+        if lines == 0 || self.selection == lines - 1 {
             return;
         }
 
@@ -210,7 +210,7 @@ where
     }
 
     pub fn move_bottom(&mut self) {
-        let lines = self.lines;
+        let lines = self.len();
         self.set_selection(lines - 1);
     }
 
@@ -354,22 +354,27 @@ impl FileListBuilder {
             .skip(from)
             .take(upto)
             .par_bridge()
-            .for_each(|f| f.meta_sync().log());
-        view.content.meta_upto = Some(view.content.len);
+            .for_each(|f| {
+                f.meta_sync().log();
+                if f.is_dir() {
+                    f.run_dirsize();
+                }
+            });
+        view.content.meta_upto = Some(upto);
 
-        if self.prerender {
-            match self.stale {
-                Some(s) => view.render_buffer_stale(s)?,
-                None => view.render_buffer()?
-            }
+        // if self.prerender {
+        //     match self.stale {
+        //         Some(s) => view.render_buffer_stale(s)?,
+        //         None => view.render_buffer()?
+        //     }
 
-            if view.buffer.len() > 0 {
-                view.lines = view.buffer.len() - 1;
-            }
-        };
+        //     if view.buffer.len() > 0 {
+        //         view.lines = view.buffer.len() - 1;
+        //     }
+        // };
 
         view.content.set_clean();
-        view.content.dirty_meta.set_clean();
+        // view.content.dirty_meta.set_clean();
         view.core.set_clean();
 
         Ok(view)
@@ -565,9 +570,9 @@ impl ListView<Files>
         file.toggle_selection();
 
         if !self.content.filter_selected {
-            let selection = self.get_selection();
-            let line = self.render_line(&file);
-            self.buffer[selection] = line;
+            //let selection = self.get_selection();
+            //let line = self.render_line(&file);
+            //self.buffer[selection] = line;
 
             self.move_down();
         } else {
@@ -607,12 +612,12 @@ impl ListView<Files>
         self.selected_file_mut().toggle_tag()?;
 
         // Create a mutable clone to render changes into buffer
-        let mut file = self.clone_selected_file();
-        file.toggle_tag()?;
+        // let mut file = self.clone_selected_file();
+        // file.toggle_tag()?;
 
-        let line = self.render_line(&file);
-        let selection = self.get_selection();
-        self.buffer[selection] = line;
+        // let line = self.render_line(&file);
+        // let selection = self.get_selection();
+        // self.buffer[selection] = line;
 
         self.move_down();
         Ok(())
@@ -868,60 +873,66 @@ impl ListView<Files>
 
     fn render(&self) -> Vec<String> {
         let render_fn = self.render_line_fn();
+        let ysize = self.get_coordinates().unwrap().ysize_u();
         self.content
             .iter_files()
+            .skip(self.offset)
+            .take(ysize+1)
+            // .collect::<Vec<_>>()
+            // .into_par_iter()
             .map(|file| render_fn(file))
             .collect()
     }
 
     fn render_buffer(&mut self) -> HResult<()> {
-        let render_fn = self.render_line_fn();
-        self.buffer = self.content
-                         .iter_files()
-                         .enumerate()
-                         .map(|(_, file)| {
-                             render_fn(file)
-                         })
-                         .collect();
+        // let render_fn = self.render_line_fn();
+        // self.buffer = self.content
+        //                  .iter_files()
+        //                  .enumerate()
+        //                  .map(|(_, file)| {
+        //                      render_fn(file)
+        //                  })
+        //                  .collect();
         Ok(())
     }
 
     fn render_buffer_stale(&mut self, stale: Stale) -> HResult<()> {
-        let render_fn = self.render_line_fn();
-        let buffer = self.content
-                         .iter_files()
-                         .stop_stale(stale.clone())
-                         .enumerate()
-                         .map(|(_, file)| {
-                             render_fn(file)
-                         })
-                         .collect();
+        // let render_fn = self.render_line_fn();
+        // let buffer = self.content
+        //                  .iter_files()
+        //                  .stop_stale(stale.clone())
+        //                  .enumerate()
+        //                  .map(|(_, file)| {
+        //                      render_fn(file)
+        //                  })
+        //                  .collect();
 
-        if stale.is_stale()
-                .unwrap_or(true) {
-                    return HError::stale();
-                } else {
-                    self.buffer = buffer;
-                    return Ok(())
-                }
+        // if stale.is_stale()
+        //         .unwrap_or(true) {
+        //             return HError::stale();
+        //         } else {
+        //             self.buffer = buffer;
+        //             return Ok(())
+        //         }
+        Ok(())
     }
 
     fn refresh_files(&mut self) -> HResult<()> {
-        if let Ok(Some(mut refresh)) = self.content.get_refresh() {
-            let file = self.clone_selected_file();
+        // if let Ok(Some(mut refresh)) = self.content.get_refresh() {
+        //     let file = self.clone_selected_file();
 
-            self.buffer = refresh.new_buffer.take()?;
-            self.lines = self.buffer.len() - 1;
+        //     self.buffer = refresh.new_buffer.take()?;
+        //     self.lines = self.buffer.len() - 1;
 
-            self.select_file(&file);
-        }
+        //     self.select_file(&file);
+        // }
 
-        if self.content.ready_to_refresh()? {
-            let render_fn = self.render_line_fn();
-            self.content.process_fs_events(self.buffer.clone(),
-                                           self.core.get_sender(),
-                                           render_fn)?;
-        }
+        // if self.content.ready_to_refresh()? {
+        //     let render_fn = self.render_line_fn();
+        //     self.content.process_fs_events(self.buffer.clone(),
+        //                                    self.core.get_sender(),
+        //                                    render_fn)?;
+        // }
 
         Ok(())
     }
@@ -941,18 +952,18 @@ where
     fn refresh(&mut self) -> HResult<()> {
         self.on_refresh().log();
 
-        let buffer_len = self.buffer.len();
+        // let buffer_len = self.buffer.len();
 
-        self.lines = buffer_len;
+        // self.lines = buffer_len;
 
-        if self.selection >= self.buffer.len() && self.buffer.len() != 0 {
-            self.selection = self.buffer.len() - 1;
+        if self.selection >= self.len() && self.len() != 0 {
+            self.selection = self.len() - 1;
         }
 
-        if self.core.is_dirty() {
-            self.buffer = self.render();
-            self.core.set_clean();
-        }
+        // if self.core.is_dirty() {
+        //     self.buffer = self.render();
+        //     self.core.set_clean();
+        // }
         Ok(())
     }
 
@@ -967,13 +978,11 @@ where
     fn get_drawlist(&self) -> HResult<String> {
         let mut output = term::reset();
         let (xpos, ypos) = self.get_coordinates().unwrap().position().position();
-        let ysize = self.get_coordinates().unwrap().ysize() as usize;
 
-        output += &self
-            .buffer
+        let render = self.render();
+
+        output += &render
             .iter()
-            .skip(self.offset)
-            .take(ysize)
             .enumerate()
             .map(|(i, item)| {
                 let mut output = term::normal_color();
@@ -991,7 +1000,7 @@ where
             })
             .collect::<String>();
 
-        output += &self.get_redraw_empty_list(self.buffer.len())?;
+        output += &self.get_redraw_empty_list(self.len())?;
 
         Ok(output)
     }

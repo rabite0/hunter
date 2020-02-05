@@ -199,7 +199,6 @@ impl Tabbable for TabView<FileBrowser> {
                     w.as_mut()
                         .map(|mut w| {
                             w.content.show_hidden = show_hidden;
-                            w.content.dirty_meta.set_dirty();
                             w.refresh().log();
                         }).ok();
                     Ok(())
@@ -211,7 +210,6 @@ impl Tabbable for TabView<FileBrowser> {
                     w.as_mut()
                         .map(|mut w| {
                             w.content.show_hidden = show_hidden;
-                            w.content.dirty_meta.set_dirty();
                             w.refresh().log();
                         }).ok();
                     Ok(())
@@ -262,7 +260,7 @@ impl FileBrowser {
             let source = FileSource::Path(dir);
             ListView::builder(core_m, source)
                 .meta_all()
-                .prerender()
+                // .prerender()
                 .with_cache(cache)
                 .with_stale(stale.clone())
                 .build()
@@ -274,8 +272,8 @@ impl FileBrowser {
                 let dir = File::new_from_path(&left_path, None)?;
                 let source = FileSource::Path(dir);
                 ListView::builder(core_l, source)
-                    .meta_all()
-                    .prerender()
+                    // .meta_all()
+                    // .prerender()
                     .with_cache(cache)
                     .with_stale(stale.clone())
                     .build()
@@ -359,7 +357,7 @@ impl FileBrowser {
 
                 ListView::builder(core, source)
                     .meta_all()
-                    .prerender()
+                    // .prerender()
                     .with_cache(cache)
                     .with_stale(stale.clone())
                     .build()
@@ -476,19 +474,19 @@ impl FileBrowser {
 
         self.prev_cwd = Some(self.cwd.clone());
         self.cwd = dir.clone();
-	let file_source = FileSource::Path(self.cwd.clone());
+        let file_source = FileSource::Path(self.cwd.clone());
 
-	let main_async_widget = self.main_async_widget_mut()?;
-	main_async_widget.change_to(move |stale: &Stale, core| {
-	    let view = ListView::builder(core, file_source)
-		.meta_all()
-		.prerender()
-		.with_cache(cache)
-		.with_stale(stale.clone())
-		.build()?;
+        let main_async_widget = self.main_async_widget_mut()?;
+        main_async_widget.change_to(move |stale: &Stale, core| {
+            let view = ListView::builder(core, file_source)
+                .meta_all()
+                // .prerender()
+                .with_cache(cache)
+                .with_stale(stale.clone())
+                .build()?;
 
-	    Ok(view)
-	}).log();
+            Ok(view)
+        }).log();
 
 
         if let Ok(grand_parent) = self.cwd()?.parent_as_file() {
@@ -499,32 +497,36 @@ impl FileBrowser {
             }).log();
         }
 
+        self.preview_widget_mut()
+            .map(|p| p.set_stale())
+            .ok();
+
         Ok(())
     }
 
     pub fn left_widget_goto(&mut self, dir: &File) -> HResult<()> {
-	// Check if we're in the correct directory already and return
-	// if we are
-	let left_dir = &self.left_widget()?.content.directory;
-	if self.left_widget().is_ok() && left_dir == dir {
-	    return Ok(());
-	}
+        // Check if we're in the correct directory already and return
+        // if we are
+        let left_dir = &self.left_widget()?.content.directory;
+        if self.left_widget().is_ok() && left_dir == dir {
+            return Ok(());
+        }
 
-	let cache = self.fs_cache.clone();
-	let file_source = FileSource::Path(dir.clone());
-	let left_async_widget = self.left_async_widget_mut()?;
-	left_async_widget.change_to(move |stale, core| {
-	    let view = ListView::builder(core, file_source)
-		.meta_all()
-		.prerender()
-		.with_cache(cache)
-		.with_stale(stale.clone())
-		.build()?;
+        let cache = self.fs_cache.clone();
+        let file_source = FileSource::Path(dir.clone());
+        let left_async_widget = self.left_async_widget_mut()?;
+        left_async_widget.change_to(move |stale, core| {
+            let view = ListView::builder(core, file_source)
+                // .meta_all()
+                // .prerender()
+                .with_cache(cache)
+                .with_stale(stale.clone())
+                .build()?;
 
-	    Ok(view)
-	}).log();
+            Ok(view)
+        }).log();
 
-	Ok(())
+        Ok(())
     }
 
     pub fn go_back(&mut self) -> HResult<()> {
@@ -548,7 +550,7 @@ impl FileBrowser {
                 ListView::builder(core, file_source)
                     .select(main_selection)
                     .meta_all()
-                    .prerender()
+                    // .prerender()
                     .with_cache(cache)
                     .with_stale(stale.clone())
                     .build()
@@ -559,7 +561,7 @@ impl FileBrowser {
                 let cache = self.fs_cache.clone();
                 self.left_async_widget_mut()?.change_to(move |stale, core| {
                     ListView::builder(core, file_source)
-                        .prerender()
+                        // .prerender()
                         .with_cache(cache)
                         .with_stale(stale.clone())
                         .build()
@@ -698,16 +700,16 @@ impl FileBrowser {
 
     pub fn take_main_files(&mut self) -> HResult<Files> {
         let mut w = self.main_widget_mut()?;
-        w.lines = 0;
-        w.buffer.clear();
+        w.content.len = 0;
+        //w.buffer.clear();
         let files = std::mem::take(&mut w.content);
         Ok(files)
     }
 
     pub fn take_left_files(&mut self) -> HResult<Files> {
         let mut w = self.left_widget_mut()?;
-        w.lines = 0;
-        w.buffer.clear();
+        w.content.len = 0;
+        //w.buffer.clear();
         let files = std::mem::take(&mut w.content);
         Ok(files)
     }

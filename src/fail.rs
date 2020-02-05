@@ -30,6 +30,8 @@ pub enum HError {
     ChannelRecvError{#[cause] error: std::sync::mpsc::RecvError},
     #[fail(display = "Channel failed")]
     ChannelSendError,
+    #[fail(display = "Timer ran out while waiting for message on channel!")]
+    ChannelRecvTimeout(#[cause] std::sync::mpsc::RecvTimeoutError),
     #[fail(display = "Previewer failed on file: {}", file)]
     PreviewFailed{file: String},
     #[fail(display = "StalePreviewer for file: {}", file)]
@@ -288,6 +290,13 @@ impl From<std::sync::mpsc::TryRecvError> for HError {
 impl From<std::sync::mpsc::RecvError> for HError {
     fn from(error: std::sync::mpsc::RecvError) -> Self {
         let err = HError::ChannelRecvError { error: error };
+        err
+    }
+}
+
+impl From<std::sync::mpsc::RecvTimeoutError> for HError {
+    fn from(error: std::sync::mpsc::RecvTimeoutError) -> Self {
+        let err = HError::ChannelRecvTimeout(error);
         err
     }
 }
