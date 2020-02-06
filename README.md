@@ -1,6 +1,17 @@
 hunter
 ======
 
+
+Warning!
+========
+
+Due to a heavy optimization effort the current master branch might be
+more buggy than usual. For a more stable experience the latest [tagged
+release](https://github.com/rabite0/hunter/tree/v1.3.5) is recommend.
+
+
+
+
 ![hunter](https://raw.githubusercontent.com/rabite0/hunter-stuff/master/player.png)
 
 NEW
