@@ -987,9 +987,11 @@ where
             .map(|(i, item)| {
                 let mut output = term::normal_color();
 
-                if i == (self.selection - self.offset) {
+                // i counts from the offset, while selection counts from 0
+                if i + self.offset == self.selection {
                     output += &term::invert();
                 }
+
                 output += &format!(
                     "{}{}{}",
                     term::goto_xy(xpos, i as u16 + ypos),

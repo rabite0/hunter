@@ -550,11 +550,10 @@ impl Files {
         self.set_dirty();
 
         if self.show_hidden == true && self.len() > 1 {
-            self.remove_placeholder();
-        } else {
-            // avoid doing this twice, since remove_placeholder() does it too
-            self.recalculate_len();
+            self.remove_placeholder()
         }
+
+        self.recalculate_len();
     }
 
     fn remove_placeholder(&mut self) {
@@ -562,7 +561,9 @@ impl Files {
         self.find_file_with_path(&dirpath).cloned()
             .map(|placeholder| {
                 self.files.remove_item(&placeholder);
-                self.recalculate_len();
+                if self.len > 0 {
+                    self.len -= 1;
+                }
             });
     }
 
@@ -895,7 +896,8 @@ impl File {
                 .map(|dirs| {
                     let size = dirs.count();
                     dirsize.store(size as u32, Ordering::Release);
-                });
+                }).map_err(HError::from)
+                  .log();
         });
     }
 
