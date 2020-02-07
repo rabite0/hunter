@@ -12,7 +12,7 @@ use std::ffi::OsString;
 use std::str::FromStr;
 
 
-use crate::fail::{HResult, HError, KeyBindError};
+use crate::fail::{HResult, HError, KeyBindError, ErrorLog};
 use crate::widget::{Widget, WidgetCore, Events};
 use crate::foldview::{Foldable, FoldableWidgetExt, ActingExt};
 use crate::listview::ListView;
@@ -432,12 +432,16 @@ impl QuickFiles for Vec<File> {
     fn common_mime(&self) -> Option<Mime> {
         let first_mime = self
             .get(0)?
-            .get_mime();
+            .get_mime()
+            .log_and()
+            .ok();
 
 
         self.iter()
             .fold(first_mime, |common_mime, file| {
-                let cur_mime = file.get_mime();
+                let cur_mime = file.get_mime()
+                                   .log_and()
+                                   .ok();
 
                 if &cur_mime == &common_mime {
                     cur_mime

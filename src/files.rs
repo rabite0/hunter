@@ -961,22 +961,51 @@ impl File {
         Ok((size as u32, unit))
     }
 
-    pub fn get_mime(&self) -> Option<mime_guess::Mime> {
+    // Sadly tree_magic tends to panic (in unwraps a None) when called
+    // with things like pipes, non-existing files. and other stuff. To
+    // prevent it from crashing hunter it's necessary to catch the
+    // panic with a custom panic hook and handle it gracefully by just
+    // doing nothing
+    pub fn get_mime(&self) -> HResult<mime_guess::Mime> {
+        use std::panic;
+        use crate::fail::MimeError;
+
         if let Some(ext) = self.path.extension() {
             let mime = mime_guess::from_ext(&ext.to_string_lossy()).first();
-            mime
-        } else {
-            // Fix crash in tree_magic when called on non-regular file
-            // Also fix crash when a file doesn't exist any more
-            self.meta()
-                .and_then(|meta| {
-                    if meta.is_file() && self.path.exists() {
-                        let mime = tree_magic::from_filepath(&self.path);
-                        mime::Mime::from_str(&mime).ok()
-                    } else { None }
-                })
+            if mime.is_some() {
+                return Ok(mime.unwrap());
+            }
         }
+
+        self.meta()
+            .map(|meta| {
+                // Take and replace panic handler which does nothing
+                let panic_hook = panic::take_hook();
+                panic::set_hook(Box::new(|_| {} ));
+
+                // Catch possible panic caused by tree_magic
+                let mime = panic::catch_unwind(|| {
+                    match meta.is_file() && self.path.exists() {
+                        true => {
+                            let mime = tree_magic::from_filepath(&self.path);
+                            mime::Mime::from_str(&mime).ok()
+                        }
+                        false => None
+                    }
+                });
+
+                // Restore previous panic handler
+                panic::set_hook(panic_hook);
+
+                mime
+            }).unwrap_or(Ok(None))
+              .unwrap_or(None)
+              .ok_or_else(|| {
+                  let file = self.name.clone();
+                  HError::Mime(MimeError::Panic(file))
+              })
     }
+
 
     pub fn is_text(&self) -> bool {
         tree_magic::match_filepath("text/plain", &self.path)

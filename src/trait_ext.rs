@@ -43,6 +43,6 @@ impl PathBufMime for PathBuf {
             .map(|mime| {
                 Ok(format!("{}", mime))
             })
-            .ok_or(MimeError::NoMimeFound)?
+            .map_err(|_| MimeError::NoMimeFound)?
     }
 }

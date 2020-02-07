@@ -381,7 +381,10 @@ impl Previewer {
                     return Ok(preview?);
                 }
 
-                if let Some(mime) = file.get_mime() {
+                if let Some(mime) = file.get_mime()
+                                        .log_and()
+                                        .ok()
+                {
                     let mime_type = mime.type_().as_str();
                     let is_gif = mime.subtype() == "gif";
                     let has_media = core.config().media_available();

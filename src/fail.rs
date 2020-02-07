@@ -382,7 +382,9 @@ pub enum MimeError {
     #[fail(display = "File access failed! Error: {}", _0)]
     AccessFailed(Box<HError>),
     #[fail(display = "No MIME type found for this file",)]
-    NoMimeFound
+    NoMimeFound,
+    #[fail(display = "Paniced while trying to find MIME type for: {}!", _0)]
+    Panic(String),
 }
 
 impl From<MimeError> for HError {
