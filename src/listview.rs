@@ -830,6 +830,7 @@ impl ListView<Files>
             let padding = sized_string.len() - sized_string.width_cjk();
             let padding = xsize - padding as u16;
             let padding = padding - tag_len;
+            let padding = padding - icon.width() as u16;
 
             write!(&mut line, "{}", termion::cursor::Save).unwrap();
 
