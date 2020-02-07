@@ -197,10 +197,13 @@ impl Tabbable for TabView<FileBrowser> {
             tab.left_async_widget_mut().map(|async_w| {
                 async_w.widget.on_ready(move |mut w, _| {
                     w.as_mut()
-                        .map(|mut w| {
-                            w.content.show_hidden = show_hidden;
-                            w.refresh().log();
-                        }).ok();
+                     .map(|mut w| {
+                         if w.content.show_hidden != show_hidden {
+                             w.content.show_hidden = show_hidden;
+                             w.content.recalculate_len();
+                             w.refresh().log();
+                         }
+                     }).ok();
                     Ok(())
                 }).log();
             }).log();
@@ -208,10 +211,13 @@ impl Tabbable for TabView<FileBrowser> {
             tab.main_async_widget_mut().map(|async_w| {
                 async_w.widget.on_ready(move |mut w, _| {
                     w.as_mut()
-                        .map(|mut w| {
-                            w.content.show_hidden = show_hidden;
-                            w.refresh().log();
-                        }).ok();
+                     .map(|mut w| {
+                         if w.content.show_hidden != show_hidden {
+                             w.content.show_hidden = show_hidden;
+                             w.content.recalculate_len();
+                             w.refresh().log();
+                         }
+                     }).ok();
                     Ok(())
                 }).log()
             }).log();

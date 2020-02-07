@@ -288,7 +288,7 @@ impl Default for Files {
             sort: SortBy::Name,
             dirs_first: true,
             reverse: false,
-            show_hidden: true,
+            show_hidden: false,
             filter: None,
             filter_selected: false,
             dirty: DirtyBit::new(),
@@ -350,23 +350,23 @@ impl Files {
             })?;
         }
 
-        let len = files.len();
-
-        let files = Files {
+        let mut files = Files {
             directory: File::new_from_path(&path, None)?,
             files: files,
-            len: len,
+            len: 0,
             pending_events: Arc::new(RwLock::new(vec![])),
             refresh: None,
             meta_upto: None,
             sort: SortBy::Name,
             dirs_first: true,
             reverse: false,
-            show_hidden: true,
+            show_hidden: false,
             filter: None,
             filter_selected: false,
             dirty: dirty,
         };
+
+        files.recalculate_len();
 
         Ok(files)
     }
