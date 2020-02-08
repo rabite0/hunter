@@ -531,6 +531,12 @@ impl Files {
                 })
             }
         }
+
+        // This could be faster if the sorting itself was reversed
+        // instead of reversing everything afterwards.
+        if self.reverse {
+            self.files.reverse();
+        }
     }
 
     pub fn cycle_sort(&mut self) {
