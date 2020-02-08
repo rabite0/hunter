@@ -350,6 +350,7 @@ impl FileBrowser {
             self.preview_widget_mut()?.set_stale().log();
             self.preview_widget_mut()?.cancel_animation().log();
             let previewer_files = self.preview_widget_mut()?.take_files().ok();
+            let main_files = self.take_main_files().ok();
 
             self.prev_cwd = Some(self.cwd.clone());
             self.cwd = dir.clone();
@@ -373,7 +374,10 @@ impl FileBrowser {
             let cache = self.fs_cache.clone();
             let left_dir = self.cwd.parent_as_file()?;
             self.left_async_widget_mut()?.change_to(move |stale, core| {
-                let source = FileSource::Path(left_dir);
+                let source = match main_files {
+                    Some(files) => FileSource::Files(files),
+                    None => FileSource::Path(left_dir)
+                };
 
                 ListView::builder(core, source)
                     .prerender()
@@ -706,15 +710,13 @@ impl FileBrowser {
 
     pub fn take_main_files(&mut self) -> HResult<Files> {
         let mut w = self.main_widget_mut()?;
-        w.content.len = 0;
-        //w.buffer.clear();
         let files = std::mem::take(&mut w.content);
+        w.content.len = 0;
         Ok(files)
     }
 
     pub fn take_left_files(&mut self) -> HResult<Files> {
         let mut w = self.left_widget_mut()?;
-        //w.buffer.clear();
         let files = std::mem::take(&mut w.content);
         w.content.len = 0;
         Ok(files)
