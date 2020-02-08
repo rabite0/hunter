@@ -124,6 +124,10 @@ cd {source_dir}/hunter/
 cargo install (--no-default-features --features=...) --path .
 ```
 
+### Packaging status
+
+Fedora [Copr](https://copr.fedorainfracloud.org/coprs/atim/hunter/): `sudo dnf copr enable atim/hunter -y && sudo dnf install hunter`
+
 
 ## Configuration
 hunter reads $XDG_CONFIG_HOME/hunter/config at startup. On macOS it simply reads ~/.config/hunter/config. There are a few options which can be set. The configuration file is read asynchronously, so if it's not read by the time hunter starts drawing you will see its default configuration until the config file is read. Options can be set like this (default config):
