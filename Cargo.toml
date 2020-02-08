@@ -87,6 +87,8 @@ required-features = ["img"]
 
 
 # These options increase performance and generate a smaller binary
+## Actually, disable lto for faster testing on dev branch
 [profile.release]
-lto = true
-codegen-units = 1
+debug = true
+lto = false
+codegen-units = 8
