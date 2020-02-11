@@ -33,11 +33,8 @@ pub trait PathBufMime {
 
 impl PathBufMime for PathBuf {
     fn get_mime(&self) -> HResult<String> {
-        let mut file = File::new_from_path(&self, None)
+        let file = File::new_from_path(&self)
             .map_err(|e| MimeError::AccessFailed(Box::new(e)))?;
-        file.meta_sync()
-            .map_err(|e| MimeError::AccessFailed(Box::new(e)))?;
-
 
         file.get_mime()
             .map(|mime| {

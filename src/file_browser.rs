@@ -197,7 +197,7 @@ impl Tabbable for TabView<FileBrowser> {
             tab.left_async_widget_mut().map(|async_w| {
                 async_w.widget.on_ready(move |mut w, _| {
                     w.as_mut()
-                     .map(|mut w| {
+                     .map(|w| {
                          if w.content.show_hidden != show_hidden {
                              w.content.show_hidden = show_hidden;
                              w.content.recalculate_len();
@@ -211,7 +211,7 @@ impl Tabbable for TabView<FileBrowser> {
             tab.main_async_widget_mut().map(|async_w| {
                 async_w.widget.on_ready(move |mut w, _| {
                     w.as_mut()
-                     .map(|mut w| {
+                     .map(|w| {
                          if w.content.show_hidden != show_hidden {
                              w.content.show_hidden = show_hidden;
                              w.content.recalculate_len();
@@ -262,11 +262,9 @@ impl FileBrowser {
 
         let cache = fs_cache.clone();
         let main_widget = AsyncWidget::new(&core, move |stale| {
-            let dir = File::new_from_path(&main_path, None)?;
+            let dir = File::new_from_path(&main_path)?;
             let source = FileSource::Path(dir);
             ListView::builder(core_m, source)
-                .meta_all()
-                // .prerender()
                 .with_cache(cache)
                 .with_stale(stale.clone())
                 .build()
@@ -275,11 +273,9 @@ impl FileBrowser {
         let cache = fs_cache.clone();
         if let Some(left_path) = left_path {
             let left_widget = AsyncWidget::new(&core_l.clone(), move |stale| {
-                let dir = File::new_from_path(&left_path, None)?;
+                let dir = File::new_from_path(&left_path)?;
                 let source = FileSource::Path(dir);
                 ListView::builder(core_l, source)
-                    // .meta_all()
-                    // .prerender()
                     .with_cache(cache)
                     .with_stale(stale.clone())
                     .build()
@@ -311,7 +307,7 @@ impl FileBrowser {
         columns.refresh().log();
 
 
-        let cwd = File::new_from_path(&cwd, None).unwrap();
+        let cwd = File::new_from_path(&cwd).unwrap();
 
         let proc_view = ProcView::new(&core);
         let bookmarks = BMPopup::new(&core);
@@ -363,8 +359,6 @@ impl FileBrowser {
                 };
 
                 ListView::builder(core, source)
-                    .meta_all()
-                    // .prerender()
                     .with_cache(cache)
                     .with_stale(stale.clone())
                     .build()
@@ -380,7 +374,6 @@ impl FileBrowser {
                 };
 
                 ListView::builder(core, source)
-                    .prerender()
                     .with_cache(cache)
                     .with_stale(stale.clone())
                     .build()
@@ -479,6 +472,10 @@ impl FileBrowser {
     }
 
     pub fn main_widget_goto(&mut self, dir: &File) -> HResult<()> {
+        self.preview_widget_mut()
+            .map(|p| p.set_stale())
+            .ok();
+
         let dir = dir.clone();
         let cache = self.fs_cache.clone();
 
@@ -489,8 +486,6 @@ impl FileBrowser {
         let main_async_widget = self.main_async_widget_mut()?;
         main_async_widget.change_to(move |stale: &Stale, core| {
             let view = ListView::builder(core, file_source)
-                .meta_all()
-                // .prerender()
                 .with_cache(cache)
                 .with_stale(stale.clone())
                 .build()?;
@@ -507,9 +502,7 @@ impl FileBrowser {
             }).log();
         }
 
-        self.preview_widget_mut()
-            .map(|p| p.set_stale())
-            .ok();
+
 
         Ok(())
     }
@@ -527,8 +520,6 @@ impl FileBrowser {
         let left_async_widget = self.left_async_widget_mut()?;
         left_async_widget.change_to(move |stale, core| {
             let view = ListView::builder(core, file_source)
-                // .meta_all()
-                // .prerender()
                 .with_cache(cache)
                 .with_stale(stale.clone())
                 .build()?;
@@ -559,8 +550,6 @@ impl FileBrowser {
             self.main_async_widget_mut()?.change_to(move |stale, core| {
                 ListView::builder(core, file_source)
                     .select(main_selection)
-                    .meta_all()
-                    // .prerender()
                     .with_cache(cache)
                     .with_stale(stale.clone())
                     .build()
@@ -571,7 +560,6 @@ impl FileBrowser {
                 let cache = self.fs_cache.clone();
                 self.left_async_widget_mut()?.change_to(move |stale, core| {
                     ListView::builder(core, file_source)
-                        // .prerender()
                         .with_cache(cache)
                         .with_stale(stale.clone())
                         .build()
@@ -612,7 +600,7 @@ impl FileBrowser {
 
     pub fn go_home(&mut self) -> HResult<()> {
         let home = crate::paths::home_path().unwrap_or(PathBuf::from("~/"));
-        let home = File::new_from_path(&home, None)?;
+        let home = File::new_from_path(&home)?;
         self.main_widget_goto(&home)
     }
 
@@ -649,7 +637,7 @@ impl FileBrowser {
 
     pub fn goto_bookmark(&mut self) -> HResult<()> {
         let path = self.get_boomark()?;
-        let path = File::new_from_path(&PathBuf::from(path), None)?;
+        let path = File::new_from_path(&PathBuf::from(path))?;
         self.main_widget_goto(&path)?;
         Ok(())
     }
@@ -700,23 +688,35 @@ impl FileBrowser {
 
         let selection = self.cwd()?.clone();
 
-        self.cwd.parent_as_file()
-                .map(|dir| self.fs_cache
-                               .set_selection(dir.clone(), selection.clone())).log();
+        // Saves doing iteration to find file's position
+        if let Some(ref current_selection) =  self.left_widget()?.current_item {
+            if current_selection.name == selection.name {
+                return Ok(());
+            }
+        }
+
         self.left_widget_mut()?.select_file(&selection);
+
+        let selected_file = self.left_widget()?.selected_file();
+        self.cwd.parent_as_file()
+                .map(|dir| {
+                    self.fs_cache
+                        .set_selection(dir.clone(), selected_file.clone())
+                }).log();
+
 
         Ok(())
     }
 
     pub fn take_main_files(&mut self) -> HResult<Files> {
-        let mut w = self.main_widget_mut()?;
+        let w = self.main_widget_mut()?;
         let files = std::mem::take(&mut w.content);
         w.content.len = 0;
         Ok(files)
     }
 
     pub fn take_left_files(&mut self) -> HResult<Files> {
-        let mut w = self.left_widget_mut()?;
+        let w = self.left_widget_mut()?;
         let files = std::mem::take(&mut w.content);
         w.content.len = 0;
         Ok(files)
@@ -879,7 +879,7 @@ impl FileBrowser {
         let dir = self.core.minibuffer("cd")?;
 
         let path = std::path::PathBuf::from(&dir);
-        let dir = File::new_from_path(&path.canonicalize()?, None)?;
+        let dir = File::new_from_path(&path.canonicalize()?)?;
         self.main_widget_goto(&dir)?;
 
         Ok(())
@@ -931,11 +931,11 @@ impl FileBrowser {
                         let path = &paths[0];
                         if path.exists() {
                             if path.is_dir() {
-                                let dir = File::new_from_path(&path, None)?;
+                                let dir = File::new_from_path(&path)?;
 
                                 self.main_widget_goto(&dir).log();
                             } else if path.is_file() {
-                                let file = File::new_from_path(&path, None)?;
+                                let file = File::new_from_path(&path)?;
                                 let dir = file.parent_as_file()?;
 
                                 self.main_widget_goto(&dir).log();
@@ -964,7 +964,7 @@ impl FileBrowser {
 
                             let dir_path = file_path.parent()?;
                             if self.cwd.path != dir_path {
-                                let file_dir = File::new_from_path(&dir_path, None);
+                                let file_dir = File::new_from_path(&dir_path);
 
                                 self.main_widget_goto_wait(&file_dir?).log();
                             }
@@ -1033,7 +1033,7 @@ impl FileBrowser {
 
                     if path.exists() {
                         if path.is_dir() {
-                            let dir = File::new_from_path(&path, None)?;
+                            let dir = File::new_from_path(&path)?;
                             self.main_widget_goto(&dir).log();
                         }
                         else {
@@ -1231,12 +1231,15 @@ impl Widget for FileBrowser {
         let file = self.selected_file()?;
         let name = &file.name;
 
+        let fcolor = file.get_color();
+
         let color = if file.is_dir() {
             crate::term::highlight_color() }
-        else if file.color.is_none() {
-            crate::term::normal_color()
-        } else {
-            crate::term::from_lscolor(file.color.as_ref().unwrap())
+        else {
+            match fcolor {
+                Some(color) => color,
+                None => crate::term::normal_color()
+            }
         };
 
         let path = self.cwd.short_string();

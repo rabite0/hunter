@@ -1,11 +1,11 @@
 use std::fmt::Debug;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 use termion::event::Key;
 use unicode_width::UnicodeWidthStr;
 use rayon::prelude::*;
 
-use async_value::{Stale, StopIter};
+use async_value::Stale;
 
 use crate::files::{File, Files};
 use crate::fail::{HResult, HError, ErrorLog};
@@ -103,17 +103,6 @@ impl Listable for ListView<Files> {
     fn on_new(&mut self) -> HResult<()> {
         let show_hidden = self.core.config().show_hidden();
         self.content.show_hidden = show_hidden;
-        let mut file = self.content
-            .iter_files()
-            .nth(0)
-            .cloned()
-            .unwrap_or_default();
-
-        if file.meta.is_none() {
-            file.meta_sync().log();
-        }
-
-        self.current_item = Some(file);
         Ok(())
     }
 
@@ -123,6 +112,17 @@ impl Listable for ListView<Files> {
             let placeholder = File::new_placeholder(&path)?;
             self.content.files.push(placeholder);
             self.content.len = 1;
+        }
+
+        let meta_upto = self.content.meta_upto.unwrap_or(0);
+        let ysize = self.core.coordinates.ysize_u();
+
+        if  self.offset + ysize >= meta_upto {
+            let sender = self.core.get_sender();
+            let njobs = self.offset + ysize;
+
+            self.content.enqueue_jobs(njobs);
+            self.content.run_jobs(sender);
         }
 
         self.refresh_files().log();
@@ -147,10 +147,8 @@ where
 {
     pub content: T,
     pub current_item: Option<<ListView<T> as Listable>::Item>,
-    // pub lines: usize,
     selection: usize,
     pub offset: usize,
-    //pub buffer: Vec<String>,
     pub core: WidgetCore,
     seeking: bool,
     searching: Option<String>,
@@ -165,10 +163,8 @@ where
         let mut view = ListView::<T> {
             content: content,
             current_item: None,
-            // lines: 0,
             selection: 0,
             offset: 0,
-            // buffer: Vec::new(),
             core: core.clone(),
             seeking: false,
             searching: None
@@ -248,6 +244,7 @@ where
 
 }
 
+#[derive(PartialEq)]
 pub enum FileSource {
     Path(File),
     Files(Files)
@@ -262,7 +259,6 @@ pub struct FileListBuilder {
     stale: Option<Stale>,
     meta_upto: usize,
     meta_all: bool,
-    prerender: bool
 }
 
 impl FileListBuilder {
@@ -275,7 +271,6 @@ impl FileListBuilder {
             stale: None,
             meta_upto: 0,
             meta_all: false,
-            prerender: false
         }
     }
 
@@ -304,77 +299,58 @@ impl FileListBuilder {
         self
     }
 
-    pub fn prerender(mut self) -> Self {
-        self.prerender = true;
-        self
-    }
+    pub fn build(mut self) -> HResult<ListView<Files>> {
+        // Create new IO pool to not block the main render pool, or other busy IO pools
+        let pool = crate::files::get_pool();
 
-    pub fn build(self) -> HResult<ListView<Files>> {
         let c = &self.cache;
         let s = self.stale.clone();
-        let files = match self.source {
-            FileSource::Files(f) => Ok(f),
-            FileSource::Path(f) => {
-                c.as_ref()
-                 .map_or_else(| | Files::new_from_path(&f.path),
-                              |c| s.map_or_else(| | c.get_files_sync(&f),
-                                                |s| c.get_files_sync_stale(&f, s)))
-            }
-        }?;
+        let core = self.core;
+        let cfg = core.config();
+        let source = self.source;
+        let selected_file = self.selected_file.take();
 
-        let mut view = ListView::new(&self.core, files);
-
-        let selected_file = match self.selected_file {
-            Some(f) => Some(f),
-            None => {
-                c.as_ref()
-                 .map(|c| c.get_selection(&view.content.directory).ok())
-                 .flatten()
-            }
+        // Already sorted
+        let nosort = match source {
+            FileSource::Files(_) => true,
+            _ => false
         };
 
-        selected_file.map(|mut f| {
-            f.meta_sync().log();
-            view.select_file(&f);
-        });
-
-        let from = match self.meta_all {
-            true => 0,
-            false => view.offset,
-        };
-
-        let ysize = view.core.coordinates.ysize_u();
-        let upto = match self.meta_all {
-            true => view.content.len,
-            false => from + ysize + 1
-        };
-
-        view.content
-            .iter_files_mut()
-            .skip(from)
-            .take(upto)
-            .par_bridge()
-            .for_each(|f| {
-                f.meta_sync().log();
-                if f.is_dir() {
-                    f.run_dirsize();
+        let files = pool.install(|| -> HResult<Files> {
+            let mut files = match source {
+                FileSource::Files(f) => Ok(f),
+                FileSource::Path(f) => {
+                    c.as_ref()
+                     .map_or_else(| | unreachable!(),
+                                  |c| s.map_or_else(| | c.get_files_sync(&f),
+                                                    |s| c.get_files_sync_stale(&f, s)))
                 }
-            });
-        view.content.meta_upto = Some(upto);
+            }?;
 
-        // if self.prerender {
-        //     match self.stale {
-        //         Some(s) => view.render_buffer_stale(s)?,
-        //         None => view.render_buffer()?
-        //     }
+            // Check/set hidden flag and recalculate number of files if it's different
+            if !files.show_hidden == cfg.show_hidden() {
+                files.show_hidden = cfg.show_hidden();
+                files.recalculate_len();
+            }
 
-        //     if view.buffer.len() > 0 {
-        //         view.lines = view.buffer.len() - 1;
-        //     }
-        // };
+            // TODO: Fix sorting so it works with lazy/partial sorting
+            if !nosort {
+                files.sort();
+            }
 
+            Ok(files)
+        })?;
+
+        let mut view = ListView::new(&core, files);
+
+        selected_file
+            .or_else(|| c.as_ref()
+                         .and_then(|c| c.get_selection(&view.content.directory).ok()))
+            .map(|f| view.select_file(&f));
+
+        self.stale.map(|s| view.content.stale = Some(s));
+        self.cache.map(|c| view.content.cache = Some(c));
         view.content.set_clean();
-        // view.content.dirty_meta.set_clean();
         view.core.set_clean();
 
         Ok(view)
@@ -386,6 +362,7 @@ impl ListView<Files>
     pub fn builder(core: WidgetCore, source: FileSource) -> FileListBuilder {
         FileListBuilder::new(core, source)
     }
+
     pub fn update_selected_file(&mut self) {
         let pos = self.selection;
 
@@ -398,7 +375,10 @@ impl ListView<Files>
     }
 
     pub fn selected_file(&self) -> &File {
-        self.current_item.as_ref().unwrap()
+        self.current_item
+            .as_ref()
+            .or_else(|| self.content.iter_files().nth(0))
+            .unwrap()
     }
 
     pub fn selected_file_mut(&mut self) -> &mut File {
@@ -430,43 +410,39 @@ impl ListView<Files>
         self.selected_file().grand_parent()
     }
 
-    pub fn goto_grand_parent(&mut self) -> HResult<()> {
-        match self.grand_parent() {
-            Some(grand_parent) => self.goto_path(&grand_parent),
-            None => { self.core.show_status("Can't go further!") },
-        }
-    }
-
-    fn goto_selected(&mut self) -> HResult<()> {
-        let path = self.selected_file().path();
-
-        self.goto_path(&path)
-    }
-
-    pub fn goto_path(&mut self, path: &Path) -> HResult<()> {
-        match crate::files::Files::new_from_path(path) {
-            Ok(files) => {
-                self.content = files;
-                self.selection = 0;
-                self.offset = 0;
-                self.refresh()
-            }
-            Err(err) => {
-                self.core.show_status(&format!("Can't open this path: {}", err))
-            }
-        }
-    }
-
     pub fn select_file(&mut self, file: &File) {
         let file = file.clone();
-        self.current_item = Some(file);
 
-        let pos = self
+        let posfile = self
             .content
             .iter_files()
-            .position(|item| item == self.selected_file())
-            .unwrap_or(0);
-        self.set_selection(pos);
+            .collect::<Vec<&File>>()
+            .into_par_iter()
+            .enumerate()
+            .find_any(|(_, item)| item == &&file);
+
+        match posfile {
+            Some((i, file)) => {
+                self.current_item = Some(file.clone());
+                self.set_selection(i);
+            }
+            // Something went wrong?
+            None => {
+                let dir = &self.content.directory.path;
+                let file = file.path;
+
+                HError::wrong_directory::<()>(dir.clone(),
+                                              file.clone()).log();
+                let file = self.content
+                                .iter_files()
+                                .nth(0)
+                                .cloned()
+                                .or_else(|| File::new_placeholder(dir).ok())
+                                .unwrap();
+                self.current_item = Some(file);
+                self.set_selection(0);
+            }
+        }
     }
 
     fn cycle_sort(&mut self) {
@@ -570,10 +546,6 @@ impl ListView<Files>
         file.toggle_selection();
 
         if !self.content.filter_selected {
-            //let selection = self.get_selection();
-            //let line = self.render_line(&file);
-            //self.buffer[selection] = line;
-
             self.move_down();
         } else {
             if self.content.filter_selected && self.content.len() == 0 {
@@ -610,15 +582,6 @@ impl ListView<Files>
 
     fn toggle_tag(&mut self) -> HResult<()> {
         self.selected_file_mut().toggle_tag()?;
-
-        // Create a mutable clone to render changes into buffer
-        // let mut file = self.clone_selected_file();
-        // file.toggle_tag()?;
-
-        // let line = self.render_line(&file);
-        // let selection = self.get_selection();
-        // self.buffer[selection] = line;
-
         self.move_down();
         Ok(())
     }
@@ -773,6 +736,8 @@ impl ListView<Files>
     #[allow(trivial_bounds)]
     fn render_line_fn(&self) -> impl Fn(&File) -> String {
         use std::fmt::Write;
+        use crate::files::FileError;
+
         let xsize = self.get_coordinates().unwrap().xsize();
         let icons = self.core.config().icons;
 
@@ -788,8 +753,13 @@ impl ListView<Files>
 
             let size = file.calculate_size();
             let (size, unit) = match size {
-                Ok((size, unit)) => (size, unit),
-                Err(_) => (0 as u32, "")
+                Ok((size, unit)) => (size.to_string(), unit),
+                Err(HError::FileError(FileError::MetaPending)) => {
+                    // Using mod 5 explicitly here for that nice nonlinear look
+                    let ticks = crate::files::tick_str();
+                    (String::from(ticks), "")
+                },
+                Err(_) => (String::from("ERR"), "")
             };
 
             let (tag, tag_len) = match file.is_tagged() {
@@ -834,18 +804,18 @@ impl ListView<Files>
 
             write!(&mut line, "{}", termion::cursor::Save).unwrap();
 
-            match &file.color {
+            match file.get_color() {
                 Some(color) => write!(&mut line,
                                       "{}{}{}{}{}{:padding$}{}",
                                       tag,
-                                      term::from_lscolor(color),
+                                      &color,
                                       selection_color,
                                       selection_gap,
                                       icon,
                                       &sized_string,
                                       term::normal_color(),
                                       padding = padding as usize),
-                None => write!(&mut line,
+                _ => write!(&mut line,
                                "{}{}{}{}{}{:padding$}{}",
                                tag,
                                term::normal_color(),
@@ -885,55 +855,17 @@ impl ListView<Files>
             .collect()
     }
 
-    fn render_buffer(&mut self) -> HResult<()> {
-        // let render_fn = self.render_line_fn();
-        // self.buffer = self.content
-        //                  .iter_files()
-        //                  .enumerate()
-        //                  .map(|(_, file)| {
-        //                      render_fn(file)
-        //                  })
-        //                  .collect();
-        Ok(())
-    }
-
-    fn render_buffer_stale(&mut self, stale: Stale) -> HResult<()> {
-        // let render_fn = self.render_line_fn();
-        // let buffer = self.content
-        //                  .iter_files()
-        //                  .stop_stale(stale.clone())
-        //                  .enumerate()
-        //                  .map(|(_, file)| {
-        //                      render_fn(file)
-        //                  })
-        //                  .collect();
-
-        // if stale.is_stale()
-        //         .unwrap_or(true) {
-        //             return HError::stale();
-        //         } else {
-        //             self.buffer = buffer;
-        //             return Ok(())
-        //         }
-        Ok(())
-    }
-
     fn refresh_files(&mut self) -> HResult<()> {
-        // if let Ok(Some(mut refresh)) = self.content.get_refresh() {
-        //     let file = self.clone_selected_file();
+        let file = self.clone_selected_file();
 
-        //     self.buffer = refresh.new_buffer.take()?;
-        //     self.lines = self.buffer.len() - 1;
+        if let Ok(Some(_)) = self.content.get_refresh() {
+            self.select_file(&file);
+            self.content.run_jobs(self.core.get_sender());
+        }
 
-        //     self.select_file(&file);
-        // }
-
-        // if self.content.ready_to_refresh()? {
-        //     let render_fn = self.render_line_fn();
-        //     self.content.process_fs_events(self.buffer.clone(),
-        //                                    self.core.get_sender(),
-        //                                    render_fn)?;
-        // }
+        if self.content.ready_to_refresh()? {
+            self.content.process_fs_events(self.core.get_sender())?;
+        }
 
         Ok(())
     }
@@ -953,18 +885,10 @@ where
     fn refresh(&mut self) -> HResult<()> {
         self.on_refresh().log();
 
-        // let buffer_len = self.buffer.len();
-
-        // self.lines = buffer_len;
-
         if self.selection >= self.len() && self.len() != 0 {
             self.selection = self.len() - 1;
         }
 
-        // if self.core.is_dirty() {
-        //     self.buffer = self.render();
-        //     self.core.set_clean();
-        // }
         Ok(())
     }
 

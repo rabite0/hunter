@@ -6,7 +6,7 @@ use std::sync::{Arc, RwLock, Weak};
 use std::sync::mpsc::{channel, Sender, Receiver};
 use std::collections::{HashMap, HashSet};
 use std::time::Duration;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use crate::files::{Files, File, SortBy};
 use crate::widget::Events;
@@ -123,10 +123,12 @@ impl FsEventDispatcher {
 
     // fn remove_unnecessary
 }
-
+use std::sync::atomic::{AtomicBool, AtomicUsize};
 #[derive(Clone)]
 pub struct FsCache {
     files: Arc<RwLock<HashMap<File, Files>>>,
+    dirsizes: Arc<RwLock<HashMap<PathBuf, HashMap<PathBuf,
+                                                  Arc<(AtomicBool, AtomicUsize)>>>>>,
     pub tab_settings: Arc<RwLock<HashMap<File, TabSettings>>>,
     watched_dirs: Arc<RwLock<HashSet<File>>>,
     watcher: Arc<RwLock<RecommendedWatcher>>,
@@ -142,6 +144,7 @@ impl FsCache {
 
         let fs_cache = FsCache {
             files: Arc::new(RwLock::new(HashMap::new())),
+            dirsizes: Arc::new(RwLock::new(HashMap::new())),
             tab_settings: Arc::new(RwLock::new(HashMap::new())),
             watched_dirs: Arc::new(RwLock::new(HashSet::new())),
             watcher: Arc::new(RwLock::new(watcher)),
@@ -176,7 +179,6 @@ impl FsCache {
                 cache.fs_event_dispatcher.add_target(&dir,
                                                      &files.pending_events).log();
                 FsCache::apply_settingss(&cache, &mut files).ok();
-                files.sort();
                 Ok(files)
             });
             Ok((selection, files))
@@ -225,6 +227,67 @@ impl FsCache {
 
     pub fn is_cached(&self, dir: &File) -> HResult<bool> {
         Ok(self.files.read()?.contains_key(dir))
+    }
+
+    pub fn get_dirsize(&self, dir: &File) -> Option<Arc<(AtomicBool, AtomicUsize)>> {
+        let parent_dir = dir.parent()
+                            .unwrap_or_else(|| Path::new("/"));
+
+        self.dirsizes
+            .read()
+            .unwrap()
+            .get(parent_dir)
+            .map(|parent_map| {
+                parent_map.get(&dir.path)
+            })
+            .flatten()
+            .cloned()
+    }
+
+    pub fn make_dirsize(&self, dir: &File) -> Arc<(AtomicBool, AtomicUsize)> {
+        let parent_dir = dir.parent()
+                            .unwrap_or_else(|| Path::new("/"));
+        let dir = dir.path.as_path();
+
+        let mut dirsizes = self.dirsizes
+                               .write()
+                               .unwrap();
+
+        match dirsizes.contains_key(parent_dir) {
+            false => {
+                let mut dir_map = HashMap::new();
+                let ready = AtomicBool::new(false);
+                let size = AtomicUsize::default();
+                let dirsize = Arc::new((ready, size));
+                dir_map.insert(dir.to_path_buf(),
+                               dirsize);
+                dirsizes.insert(parent_dir.to_path_buf(),
+                                dir_map);
+
+                return dirsizes.get(parent_dir)
+                               .unwrap()
+                               .get(dir)
+                               .unwrap()
+                               .clone();
+            }
+            true => {
+                let pmap = dirsizes.get_mut(parent_dir).unwrap();
+
+                match pmap.get(dir) {
+                    Some(dirsize) => dirsize.clone(),
+                    None => {
+                        let ready = AtomicBool::new(false);
+                        let size = AtomicUsize::default();
+                        let dirsize = Arc::new((ready, size));
+                        pmap.insert(dir.to_path_buf(), dirsize);
+
+                        return pmap.get(dir)
+                                   .unwrap()
+                                   .clone()
+                    }
+                }
+            }
+        }
     }
 
     pub fn watch_only(&self, open_dirs: HashSet<File>) -> HResult<()> {
@@ -399,18 +462,18 @@ impl TryFrom<DebouncedEvent> for FsEvent {
     fn try_from(event: DebouncedEvent) -> HResult<Self> {
         let event = match event {
             DebouncedEvent::Create(path)
-                => FsEvent::Create(File::new_from_path(&path, None)?),
+                => FsEvent::Create(File::new_from_path(&path)?),
 
             DebouncedEvent::Remove(path)
-                => FsEvent::Remove(File::new_from_path(&path, None)?),
+                => FsEvent::Remove(File::new_from_path(&path)?),
 
             DebouncedEvent::Write(path)       |
             DebouncedEvent::Chmod(path)
-                =>  FsEvent::Change(File::new_from_path(&path, None)?),
+                =>  FsEvent::Change(File::new_from_path(&path)?),
 
             DebouncedEvent::Rename(old_path, new_path)
-                => FsEvent::Rename(File::new_from_path(&old_path, None)?,
-                                   File::new_from_path(&new_path, None)?),
+                => FsEvent::Rename(File::new_from_path(&old_path)?,
+                                   File::new_from_path(&new_path)?),
 
             DebouncedEvent::Error(err, path)
                 => Err(HError::INotifyError(format!("{}, {:?}", err, path)))?,
@@ -435,7 +498,7 @@ fn watch_fs(rx_fs_events: Receiver<DebouncedEvent>,
                 let dirpath = path.parent()
                     .map(|path| path)
                     .unwrap_or(std::path::Path::new("/"));
-                let dir = File::new_from_path(&dirpath, None)?;
+                let dir = File::new_from_path(&dirpath)?;
                 let event = FsEvent::try_from(event)?;
                 Ok((dir, event))
             };

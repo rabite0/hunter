@@ -460,10 +460,9 @@ impl Previewer {
         let source = FileSource::Path(file.clone());
 
         let mut file_list = ListView::builder(core.clone(), source)
-                    // .prerender()
-                    .with_cache(cache)
-                    .with_stale(stale.clone())
-                    .build()?;
+            .with_cache(cache)
+            .with_stale(stale.clone())
+            .build()?;
 
         if stale.is_stale()? { return Previewer::preview_failed(&file) }
 

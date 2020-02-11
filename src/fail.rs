@@ -103,7 +103,9 @@ pub enum HError {
     #[fail(display = "{}", _0)]
     KeyBind(KeyBindError),
     #[fail(display = "FileBrowser needs to know about all tab's files to run exec!")]
-    FileBrowserNeedTabFiles
+    FileBrowserNeedTabFiles,
+    #[fail(display = "{}", _0)]
+    FileError(crate::files::FileError)
 }
 
 impl HError {
@@ -423,5 +425,11 @@ pub enum KeyBindError {
 impl From<ini::ini::Error> for KeyBindError {
     fn from(err: ini::ini::Error) -> Self {
         KeyBindError::IniError(Arc::new(err))
+    }
+}
+
+impl From<crate::files::FileError> for HError {
+    fn from(err: crate::files::FileError) -> Self {
+        HError::FileError(err)
     }
 }
