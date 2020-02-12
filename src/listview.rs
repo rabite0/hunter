@@ -294,6 +294,10 @@ impl FileListBuilder {
     }
 
     pub fn build(mut self) -> HResult<ListView<Files>> {
+        use std::time::Instant;
+
+        let now = Instant::now();
+
         let c = &self.cache;
         let s = self.stale.clone();
         let core = self.core;
@@ -340,6 +344,8 @@ impl FileListBuilder {
         self.cache.map(|c| view.content.cache = Some(c));
         view.content.set_clean();
         view.core.set_clean();
+
+        dbg!(now.elapsed().as_millis());
 
         Ok(view)
     }
