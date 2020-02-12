@@ -19,7 +19,7 @@ extern crate libc;
 extern crate notify;
 extern crate parse_ansi;
 extern crate signal_notify;
-extern crate tree_magic;
+extern crate tree_magic_fork;
 extern crate systemstat;
 extern crate mime_guess;
 extern crate mime;

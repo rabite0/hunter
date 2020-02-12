@@ -14,7 +14,7 @@ use std::ffi::OsStr;
 use failure;
 use failure::Fail;
 use lscolors::LsColors;
-use tree_magic;
+use tree_magic_fork;
 use users::{get_current_username,
             get_current_groupname,
             get_user_by_uid,
@@ -1153,8 +1153,8 @@ impl File {
 
         // Catch possible panic caused by tree_magic
         let mime = panic::catch_unwind(|| {
-            let mime = tree_magic::from_filepath(&self.path);
-            mime::Mime::from_str(&mime).ok()
+            let mime = tree_magic_fork::from_filepath(&self.path);
+            mime.and_then(|m| mime::Mime::from_str(&m).ok())
         });
 
         // Restore previous panic handler
@@ -1169,7 +1169,7 @@ impl File {
 
 
     pub fn is_text(&self) -> bool {
-        tree_magic::match_filepath("text/plain", &self.path)
+        tree_magic_fork::match_filepath("text/plain", &self.path)
     }
 
     pub fn is_filtered(&self, filter: &str, filter_selected: bool) -> bool {
