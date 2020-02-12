@@ -300,9 +300,6 @@ impl FileListBuilder {
     }
 
     pub fn build(mut self) -> HResult<ListView<Files>> {
-        // Create new IO pool to not block the main render pool, or other busy IO pools
-        let pool = crate::files::get_pool();
-
         let c = &self.cache;
         let s = self.stale.clone();
         let core = self.core;
@@ -316,8 +313,8 @@ impl FileListBuilder {
             _ => false
         };
 
-        let files = pool.install(|| -> HResult<Files> {
-            let mut files = match source {
+        let mut files =
+            match source {
                 FileSource::Files(f) => Ok(f),
                 FileSource::Path(f) => {
                     c.as_ref()
@@ -327,25 +324,22 @@ impl FileListBuilder {
                 }
             }?;
 
-            // Check/set hidden flag and recalculate number of files if it's different
-            if !files.show_hidden == cfg.show_hidden() {
-                files.show_hidden = cfg.show_hidden();
-                files.recalculate_len();
-            }
+        // Check/set hidden flag and recalculate number of files if it's different
+        if !files.show_hidden == cfg.show_hidden() {
+            files.show_hidden = cfg.show_hidden();
+            files.recalculate_len();
+        }
 
-            // TODO: Fix sorting so it works with lazy/partial sorting
-            if !nosort {
-                files.sort();
-            }
-
-            Ok(files)
-        })?;
+        // TODO: Fix sorting so it works with lazy/partial sorting
+        if !nosort {
+            files.sort();
+        }
 
         let mut view = ListView::new(&core, files);
 
         selected_file
             .or_else(|| c.as_ref()
-                         .and_then(|c| c.get_selection(&view.content.directory).ok()))
+                     .and_then(|c| c.get_selection(&view.content.directory).ok()))
             .map(|f| view.select_file(&f));
 
         self.stale.map(|s| view.content.stale = Some(s));

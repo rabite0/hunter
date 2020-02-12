@@ -393,26 +393,21 @@ impl Files {
     }
 
     pub fn enqueue_jobs(&mut self, n: usize) {
-        let pool = get_pool();
         let from = self.meta_upto.unwrap_or(0);
         self.meta_upto = Some(from + n);
 
-        let mut jobs =
-            pool.install(|| {
-                let c = match self.cache.clone() {
-                    Some(cache) => cache,
-                    None => return vec![]
-                };
+        let cache = match self.cache.clone() {
+            Some(cache) => cache,
+            None => return
+        };
 
-                self.iter_files_mut()
-                    .skip(from)
-                    .take(n)
-                    // To turn into IndexedParallelIter
-                    .collect::<Vec<&mut File>>()
-                    .into_par_iter()
-                    .filter_map(|f| f.prepare_meta_job(&c))
-                    .collect::<Vec<_>>()
-            });
+        let mut jobs = self.iter_files_mut()
+                           .collect::<Vec<&mut File>>()
+                           .into_par_iter()
+                           .skip(from)
+                           .take(n)
+                           .filter_map(|f| f.prepare_meta_job(&cache))
+                           .collect::<Vec<_>>();
 
         self.jobs.append(&mut jobs);
     }
