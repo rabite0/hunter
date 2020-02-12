@@ -222,14 +222,6 @@ fn find_previewer(file: &File, g_mode: bool) -> HResult<ExtPreviewer> {
     let path = crate::paths::previewers_path()?;
     let ext = file.path.extension()?;
 
-    // Special case to highlight text files that aren't text/plain
-    if file.is_text() {
-        let mut previewer = PathBuf::from(&path);
-        previewer.push("definitions/");
-        previewer.push("text");
-        return Ok(ExtPreviewer::Text(previewer));
-    }
-
     // Try to find a graphical previewer first
     if g_mode {
         let g_previewer = path.read_dir()?
@@ -250,10 +242,22 @@ fn find_previewer(file: &File, g_mode: bool) -> HResult<ExtPreviewer> {
 
     // Look for previewers matching the file extension
     let previewer = path.read_dir()?
-        .find(|previewer| previewer.as_ref()
+                        .find(|previewer| previewer.as_ref()
                                    .and_then(|p| Ok(p.file_name() == ext ))
                                    .unwrap_or(false))
-        .map(|p| p.map(|p| p.path()));
+                        .map(|p| p.map(|p| p.path()));
+    match previewer {
+        Some(Ok(p)) => return Ok(ExtPreviewer::Text(p)),
+        _ => {
+            // Special case to highlight text files that aren't text/*
+            if file.is_text() {
+                let mut previewer = PathBuf::from(&path);
+                previewer.push("definitions/");
+                previewer.push("text");
+                return Ok(ExtPreviewer::Text(previewer));
+            }
+        }
+    }
 
     Ok(ExtPreviewer::Text(previewer??))
 }
@@ -415,24 +419,24 @@ impl Previewer {
                                                               &stale,
                                                               &animator)?);
                         }
-                        _ => {}
+                        _ => {
+                            let preview = Previewer::preview_external(&file,
+                                                                      &core,
+                                                                      &stale,
+                                                                      &animator);
+                            if preview.is_ok() {
+                                return Ok(preview?);
+                            }
+                        }
                     }
                 }
 
-                let preview = Previewer::preview_external(&file,
-                                                          &core,
-                                                          &stale,
-                                                          &animator);
-                if preview.is_ok() {
-                    return Ok(preview?);
-                }
-                else {
-                    let mut blank = TextView::new_blank(&core);
-                    blank.set_coordinates(&coordinates).log();
-                    blank.refresh().log();
-                    blank.animate_slide_up(Some(&animator)).log();
-                    return Ok(PreviewWidget::TextView(blank))
-                }
+                let mut blank = TextView::new_blank(&core);
+                blank.set_coordinates(&coordinates).log();
+                blank.refresh().log();
+                blank.animate_slide_up(Some(&animator)).log();
+                return Ok(PreviewWidget::TextView(blank))
+
             })))
     }
 
@@ -551,8 +555,8 @@ impl Previewer {
 
         match previewer {
             ExtPreviewer::Text(previewer) => {
+                if stale.is_stale()? { return Previewer::preview_failed(&file) }
                 let lines = Previewer::run_external(previewer, file, stale);
-
                 if stale.is_stale()? { return Previewer::preview_failed(&file) }
 
                 let mut textview = TextView {

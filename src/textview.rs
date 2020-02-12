@@ -1,10 +1,13 @@
 use std::io::{BufRead, BufReader};
 
+use strip_ansi_escapes::strip;
+
 use crate::files::File;
 use crate::term::sized_string_u;
 use crate::widget::{Widget, WidgetCore};
-use crate::fail::HResult;
+use crate::fail::{HResult, HError};
 use crate::dirty::Dirtyable;
+
 
 #[derive(Debug, PartialEq)]
 pub struct TextView {
@@ -26,12 +29,14 @@ impl TextView {
     pub fn new_from_file(core: &WidgetCore, file: &File) -> HResult<TextView> {
         let file = std::fs::File::open(&file.path)?;
         let file = std::io::BufReader::new(file);
-        let lines = file.lines().map(|line|
-                                     Ok(line?
-                                        .replace("\t", "    ")))
-            .filter_map(|l: HResult<String>| l.ok())
-            .collect();
-
+        let lines = file.lines()
+                        .map(|line| line
+                             .and_then(|l| strip(l))
+                             .map_err(HError::from)
+                             .and_then(|s| std::str::from_utf8(&s)
+                                       .map(|s| s.to_string())
+                                       .map_err(HError::from)))
+                        .collect::<HResult<_>>()?;
         Ok(TextView {
             lines: lines,
             core: core.clone(),
@@ -39,6 +44,7 @@ impl TextView {
             offset: 0,
         })
     }
+
     pub fn new_from_file_limit_lines(core: &WidgetCore,
                                      file: &File,
                                      num: usize) -> HResult<TextView> {
@@ -46,12 +52,13 @@ impl TextView {
         let file = BufReader::new(file);
         let lines = file.lines()
                         .take(num)
-                        .map(|line|
-                             Ok(line?
-                                .replace("\t", "    ")))
-            .filter_map(|l: HResult<String>| l.ok())
-            .collect();
-
+                        .map(|line| line
+                             .and_then(|l| strip(l))
+                             .map_err(HError::from)
+                             .and_then(|s| std::str::from_utf8(&s)
+                                       .map(|s| s.to_string())
+                                       .map_err(HError::from)))
+                        .collect::<HResult<_>>()?;
         Ok(TextView {
             lines: lines,
             core: core.clone(),
