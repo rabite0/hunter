@@ -105,7 +105,9 @@ pub enum HError {
     #[fail(display = "FileBrowser needs to know about all tab's files to run exec!")]
     FileBrowserNeedTabFiles,
     #[fail(display = "{}", _0)]
-    FileError(crate::files::FileError)
+    FileError(crate::files::FileError),
+    #[fail(display = "{}", _0)]
+    Nix(#[cause] nix::Error)
 }
 
 impl HError {
@@ -363,6 +365,13 @@ impl From<std::str::Utf8Error> for HError {
 impl From<std::num::ParseIntError> for HError {
     fn from(error: std::num::ParseIntError) -> Self {
         let err = HError::ParseIntError(error);
+        err
+    }
+}
+
+impl From<nix::Error> for HError {
+    fn from(error: nix::Error) -> Self {
+        let err = HError::Nix(error);
         err
     }
 }

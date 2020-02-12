@@ -27,16 +27,16 @@ fn kill_proc() -> HResult<()> {
     pid.map(|pid|
             // Do this in another thread so we can wait on process to exit with SIGHUP
             std::thread::spawn(move || {
+                use nix::{unistd::Pid,
+                          sys::signal::{killpg, Signal}};
+
                 let sleep_time = std::time::Duration::from_millis(50);
 
-                // Here be dragons
-                unsafe {
-                    // Kill using process group, to clean up all child processes, too
-                    // 15 = SIGTERM, 9 = SIGKILL
-                    libc::killpg(pid as i32, 15);
-                    std::thread::sleep(sleep_time);
-                    libc::killpg(pid as i32, 9);
-                }
+                // Kill using process group, to clean up all child processes, too
+                let pid = Pid::from_raw(pid as i32);
+                killpg(pid, Signal::SIGTERM).log();
+                std::thread::sleep(sleep_time);
+                killpg(pid, Signal::SIGKILL).log();
             })
     );
     *pid = None;
