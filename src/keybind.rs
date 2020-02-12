@@ -53,6 +53,7 @@ where
     }
 
     fn do_key(&mut self, key: Key) -> HResult<()> {
+        dbg!(&key);
         let gkey = AnyKey::from(key);
 
         // Moving takes priority
@@ -61,6 +62,7 @@ where
             .keybinds
             .movement
             .get(gkey) {
+                dbg!(movement);
                 match self.movement(movement) {
                     Ok(()) => return Ok(()),
                     Err(HError::KeyBind(KeyBindError::MovementUndefined)) => {}
@@ -73,11 +75,11 @@ where
         let bindings = self.search_in();
 
         if let Some(action) = bindings.get(key) {
-            return self.do_action(action)
+            return self.do_action(dbg!(action))
         } else if let Some(any_key) = gkey.any() {
             if let Some(action) = bindings.get(any_key) {
                 let action = action.insert_key_param(key);
-                return self.do_action(&action);
+                return self.do_action(dbg!(&action));
             }
         }
 
