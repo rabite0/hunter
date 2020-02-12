@@ -29,6 +29,7 @@ extern crate strum;
 extern crate strum_macros;
 #[macro_use]
 extern crate derivative;
+extern crate nix;
 
 extern crate osstrtools;
 extern crate pathbuftools;

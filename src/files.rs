@@ -9,6 +9,7 @@ use std::sync::mpsc::Sender;
 use std::hash::{Hash, Hasher};
 use std::str::FromStr;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use std::ffi::OsStr;
 
 use failure;
 use failure::Fail;
@@ -24,6 +25,9 @@ use rayon::{ThreadPool, ThreadPoolBuilder};
 use alphanumeric_sort::compare_str;
 use mime_guess;
 use rayon::prelude::*;
+use nix::{dir::*,
+          fcntl::OFlag,
+          sys::stat::Mode};
 
 use pathbuftools::PathBufTools;
 use async_value::{Async, Stale, StopIter};
@@ -72,7 +76,11 @@ pub fn set_ticking(val: bool) {
 #[derive(Fail, Debug, Clone)]
 pub enum FileError {
     #[fail(display = "Metadata still pending!")]
-    MetaPending
+    MetaPending,
+    #[fail(display = "Couldn't open directory! Error: {}", _0)]
+    OpenDir(#[cause] nix::Error),
+    #[fail(display = "Couldn't read files! Error: {}", _0)]
+    ReadFiles(#[cause] nix::Error),
 }
 
 pub fn get_pool() -> ThreadPool {
@@ -352,23 +360,24 @@ impl Drop for Files {
 
 impl Files {
     pub fn new_from_path_cancellable(path: &Path, stale: Stale) -> HResult<Files> {
-        let direntries: Vec<std::fs::DirEntry> = std::fs::read_dir(&path)?
-            .stop_stale(stale.clone())
-            .collect::<Result<Vec<std::fs::DirEntry>, _>>()?;
-
         let nonhidden = AtomicUsize::default();
 
-        let direntries: Vec<_> = direntries
-            .into_par_iter()
+        let direntries  = Dir::open(path.clone(),
+                                    OFlag::O_DIRECTORY,
+                                    Mode::empty())
+            .map_err(|e| FileError::OpenDir(e))?
+            .iter()
+            .stop_stale(stale.clone())
             .map(|f| {
-                let f = File::new_from_direntry(f);
+                let f = File::new_from_nixentry(f?, path);
                 // Fast check to avoid iterating twice
                 if f.name.as_bytes()[0] != b'.' {
                     nonhidden.fetch_add(1, Ordering::Relaxed);
                 }
-                f
+                Ok(f)
             })
-            .collect();
+            .collect::<Result<_,_>>()
+            .map_err(|e| FileError::ReadFiles(e))?;
 
         if stale.is_stale()? {
             HError::stale()?;
@@ -480,20 +489,20 @@ impl Files {
                         }
 
                         if let Some(dirsize) = dirsize {
-                            std::fs::read_dir(&path)
-                                .map(|dirs| {
-                                    let size = dirs.count();
-                                    dirsize.0.store(true, Ordering::Relaxed);
-                                    dirsize.1.store(size, Ordering::Relaxed);
-                                }).map_err(|e| {
-                                    dirsize.0.store(true, Ordering::Relaxed);
-                                    dirsize.1.store(0, Ordering::Relaxed);
-                                    HError::from(e)
-                                }).log();
-                        }
+                            let size = Dir::open(&path,
+                                                 OFlag::O_DIRECTORY,
+                                                 Mode::empty())
+                                .map(|mut d| d.iter().count())
+                                .map_err(|e| FileError::OpenDir(e))
+                                .log_and()
+                                .unwrap_or(0);
 
-                        // Ticker will only stop after this reaches 0
-                        jobs_left.fetch_sub(1, Ordering::Relaxed);
+                            dirsize.0.store(true, Ordering::Relaxed);
+                            dirsize.1.store(size, Ordering::Relaxed);
+
+                            // Ticker will only stop after this reaches 0
+                            jobs_left.fetch_sub(1, Ordering::Relaxed);
+                        }
                     });
 
                     ticker().map(|t| s.spawn_fifo(move |_| t()));
@@ -938,34 +947,39 @@ impl File {
         }
     }
 
-    pub fn new_with_stale(name: &str,
-                          path: PathBuf) -> File {
-        let hidden = name.starts_with(".");
+    pub fn new_from_nixentry(direntry: Entry, path: &Path) -> File {
+        // Scary stuff to avoid some of the overhead in Rusts conversions
+        // Speedup is a solid ~10%
+        let name: &OsStr = unsafe {
+            use std::ffi::CStr;
+            // &CStr -> &[u8]
+            let s: &[u8] = std::mem::transmute::<&CStr, &[u8]>(direntry.file_name());
+            // &Cstr -> &OsStr, minus the NULL byte
+            let len = s.len();
+            let s = &s[..len-1];
+            std::mem::transmute::<&[u8], &OsStr>(s)
+        };
 
-        File {
-            name: name.to_string(),
-            hidden: hidden,
-            kind: if path.is_dir() { Kind::Directory } else { Kind::File },
-            path: path,
-            dirsize: None,
-            target: None,
-            meta: None,
-            selected: false,
-            tag: None,
-        }
-    }
+        // Avoid reallocation on push
+        let mut pathstr = std::ffi::OsString::with_capacity(path.as_os_str().len() +
+                                                            name.len() +
+                                                            2);
+        pathstr.push(path.as_os_str());
+        pathstr.push("/");
+        pathstr.push(name);
 
-    pub fn new_from_direntry(direntry: std::fs::DirEntry) -> File {
-        let path = direntry.path();
-        let name = direntry.file_name();
-        let name = name.to_string_lossy();
-        let name = String::from(name);
-        let hidden = name.chars().nth(0) == Some('.');
+        let path = PathBuf::from(pathstr);
+
+        let name = name.to_str()
+                       .map(|n| String::from(n))
+                       .unwrap_or_else(|| name.to_string_lossy().to_string());
+
+        let hidden = name.as_bytes()[0] == b'.';
 
         let kind = match direntry.file_type() {
-            Ok(ftype) => match ftype.is_dir() {
-                true => Kind::Directory,
-                false => Kind::File
+            Some(ftype) => match ftype {
+                Type::Directory => Kind::Directory,
+                _ => Kind::File
             }
             _ => Kind::Placeholder
         };

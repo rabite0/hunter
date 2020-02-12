@@ -43,6 +43,7 @@ strum_macros = "0.15"
 rust-ini = "0.13"
 derivative = "1.0.3"
 itertools = "0.8"
+nix = "0.17"
 
 
 image = { version = "0.21.1", optional = true }
