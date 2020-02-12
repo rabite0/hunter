@@ -53,8 +53,11 @@ where
     }
 
     fn do_key(&mut self, key: Key) -> HResult<()> {
-        dbg!(&key);
+        dbg!("\n");
+        dbg!("Looking in map: ", self.search_in());
+        dbg!("for key: ", &key);
         let gkey = AnyKey::from(key);
+        dbg!("as anykey: ", &gkey);
 
         // Moving takes priority
         if let Some(movement) = self.get_core()?
@@ -62,7 +65,7 @@ where
             .keybinds
             .movement
             .get(gkey) {
-                dbg!(movement);
+                dbg!("found bind: ",  movement);
                 match self.movement(movement) {
                     Ok(()) => return Ok(()),
                     Err(HError::KeyBind(KeyBindError::MovementUndefined)) => {}
@@ -75,10 +78,13 @@ where
         let bindings = self.search_in();
 
         if let Some(action) = bindings.get(key) {
-            return self.do_action(dbg!(action))
+            dbg!("found bind: ",  action);
+            return self.do_action(action)
         } else if let Some(any_key) = gkey.any() {
             if let Some(action) = bindings.get(any_key) {
+                dbg!("found bind: ",  action);
                 let action = action.insert_key_param(key);
+                dbg!("turned into: ", action);
                 return self.do_action(dbg!(&action));
             }
         }
@@ -673,7 +679,7 @@ impl Default for Bindings<FileBrowserAction> {
             let key = match action {
                 LeftColumnDown => Char(']'),
                 LeftColumnUp => Char('['),
-                GotoHome => Char('~'),
+                GotoHome => Char('9'),
                 TurboCd => Char('/'),
                 SelectExternal => Alt(' '),
                 EnterDirExternal => Char('/'),
