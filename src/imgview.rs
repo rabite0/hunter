@@ -1,22 +1,25 @@
+use std::path::{Path, PathBuf};
+use std::process::{Command, Stdio};
+use std::io::{BufReader, BufRead};
+use std::sync::atomic::{AtomicU32, Ordering};
+
 use crate::widget::{Widget, WidgetCore};
 use crate::coordinates::Coordinates;
-use crate::fail::HResult;
-
-use std::path::{Path, PathBuf};
-
+use crate::fail::{HResult, ErrorCause};
 use crate::mediaview::MediaError;
 
-impl std::cmp::PartialEq for ImgView {
-    fn eq(&self, other: &Self) -> bool {
-        self.core == other.core &&
-            self.buffer == other.buffer
-    }
+
+
+lazy_static! {
+    static ref PID: AtomicU32 = AtomicU32::new(0);
 }
 
+#[derive(Derivative)]
+#[derivative(PartialEq)]
 pub struct ImgView {
     pub core: WidgetCore,
     pub buffer: Vec<String>,
-    pub file: Option<PathBuf>
+    pub file: Option<PathBuf>,
 }
 
 impl ImgView {
@@ -24,7 +27,7 @@ impl ImgView {
         let mut view = ImgView {
             core: core,
             buffer: vec![],
-            file: Some(file.to_path_buf())
+            file: Some(file.to_path_buf()),
         };
 
         view.encode_file()?;
@@ -40,7 +43,7 @@ impl ImgView {
         let media_previewer = self.core.config().media_previewer;
         let g_mode = self.core.config().graphics;
 
-        let output = std::process::Command::new(&media_previewer)
+        let mut previewer = Command::new(&media_previewer)
             .arg(format!("{}", (xsize+1)))
             .arg(format!("{}", (ysize+1)))
             .arg(format!("{}", xpix))
@@ -51,7 +54,10 @@ impl ImgView {
             .arg(format!("true"))
             .arg(format!("{}", g_mode))
             .arg(file.to_string_lossy().to_string())
-            .output()
+            .stdin(Stdio::null())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
             .map_err(|e| {
                 let msg = format!("Couldn't run {}{}{}! Error: {:?}",
                                   crate::term::color_red(),
@@ -62,14 +68,37 @@ impl ImgView {
                 self.core.show_status(&msg).ok();
 
                 MediaError::NoPreviewer(msg)
-            })?
-            .stdout;
+            })?;
 
+        PID.store(previewer.id(), Ordering::Relaxed);
 
-        let output = std::str::from_utf8(&output)?;
-        let output = output.lines()
-            .map(|l| l.to_string())
-            .collect();
+        let stdout = previewer.stdout
+                              .take()
+                              .unwrap();
+
+        let output = BufReader::new(stdout)
+            .lines()
+            .collect::<Result<Vec<String>, _>>()?;
+
+        let stderr = previewer.stderr
+                              .take()
+                              .unwrap();
+
+        let stderr = BufReader::new(stderr)
+            .lines()
+            .collect::<Result<String, _>>()?;
+
+        let status = previewer.wait()?;
+
+        PID.store(0, Ordering::Relaxed);
+
+        if !status.success() {
+            match status.code() {
+                Some(code) => Err(MediaError::MediaViewerFailed(code,
+                                                                ErrorCause::Str(stderr)))?,
+                None => Err(MediaError::MediaViewerKilled)?
+            }
+        }
 
         self.buffer = output;
 
@@ -82,6 +111,20 @@ impl ImgView {
 
     pub fn lines(&self) -> usize {
         self.buffer.len()
+    }
+
+    pub fn kill_running() {
+        use nix::{unistd::Pid,
+                  sys::signal::{kill, Signal}};
+
+        let pid = PID.load(Ordering::Relaxed);
+
+        if pid == 0 { return; }
+
+        let pid = Pid::from_raw(pid as i32);
+        kill(pid, Signal::SIGTERM).ok();
+
+        PID.store(0, Ordering::Relaxed);
     }
 }
 

@@ -23,6 +23,9 @@ lazy_static! {
 }
 
 fn kill_proc() -> HResult<()> {
+    // Kill media previewer if it still runs
+    ImgView::kill_running();
+
     let mut pid = SUBPROC.lock()?;
     pid.map(|pid|
             // Do this in another thread so we can wait on process to exit with SIGHUP
@@ -34,9 +37,9 @@ fn kill_proc() -> HResult<()> {
 
                 // Kill using process group, to clean up all child processes, too
                 let pid = Pid::from_raw(pid as i32);
-                killpg(pid, Signal::SIGTERM).log();
+                killpg(pid, Signal::SIGTERM).ok();
                 std::thread::sleep(sleep_time);
-                killpg(pid, Signal::SIGKILL).log();
+                killpg(pid, Signal::SIGKILL).ok();
             })
     );
     *pid = None;

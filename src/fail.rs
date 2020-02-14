@@ -185,6 +185,12 @@ impl HError {
 
 }
 
+#[derive(Fail, Debug, Clone)]
+pub enum ErrorCause {
+    #[fail(display = "{}", _0)]
+    Str(String)
+}
+
 
 lazy_static! {
     static ref LOG: Mutex<Vec<LogEntry>> = Mutex::new(vec![]);

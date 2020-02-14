@@ -5,7 +5,7 @@ use failure::{self, Fail};
 use crate::widget::{Widget, WidgetCore};
 use crate::coordinates::Coordinates;
 use crate::async_value::Stale;
-use crate::fail::{HResult, HError, ErrorLog};
+use crate::fail::{HResult, HError, ErrorLog, ErrorCause};
 use crate::imgview::ImgView;
 
 use std::path::{Path, PathBuf};
@@ -18,7 +18,13 @@ use std::process::Child;
 #[derive(Fail, Debug, Clone)]
 pub enum MediaError {
     #[fail(display = "{}", _0)]
-    NoPreviewer(String)
+    NoPreviewer(String),
+    #[fail(display = "No output could be read from {}", _0)]
+    NoOutput(String),
+    #[fail(display = "Media viewer exited with status code: {}", _0)]
+    MediaViewerFailed(i32, #[cause] ErrorCause),
+    #[fail(display = "Media viewer killed!")]
+    MediaViewerKilled,
 }
 
 impl From<MediaError> for HError {
@@ -80,7 +86,7 @@ impl MediaView {
         let imgview = ImgView {
             core: core.clone(),
             buffer: vec![],
-            file: None
+            file: None,
         };
 
         let (tx_cmd, rx_cmd) = channel();
