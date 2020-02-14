@@ -261,6 +261,7 @@ impl ListView<Vec<Process>> {
                        .to_string_lossy()
                        .to_string());
         let args = cmd.args.unwrap_or(vec![]);
+        let vars = cmd.vars.unwrap_or(vec![]);
 
         self.core.show_status(&format!("Running: {}", &short_cmd)).log();
 
@@ -268,6 +269,7 @@ impl ListView<Vec<Process>> {
         let handle = unsafe {
             Command::new(real_cmd)
                 .args(args)
+                .envs(vars)
                 .stdin(std::process::Stdio::null())
                 .stdout(std::process::Stdio::piped())
                 // Without this stderr would be separate which is no good for procview
