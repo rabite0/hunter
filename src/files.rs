@@ -415,15 +415,16 @@ impl Files {
     pub fn run_jobs(&mut self, sender: Sender<Events>) {
         use std::time::Duration;
         let jobs = std::mem::take(&mut self.jobs);
-        let stale = self.stale.clone()
-                              .unwrap_or(Stale::new());
+        let stale = self.stale
+                        .clone()
+                        .unwrap_or_else(Stale::new);
 
         if jobs.len() == 0 { return; }
 
         std::thread::spawn(move || {
             let pool = get_pool();
-            let jobs_left = AtomicUsize::new(jobs.len());
-            let jobs_left = &jobs_left;
+            let stop = AtomicBool::new(false);
+            let stop = &stop;
             let stale = &stale;
 
             let ticker = move || {
@@ -443,7 +444,9 @@ impl Files {
                     }
 
                     // All jobs done?
-                    if jobs_left.load(Ordering::Relaxed) == 0 {
+                    if stop.load(Ordering::Relaxed) {
+                        crate::files::tick();
+                        std::thread::sleep(cooldown);
                         // Refresh one last time
                         sender.send(crate::widget::Events::WidgetReady)
                               .unwrap();
@@ -474,8 +477,14 @@ impl Files {
                 // Noop with other pool running ticker
                 ticker().map(|t| s.spawn_fifo(move |_| t()));
 
-                for (path, mslot, dirsize) in jobs.into_iter().stop_stale(stale.clone())
+                let jobs_num = jobs.len();
+
+                for (i, (path, mslot, dirsize)) in jobs.into_iter()
+                                                       .stop_stale(stale.clone())
+                                                       .enumerate()
                 {
+                    ticker().map(|t| s.spawn_fifo(move |_| t()));
+
                     s.spawn_fifo(move |_| {
                         if let Some(mslot) = mslot {
                             if let Ok(meta) = std::fs::symlink_metadata(&path) {
@@ -494,15 +503,20 @@ impl Files {
 
                             dirsize.0.store(true, Ordering::Relaxed);
                             dirsize.1.store(size, Ordering::Relaxed);
+                        };
 
-                            // Ticker will only stop after this reaches 0
-                            jobs_left.fetch_sub(1, Ordering::Relaxed);
+                        // This is the last job, stop ticking
+                        if jobs_num == i + 1 {
+                            stop.store(true, Ordering::Relaxed);
                         }
                     });
-
-                    ticker().map(|t| s.spawn_fifo(move |_| t()));
                 }
-            });
+
+                // Stop ticking if loop breaks on stale
+                if stale.is_stale().unwrap_or(true) {
+                    stop.store(true, Ordering::Relaxed);
+                }
+            })
         });
     }
 
@@ -1096,8 +1110,8 @@ impl File {
             let size = match self.dirsize {
                 Some(ref dirsize) => {
                     let (ref ready, ref size) = **dirsize;
-                    if ready.load(Ordering::Acquire) == true {
-                        (size.load(Ordering::Acquire), "")
+                    if ready.load(Ordering::Relaxed) == true {
+                        (size.load(Ordering::Relaxed), "")
                     } else {
                         return Err(FileError::MetaPending)?;
                     }

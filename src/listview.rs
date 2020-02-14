@@ -749,7 +749,6 @@ impl ListView<Files>
             let (size, unit) = match size {
                 Ok((size, unit)) => (size.to_string(), unit),
                 Err(HError::FileError(FileError::MetaPending)) => {
-                    // Using mod 5 explicitly here for that nice nonlinear look
                     let ticks = crate::files::tick_str();
                     (String::from(ticks), "")
                 },
