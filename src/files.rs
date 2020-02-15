@@ -525,109 +525,84 @@ impl Files {
     }
 
     pub fn get_file_mut(&mut self, index: usize) -> Option<&mut File> {
-        self.par_iter_files_mut()
-            .find_first(|(i, _)| *i == index)
-            .map(|(_, f)| f)
+        // Need actual length of self.files for this
+        let hidden_in_between = self.hidden_in_between(index, self.files.len());
+
+        self.files.get_mut(index + hidden_in_between)
     }
 
     pub fn par_iter_files(&self) -> impl ParallelIterator<Item=&File> {
-        let filter = self.filter.clone();
-        let filter_selected = self.filter_selected;
-        let show_hidden = self.show_hidden;
+        let filter_fn = self.filter_fn();
 
         self.files
             .par_iter()
-            .filter(move |f|
-                    f.kind == Kind::Placeholder ||
-                    !(filter.is_some() &&
-                      !f.name.contains(filter.as_ref().unwrap())) &&
-                    (!filter_selected || f.selected))
-            .filter(move |f| !(!show_hidden && f.hidden))
-    }
-
-    pub fn par_iter_files_mut(&mut self) -> impl ParallelIterator<Item=(usize,
-                                                                        &mut File)> {
-        let filter = self.filter.clone();
-        let filter_selected = self.filter_selected;
-        let show_hidden = self.show_hidden;
-
-        self.files
-            .par_iter_mut()
-            .enumerate()
-            .filter(move |(_,f)|
-                    f.kind == Kind::Placeholder ||
-                    !(filter.is_some() &&
-                      !f.name.contains(filter.as_ref().unwrap())) &&
-                    (!filter_selected || f.selected))
-            .filter(move |(_,f)| !(!show_hidden && f.hidden))
+            .filter(move |f| filter_fn(f))
     }
 
     pub fn iter_files(&self) -> impl Iterator<Item=&File> {
-        let filter = self.filter.clone();
-        let filter_selected = self.filter_selected;
-        let show_hidden = self.show_hidden;
+        let filter_fn = self.filter_fn();
 
         self.files
             .iter()
-            .filter(move |f|
-                    f.kind == Kind::Placeholder ||
-                    !(filter.is_some() &&
-                      !f.name.contains(filter.as_ref().unwrap())) &&
-                    (!filter_selected || f.selected))
-            .filter(move |f| !(!show_hidden && f.hidden))
+            .filter(move |&f| filter_fn(f))
+    }
+
+    pub fn hidden_in_between(&self, pos: usize, n_before: usize) -> usize {
+        let filter_fn = self.filter_fn();
+
+        self.files[..pos].iter()
+                          .rev()
+                          .enumerate()
+                          .filter(|(_, f)| filter_fn(f))
+                          .take(n_before)
+                          .map(|(i, _)| i + 1)
+                          .last()
+                          .unwrap_or(0)
+    }
+
+    pub fn iter_files_from(&self, from: &File, n_before: usize) -> impl Iterator<Item=&File> {
+        let fpos = self.find_file(from).unwrap_or(0);
+        let hidden_in_between = self.hidden_in_between(fpos, n_before);
+
+        let filter_fn = self.filter_fn();
+
+        self.files[fpos.saturating_sub(hidden_in_between)..]
+            .iter()
+            .filter(move |f| filter_fn(f))
+    }
+
+    pub fn iter_files_mut_from(&mut self, from: &File, n_before: usize) -> impl Iterator<Item=&mut File> {
+        let fpos = self.find_file(from).unwrap_or(0);
+        let hidden_in_between = self.hidden_in_between(fpos, n_before);
+
+        let filter_fn = self.filter_fn();
+
+        self.files[fpos.saturating_sub(hidden_in_between)..]
+            .iter_mut()
+            .filter(move |f| filter_fn(f))
     }
 
     pub fn iter_files_mut(&mut self) -> impl Iterator<Item=&mut File> {
-        let filter = self.filter.clone();
-        let filter_selected = self.filter_selected;
-        let show_hidden = self.show_hidden;
+        let filter_fn = self.filter_fn();
 
         self.files
             .iter_mut()
-            .filter(move |f|
-                    f.kind == Kind::Placeholder ||
-                    !(filter.is_some() &&
-                      !f.name.contains(filter.as_ref().unwrap())) &&
-                    (!filter_selected || f.selected))
-            .filter(move |f| !(!show_hidden && f.hidden))
+            .filter(move |f| filter_fn(f))
     }
 
     #[allow(trivial_bounds)]
-    pub fn into_iter_files(mut self) -> impl Iterator<Item=File> {
-        let filter = std::mem::take(&mut self.filter);
-        let filter_selected = self.filter_selected;
-        let show_hidden = self.show_hidden;
-
-        let files = std::mem::take(&mut self.files);
-
-        files
-            .into_iter()
-            .filter(move |f|
-                    f.kind == Kind::Placeholder ||
-                    !(filter.is_some() &&
-                      !f.name.contains(filter.as_ref().unwrap())) &&
-                    (!filter_selected || f.selected))
-            .filter(move |f| !(!show_hidden && f.name.starts_with(".")))
-            // Just stuff self in there so drop() doesn't get called immediately
-            .filter(move |_| { &self; true })
-    }
-
-    #[allow(trivial_bounds)]
-    pub fn take_into_iter_files(&mut self) -> impl Iterator<Item=File> {
+    pub fn filter_fn(&self) -> impl Fn(&File) -> bool + 'static {
         let filter = self.filter.clone();
         let filter_selected = self.filter_selected;
         let show_hidden = self.show_hidden;
 
-        let files = std::mem::take(&mut self.files);
-        self.files.clear();
-
-        files.into_iter()
-            .filter(move |f|
-                    f.kind == Kind::Placeholder ||
-                    !(filter.is_some() &&
-                      !f.name.contains(filter.as_ref().unwrap())) &&
-                    (!filter_selected || f.selected))
-            .filter(move |f| !(!show_hidden && f.name.starts_with(".")))
+        move |f| {
+            f.kind == Kind::Placeholder ||
+                !(filter.is_some() &&
+                  !f.name.contains(filter.as_ref().unwrap())) &&
+                (!filter_selected || f.selected) &&
+                !(!show_hidden && f.name.starts_with("."))
+        }
     }
 
     #[allow(trivial_bounds)]
@@ -822,6 +797,13 @@ impl Files {
         } else {
             HError::wrong_directory(path.into(), dir.to_path_buf())?
         }
+    }
+
+    pub fn find_file(&self, file: &File) -> Option<usize> {
+        let comp = self.sorter();
+        self.files
+            .binary_search_by(|probe| comp(probe, file))
+            .ok()
     }
 
     pub fn find_file_with_name(&self, name: &str) -> Option<&File> {
