@@ -52,7 +52,7 @@ impl Acting for ListView<Files> {
         }
 
         if pos != self.get_selection() {
-            self.update_selected_file();
+            self.update_selected_file(pos);
         }
 
         Ok(())
@@ -82,7 +82,7 @@ impl Acting for ListView<Files> {
         }
 
         if pos != self.get_selection() {
-            self.update_selected_file();
+            self.update_selected_file(pos);
         }
 
         Ok(())
@@ -357,15 +357,26 @@ impl ListView<Files>
         FileListBuilder::new(core, source)
     }
 
-    pub fn update_selected_file(&mut self) {
-        let pos = self.selection;
+    pub fn update_selected_file(&mut self, oldpos: usize) {
+        let newpos = self.get_selection();
+        let skip =
+            match newpos > oldpos {
+                true => newpos - oldpos,
+                false => 0
+            };
+
+        let seek_back =
+            match newpos < oldpos {
+                true => oldpos - newpos,
+                false => 0
+            };
 
         let file = self.content
-            .iter_files()
-            .nth(pos)
-            .map(|f| f.clone());
+                       .iter_files_from(self.selected_file(), seek_back)
+                       .skip(skip)
+                       .nth(0);
 
-        self.current_item = file;
+        self.current_item = file.cloned();
     }
 
     pub fn selected_file(&self) -> &File {
@@ -376,11 +387,11 @@ impl ListView<Files>
     }
 
     pub fn selected_file_mut(&mut self) -> &mut File {
-        let selection = self.selection;
+        let selected_file = self.selected_file().clone();
 
         let file = self.content
-            .iter_files_mut()
-            .nth(selection)
+            .iter_files_mut_from(&selected_file, 0)
+            .nth(0)
             .map(|f| f as *mut File);
 
 
@@ -838,12 +849,12 @@ impl ListView<Files>
     fn render(&self) -> Vec<String> {
         let render_fn = self.render_line_fn();
         let ysize = self.get_coordinates().unwrap().ysize_u();
+        let files_above_selection = self.get_selection() - self.offset;
+        let selected_file = self.selected_file();
+
         self.content
-            .iter_files()
-            .skip(self.offset)
+            .iter_files_from(selected_file, files_above_selection)
             .take(ysize+1)
-            // .collect::<Vec<_>>()
-            // .into_par_iter()
             .map(|file| render_fn(file))
             .collect()
     }

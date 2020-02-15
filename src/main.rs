@@ -9,7 +9,7 @@ extern crate unicode_width;
 extern crate lazy_static;
 extern crate failure;
 extern crate failure_derive;
-extern crate alphanumeric_sort;
+extern crate natord;
 extern crate dirs_2;
 extern crate lscolors;
 extern crate users;

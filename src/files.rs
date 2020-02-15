@@ -22,7 +22,7 @@ use users::{get_current_username,
 use chrono::TimeZone;
 use failure::Error;
 use rayon::{ThreadPool, ThreadPoolBuilder};
-use alphanumeric_sort::compare_str;
+use natord::compare;
 use mime_guess;
 use rayon::prelude::*;
 use nix::{dir::*,
@@ -526,7 +526,7 @@ impl Files {
 
     pub fn get_file_mut(&mut self, index: usize) -> Option<&mut File> {
         // Need actual length of self.files for this
-        let hidden_in_between = self.hidden_in_between(index, self.files.len());
+        let hidden_in_between = self.files_in_between(index, self.files.len());
 
         self.files.get_mut(index + hidden_in_between)
     }
@@ -547,7 +547,7 @@ impl Files {
             .filter(move |&f| filter_fn(f))
     }
 
-    pub fn hidden_in_between(&self, pos: usize, n_before: usize) -> usize {
+    pub fn files_in_between(&self, pos: usize, n_before: usize) -> usize {
         let filter_fn = self.filter_fn();
 
         self.files[..pos].iter()
@@ -562,22 +562,23 @@ impl Files {
 
     pub fn iter_files_from(&self, from: &File, n_before: usize) -> impl Iterator<Item=&File> {
         let fpos = self.find_file(from).unwrap_or(0);
-        let hidden_in_between = self.hidden_in_between(fpos, n_before);
+
+        let files_in_between = self.files_in_between(fpos, n_before);
 
         let filter_fn = self.filter_fn();
 
-        self.files[fpos.saturating_sub(hidden_in_between)..]
+        self.files[fpos.saturating_sub(files_in_between)..]
             .iter()
             .filter(move |f| filter_fn(f))
     }
 
     pub fn iter_files_mut_from(&mut self, from: &File, n_before: usize) -> impl Iterator<Item=&mut File> {
         let fpos = self.find_file(from).unwrap_or(0);
-        let hidden_in_between = self.hidden_in_between(fpos, n_before);
+        let files_in_between = self.files_in_between(fpos, n_before);
 
         let filter_fn = self.filter_fn();
 
-        self.files[fpos.saturating_sub(hidden_in_between)..]
+        self.files[fpos.saturating_sub(files_in_between)..]
             .iter_mut()
             .filter(move |f| filter_fn(f))
     }
@@ -628,7 +629,7 @@ impl Files {
                 false => (a, b),
             };
 
-            compare_str(&a.name, &b.name)
+            compare(&a.name, &b.name)
         };
 
         let reverse = self.reverse;
@@ -643,7 +644,7 @@ impl Files {
                     let a_meta = a_meta.as_ref().unwrap();
                     let b_meta = b_meta.as_ref().unwrap();
                     match a_meta.size() == b_meta.size() {
-                        true => compare_str(&b.name, &a.name),
+                        true => compare(&b.name, &a.name),
                         false => b_meta.size().cmp(&a_meta.size())
                     }
                 }
@@ -663,7 +664,7 @@ impl Files {
                     let a_meta = a_meta.as_ref().unwrap();
                     let b_meta = b_meta.as_ref().unwrap();
                     match a_meta.mtime() == b_meta.mtime() {
-                        true => compare_str(&b.name, &a.name),
+                        true => compare(&b.name, &a.name),
                         false => b_meta.mtime().cmp(&a_meta.mtime())
                     }
                 }
@@ -801,9 +802,13 @@ impl Files {
 
     pub fn find_file(&self, file: &File) -> Option<usize> {
         let comp = self.sorter();
-        self.files
+        let pos = self.files
             .binary_search_by(|probe| comp(probe, file))
-            .ok()
+            .ok()?;
+
+        debug_assert_eq!(file.path, self.files[pos].path);
+
+        Some(pos)
     }
 
     pub fn find_file_with_name(&self, name: &str) -> Option<&File> {
