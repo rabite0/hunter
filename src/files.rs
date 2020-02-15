@@ -104,9 +104,9 @@ pub fn load_tags() -> HResult<()> {
 
         let tags = std::fs::read_to_string(tag_path)?;
         let mut tags = tags.lines()
-            .map(|f|
-                 PathBuf::from(f))
-            .collect::<Vec<PathBuf>>();
+                           .map(PathBuf::from)
+                           .collect::<Vec<PathBuf>>();
+        tags.sort();
         let mut tag_lock = TAGS.write()?;
         tag_lock.0 = true;
         tag_lock.1.append(&mut tags);
@@ -128,7 +128,9 @@ pub fn import_tags() -> HResult<()> {
 
 pub fn check_tag(path: &PathBuf) -> HResult<bool> {
     tags_loaded()?;
-    let tagged = TAGS.read()?.1.contains(path);
+    let tagged = TAGS.read()?.1.binary_search(path)
+                               .map_or_else(|_| false,
+                                            |_| true);
     Ok(tagged)
 }
 
@@ -1261,23 +1263,45 @@ impl File {
         };
         self.tag = Some(new_state);
 
-        match new_state {
-            true => TAGS.write()?.1.push(self.path.clone()),
-            false => { TAGS.write()?.1.remove_item(&self.path); },
-        }
         self.save_tags()?;
         Ok(())
     }
 
     pub fn save_tags(&self) -> HResult<()> {
-        std::thread::spawn(|| -> HResult<()> {
+        if self.tag.is_none() { return Ok(()); }
+
+        let path = self.path.clone();
+        let state = self.tag.unwrap();
+
+        std::thread::spawn(move || -> HResult<()> {
+            use std::os::unix::ffi::OsStrExt;
+
             let tagfile_path = crate::paths::tagfile_path()?;
-            let tags = TAGS.read()?.clone();
-            let tags_str = tags.1.iter().map(|p| {
-                let path = p.to_string_lossy().to_string();
-                format!("{}\n", path)
-            }).collect::<String>();
-            std::fs::write(tagfile_path, tags_str)?;
+            let mut tags = TAGS.write()?;
+
+            match state {
+                true => {
+                    match tags.1.binary_search(&path) {
+                        Ok(_) => {},
+                        Err(inspos) => tags.1.insert(inspos, path)
+                    };
+                },
+                false => {
+                    match tags.1.binary_search(&path) {
+                        Ok(delpos) => { tags.1.remove(delpos); },
+                        Err(_) => {}
+                    };
+                }
+            }
+
+            let tagstr = tags.1.iter()
+                               .fold(std::ffi::OsString::new(), |mut s, f| {
+                                   s.push(f);
+                                   s.push("\n");
+                                   s
+                               });
+
+            std::fs::write(tagfile_path, tagstr.as_bytes())?;
             Ok(())
         });
         Ok(())
