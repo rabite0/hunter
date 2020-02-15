@@ -572,7 +572,6 @@ fn input_thread(tx: Sender<Events>, rx_input_request: Receiver<()>) {
             input.map(|input| {
                 tx.send(Events::InputEvent(input)).unwrap();
                 rx_input_request.recv().unwrap();
-                term::flush_stdin();
             }).map_err(|e| HError::from(e)).log();
         }
     });
