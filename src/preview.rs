@@ -74,11 +74,14 @@ impl<W: Widget + Send + 'static> AsyncWidget<W> {
         let mut widget = Async::new(move |stale|
                                     closure(stale).map_err(|e| e.into()));
         widget.on_ready(move |_, stale| {
+            crate::files::stop_ticking();
             if !stale.is_stale()? {
                 sender.lock().map(|s| s.send(crate::widget::Events::WidgetReady)).ok();
             }
             Ok(())
         }).log();
+
+        crate::files::start_ticking(core.get_sender());
         widget.run().log();
 
         AsyncWidget {
@@ -101,6 +104,7 @@ impl<W: Widget + Send + 'static> AsyncWidget<W> {
         });
 
         widget.on_ready(move |_, stale| {
+            crate::files::stop_ticking();
             if !stale.is_stale()? {
                 sender.lock()
                     .map(|s| s.send(crate::widget::Events::WidgetReady))
@@ -109,6 +113,7 @@ impl<W: Widget + Send + 'static> AsyncWidget<W> {
             Ok(())
         }).log();
 
+        crate::files::start_ticking(self.core.get_sender());
         widget.run().log();
 
         self.widget = widget;
@@ -181,7 +186,7 @@ impl<T: Widget + Send + 'static> Widget for AsyncWidget<T> {
             let clear = self.core.get_clearlist()?;
             let (xpos, ypos) = self.get_coordinates()?.u16position();
             let pos = crate::term::goto_xy(xpos, ypos);
-            return Ok(clear + &pos + "...")
+            return Ok(clear + &pos + crate::files::tick_str())
         }
 
         if self.is_stale()? {

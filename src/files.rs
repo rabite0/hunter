@@ -4,7 +4,7 @@ use std::ops::Index;
 use std::fs::Metadata;
 use std::os::unix::fs::MetadataExt;
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, Mutex, RwLock};
+use std::sync::{Arc, RwLock};
 use std::sync::mpsc::Sender;
 use std::hash::{Hash, Hasher};
 use std::str::FromStr;
@@ -42,22 +42,13 @@ lazy_static! {
     static ref COLORS: LsColors = LsColors::from_env().unwrap_or_default();
     static ref TAGS: RwLock<(bool, Vec<PathBuf>)> = RwLock::new((false, vec![]));
     static ref ICONS: Icons = Icons::new();
-    static ref IOPOOL: Mutex<Option<ThreadPool>> = Mutex::new(None);
+    static ref IOTICK_CLIENTS: AtomicUsize = AtomicUsize::default();
     static ref IOTICK: AtomicUsize = AtomicUsize::default();
-    static ref TICKING: AtomicBool = AtomicBool::new(false);
-}
-
-pub fn tick() {
-    IOTICK.fetch_add(1, Ordering::Relaxed);
-}
-
-pub fn get_tick() -> usize {
-    IOTICK.load(Ordering::Relaxed)
 }
 
 pub fn tick_str() -> &'static str {
     // Using mod 5 for that nice nonlinear look
-    match get_tick() % 5 {
+    match IOTICK.load(Ordering::Relaxed) % 5 {
         0 => "   ",
         1 => ".  ",
         2 => ".. ",
@@ -65,12 +56,44 @@ pub fn tick_str() -> &'static str {
     }
 }
 
-pub fn is_ticking() -> bool {
-    TICKING.load(Ordering::Acquire)
+pub fn start_ticking(sender: Sender<Events>) {
+    use std::time::Duration;
+
+    IOTICK_CLIENTS.fetch_add(1, Ordering::Relaxed);
+    if IOTICK_CLIENTS.load(Ordering::Acquire) == 1 {
+        std::thread::spawn(move || {
+            IOTICK.store(0, Ordering::Relaxed);
+
+            // Gently slow down refreshes
+            let backoff = Duration::from_millis(10);
+            let mut cooldown = Duration::from_millis(10);
+
+            loop {
+                IOTICK.fetch_add(1, Ordering::Relaxed);
+
+                // Send refresh event before sleeping
+                sender.send(crate::widget::Events::WidgetReady)
+                      .unwrap();
+
+                // All jobs done?
+                if IOTICK_CLIENTS.load(Ordering::Acquire) == 0 {
+                    IOTICK.store(0, Ordering::Relaxed);
+                    return;
+                }
+
+                std::thread::sleep(cooldown);
+
+                // Slow down up to 1 second
+                if cooldown < Duration::from_millis(1000) {
+                    cooldown += backoff;
+                }
+            }
+        });
+    }
 }
 
-pub fn set_ticking(val: bool) {
-    TICKING.store(val, Ordering::Release);
+pub fn stop_ticking() {
+    IOTICK_CLIENTS.fetch_sub(1, Ordering::Relaxed);
 }
 
 #[derive(Fail, Debug, Clone)]
@@ -415,7 +438,6 @@ impl Files {
     }
 
     pub fn run_jobs(&mut self, sender: Sender<Events>) {
-        use std::time::Duration;
         let jobs = std::mem::take(&mut self.jobs);
         let stale = self.stale
                         .clone()
@@ -425,68 +447,14 @@ impl Files {
 
         std::thread::spawn(move || {
             let pool = get_pool();
-            let stop = AtomicBool::new(false);
-            let stop = &stop;
             let stale = &stale;
 
-            let ticker = move || {
-                // Gently slow down refreshes
-                let backoff = Duration::from_millis(10);
-                let mut cooldown = Duration::from_millis(10);
-
-                loop {
-                    // Send refresh event before sleeping
-                    sender.send(crate::widget::Events::WidgetReady)
-                          .unwrap();
-                    std::thread::sleep(cooldown);
-
-                    // Slow down up to 1 second
-                    if cooldown < Duration::from_secs(1) {
-                        cooldown += backoff;
-                    }
-
-                    // All jobs done?
-                    if stop.load(Ordering::Relaxed) {
-                        crate::files::tick();
-                        std::thread::sleep(cooldown);
-                        // Refresh one last time
-                        sender.send(crate::widget::Events::WidgetReady)
-                              .unwrap();
-                        crate::files::set_ticking(false);
-                        return;
-                    }
-
-                    crate::files::tick();
-                }
-            };
-
-            // To allow calling without consuming, all while Sender can't be shared
-            let mut ticker = Some(ticker);
-
-            // Finally this returns the ticker function as an Option
-            let mut ticker = move || {
-                // Only return ticker if no one's ticking
-                match !crate::files::is_ticking() {
-                    true => {
-                        crate::files::set_ticking(true);
-                        ticker.take()
-                    }
-                    false => None
-                }
-            };
+            start_ticking(sender);
 
             pool.scope_fifo(move |s| {
-                // Noop with other pool running ticker
-                ticker().map(|t| s.spawn_fifo(move |_| t()));
-
-                let jobs_num = jobs.len();
-
-                for (i, (path, mslot, dirsize)) in jobs.into_iter()
-                                                       .stop_stale(stale.clone())
-                                                       .enumerate()
+                for (path, mslot, dirsize) in jobs.into_iter()
+                                                  .stop_stale(stale.clone())
                 {
-                    ticker().map(|t| s.spawn_fifo(move |_| t()));
-
                     s.spawn_fifo(move |_| {
                         if let Some(mslot) = mslot {
                             if let Ok(meta) = std::fs::symlink_metadata(&path) {
@@ -506,19 +474,11 @@ impl Files {
                             dirsize.0.store(true, Ordering::Relaxed);
                             dirsize.1.store(size, Ordering::Relaxed);
                         };
-
-                        // This is the last job, stop ticking
-                        if jobs_num == i + 1 {
-                            stop.store(true, Ordering::Relaxed);
-                        }
                     });
                 }
+            });
 
-                // Stop ticking if loop breaks on stale
-                if stale.is_stale().unwrap_or(true) {
-                    stop.store(true, Ordering::Relaxed);
-                }
-            })
+            stop_ticking();
         });
     }
 
