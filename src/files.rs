@@ -788,6 +788,8 @@ impl Files {
         // Do this first, so we know len() == 0 needs a placeholder
         self.remove_placeholder();
 
+        self.recalculate_len();
+
         if self.len() == 0 {
             let placeholder = File::new_placeholder(&self.directory.path).unwrap();
             self.files.push(placeholder);
