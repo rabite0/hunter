@@ -104,6 +104,8 @@ pub enum FileError {
     OpenDir(#[cause] nix::Error),
     #[fail(display = "Couldn't read files! Error: {}", _0)]
     ReadFiles(#[cause] nix::Error),
+    #[fail(display = "Had problems with getdents64 in directory: {}", _0)]
+    GetDents(String),
 }
 
 pub fn get_pool() -> ThreadPool {
@@ -383,7 +385,179 @@ impl Drop for Files {
 }
 
 
+#[cfg(target_os = "linux")]
+#[repr(C)]
+#[derive(Clone, Debug)]
+pub struct linux_dirent {
+    pub d_ino: u64,
+    pub d_off: u64,
+    pub d_reclen: u16,
+    pub d_type: u8,
+    pub d_name: [u8; 0],
+}
+
+
+// This arcane spell hastens the target by around 30%.
+
+// It uses quite a bit of usafe code, mostly to call into libc and
+// dereference raw pointers inherent to the getdents API, but also to
+// avoid some of the overhead built into Rust's default conversion
+// methods. How the getdents64 syscall is intended to be used was
+// mostly looked up in man 2 getdents64, the nc crate, and the
+// upcoming version of the walkdir crate, plus random examples here
+// and there..
+
+// This should probably be replaced with walkdir when it gets a proper
+// release with the new additions. nc itself is already too high level
+// to meet the performance target, unfortunately.
+#[cfg(target_os = "linux")]
+pub fn from_getdents(fd: i32, path: &Path, nothidden: &AtomicUsize)  -> Vec<File>
+{
+    use libc::SYS_getdents64;
+
+    // Nice big 4MB buffer
+    const BUFFER_SIZE: usize = 1024 * 1024 * 4;
+
+    let mut buf: Vec<u8> = vec![0; BUFFER_SIZE];
+    let bufptr = buf.as_mut_ptr();
+    let files = std::sync::Mutex::new(vec![]);
+    let files = &files;
+
+    crossbeam::scope(|s| {
+        loop {
+            let nread = unsafe { libc::syscall(SYS_getdents64, fd, bufptr, BUFFER_SIZE) };
+
+            if nread <= 0 {
+                break;
+            }
+
+            // Clone buffer for processing in another thread and fetch more entries
+            let mut buf: Vec<u8> = buf.clone();
+
+            s.spawn(move |_| {
+                let cap = nread as usize / std::mem::size_of::<linux_dirent>();
+                let mut localfiles = Vec::with_capacity(cap);
+                let bufptr = buf.as_mut_ptr();
+                let mut bpos: usize = 0;
+
+                while bpos < nread as usize {
+                    let d: &linux_dirent = unsafe { std::mem::transmute(bufptr as usize + bpos as usize) };
+
+                    // Name lenegth is overallocated, true length can be found by checking with strlen
+                    let name_len = d.d_reclen as usize -
+                        std::mem::size_of::<u64>() -
+                        std::mem::size_of::<u64>() -
+                        std::mem::size_of::<u16>() -
+                        std::mem::size_of::<u8>();
+
+                    // OOB!!!
+                    if bpos + name_len > BUFFER_SIZE {
+                        HError::log::<()>(&format!("WARNING: Name for file was out of bounds in: {}",
+                                                   path.to_string_lossy())).ok();
+                        return;
+                    }
+
+                    // Doing it here simplifies skipping
+                    bpos = bpos + d.d_reclen as usize;
+
+                    let name: &OsStr = {
+                        let true_len = unsafe { libc::strlen(d.d_name.as_ptr() as *const i8) };
+                        let bytes: &[u8] = unsafe { std::slice::from_raw_parts(d.d_name.as_ptr() as *const u8,
+                                                                               true_len) };
+
+                        // Don't want this
+                        if bytes.len() == 0  || bytes == b"." || bytes == b".." {
+                            continue;
+                        }
+
+                        unsafe { std::mem::transmute(bytes) }
+                    };
+
+
+                    // Avoid reallocation on push
+                    let mut pathstr = std::ffi::OsString::with_capacity(path.as_os_str().len() +
+                                                                        name.len() +
+                                                                        2);
+                    pathstr.push(path.as_os_str());
+                    pathstr.push("/");
+                    pathstr.push(name);
+
+                    let path = PathBuf::from(pathstr);
+
+                    let name = name.to_str()
+                                   .map(|n| String::from(n))
+                                   .unwrap_or_else(|| name.to_string_lossy().to_string());
+
+
+                    let hidden = name.as_bytes()[0] == b'.';
+
+                    if !hidden {
+                        nothidden.fetch_add(1, Ordering::Relaxed);
+                    }
+
+                    let kind = match d.d_type {
+                        4 => Kind::Directory,
+                        _ => Kind::File,
+                    };
+
+                    let file = File {
+                        name: name,
+                        hidden: hidden,
+                        kind: kind,
+                        path: path,
+                        dirsize: None,
+                        target: None,
+                        meta: None,
+                        selected: false,
+                        tag: None,
+                    };
+
+                    localfiles.push(file);
+
+
+                }
+
+                files.lock().unwrap().append(&mut localfiles);
+            });
+        }
+    }).unwrap();
+
+    return std::mem::take(&mut *files.lock().unwrap());
+}
+
+
 impl Files {
+    // Use getdents64 on Linux
+    #[cfg(target_os = "linux")]
+    pub fn new_from_path_cancellable(path: &Path, stale: Stale) -> HResult<Files> {
+        use std::os::unix::io::AsRawFd;
+
+        let nonhidden = AtomicUsize::default();
+
+        let dir  = Dir::open(path.clone(),
+                             OFlag::O_DIRECTORY,
+                             Mode::empty())
+            .map_err(|e| FileError::OpenDir(e))?;
+
+        let direntries = from_getdents(dir.as_raw_fd(), path, &nonhidden);
+
+        if stale.is_stale()? {
+            HError::stale()?;
+        }
+
+        let mut files = Files::default();
+        files.directory = File::new_from_path(&path)?;
+
+
+        files.files = direntries;
+        files.len = nonhidden.load(Ordering::Relaxed);
+        files.stale = Some(stale);
+
+        Ok(files)
+    }
+
+
+    #[cfg(not(target_os = "linux"))]
     pub fn new_from_path_cancellable(path: &Path, stale: Stale) -> HResult<Files> {
         let nonhidden = AtomicUsize::default();
 
