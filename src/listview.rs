@@ -744,14 +744,17 @@ impl ListView<Files>
         use crate::files::FileError;
 
         let xsize = self.get_coordinates().unwrap().xsize();
-        let icons = self.core.config().icons;
+        let config = self.core.config();
+        let icons = config.icons;
+        let icons_space = config.icons_space;
 
         move |file| -> String {
             let mut line = String::with_capacity(500);
 
-            let icon = match icons {
-                true => file.icon(),
-                false => ""
+            let (icon, icon_space) = match (icons, icons_space) {
+                (true, true) => (file.icon(), " "),
+                (true, false) => (file.icon(), ""),
+                _ => ("", "")
             };
 
             let name = &file.name;
@@ -805,27 +808,30 @@ impl ListView<Files>
             let padding = xsize - padding as u16;
             let padding = padding - tag_len;
             let padding = padding - icon.width() as u16;
+            let padding = padding - icon_space.len() as u16;
 
             write!(&mut line, "{}", termion::cursor::Save).unwrap();
 
             match file.get_color() {
                 Some(color) => write!(&mut line,
-                                      "{}{}{}{}{}{:padding$}{}",
+                                      "{}{}{}{}{}{}{:padding$}{}",
                                       tag,
                                       &color,
                                       selection_color,
                                       selection_gap,
                                       icon,
+                                      icon_space,
                                       &sized_string,
                                       term::normal_color(),
                                       padding = padding as usize),
                 _ => write!(&mut line,
-                               "{}{}{}{}{}{:padding$}{}",
+                               "{}{}{}{}{}{}{:padding$}{}",
                                tag,
                                term::normal_color(),
                                selection_color,
                                selection_gap,
                                icon,
+                               icon_space ,
                                &sized_string,
                                term::normal_color(),
                                padding = padding as usize),

@@ -88,6 +88,7 @@ pub struct Config {
     pub select_cmd: String,
     pub cd_cmd: String,
     pub icons: bool,
+    pub icons_space: bool,
     pub media_autoplay: bool,
     pub media_mute: bool,
     pub media_previewer: String,
@@ -113,6 +114,7 @@ impl Config {
             select_cmd: "find -type f | fzf -m".to_string(),
             cd_cmd: "find -type d | fzf".to_string(),
             icons: false,
+            icons_space: false,
             media_autoplay: false,
             media_mute: false,
             media_previewer: "hunter-media".to_string(),
@@ -146,6 +148,8 @@ impl Config {
                 Ok(("show_hidden", "off")) => config.show_hidden = false,
                 Ok(("icons", "on")) => config.icons = true,
                 Ok(("icons", "off")) => config.icons = false,
+                Ok(("icons_space", "on")) => config.icons_space = true,
+                Ok(("icons_space", "off")) => config.icons_space = false,
                 Ok(("select_cmd", cmd)) => {
                     let cmd = cmd.to_string();
                     config.select_cmd = cmd;
