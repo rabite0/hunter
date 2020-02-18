@@ -562,13 +562,18 @@ pub fn from_getdents(fd: i32, path: &Path, nothidden: &AtomicUsize)  -> Result<V
                         nothidden.fetch_add(1, Ordering::Relaxed);
                     }
 
-
                     // Finally the File is created
-                    let mut file = File::default();
-                    file.name = name;
-                    file.hidden = hidden;
-                    file.kind = kind;
-                    file.path = path;
+                    let file = File {
+                        name: name,
+                        hidden: hidden,
+                        kind: kind,
+                        path: path,
+                        dirsize: None,
+                        target: None,
+                        meta: None,
+                        selected: false,
+                        tag: None,
+                    };
 
                     // Push into local Vec
                     localfiles.push(file);
