@@ -410,38 +410,74 @@ pub struct linux_dirent {
 // This should probably be replaced with walkdir when it gets a proper
 // release with the new additions. nc itself is already too high level
 // to meet the performance target, unfortunately.
+
+// TODO: Better handling of file systems/kernels that don't support
+// report the kind of file in d_type. Currently that means calling
+// stat on ALL files and ithrowing away the result. This is wasteful.
 #[cfg(target_os = "linux")]
-pub fn from_getdents(fd: i32, path: &Path, nothidden: &AtomicUsize)  -> Vec<File>
+pub fn from_getdents(fd: i32, path: &Path, nothidden: &AtomicUsize)  -> Result<Vec<File>, FileError>
 {
     use libc::SYS_getdents64;
 
-    // Nice big 4MB buffer
+    // Buffer size was chosen after measuring different sizes and 4k seemed best
     const BUFFER_SIZE: usize = 1024 * 1024 * 4;
 
+    // Abuse Vec<u8> as byte buffer
     let mut buf: Vec<u8> = vec![0; BUFFER_SIZE];
     let bufptr = buf.as_mut_ptr();
-    let files = std::sync::Mutex::new(vec![]);
+
+    // Store all the converted (to File) entries in here
+    let files = std::sync::Mutex::new(Vec::<File>::new());
     let files = &files;
 
-    crossbeam::scope(|s| {
+    // State of the getdents loop
+    enum DentStatus {
+        More(Vec<File>),
+        Skip,
+        Done,
+        Err(FileError)
+    }
+
+
+    let result = crossbeam::scope(|s| {
         loop {
+            // Returns number of bytes written to buffer
             let nread = unsafe { libc::syscall(SYS_getdents64, fd, bufptr, BUFFER_SIZE) };
 
-            if nread <= 0 {
+            // 0 means done, -1 means an error happened
+            if nread == 0 {
+                break;
+            } else if nread < 0 {
+                let pathstr = path.to_string_lossy().to_string();
+                HError::log::<()>(&format!("Couldn't read dents from: {}",
+                                           &pathstr)).ok();
                 break;
             }
 
-            // Clone buffer for processing in another thread and fetch more entries
+            // Clone buffer for parallel processing in another thread
             let mut buf: Vec<u8> = buf.clone();
 
             s.spawn(move |_| {
+                // Rough approximation of the number of entries. Actual
+                // size changes from entry to entry due to variable string
+                // size.
                 let cap = nread as usize / std::mem::size_of::<linux_dirent>();
+                // Use a local Vec to avoid contention on Mutex
                 let mut localfiles = Vec::with_capacity(cap);
-                let bufptr = buf.as_mut_ptr();
+                let bufptr = buf.as_mut_ptr() as usize;
                 let mut bpos: usize = 0;
 
                 while bpos < nread as usize {
-                    let d: &linux_dirent = unsafe { std::mem::transmute(bufptr as usize + bpos as usize) };
+                    // The buffer contains a string of linux_dirents with
+                    // varying sizes. To read them correctly one after the
+                    // other the variable size of the current entry has to
+                    // be addet to the offset of the current buffer. As
+                    // long as the kernel doesn't provide wrong values and
+                    // the calculations are corrent this is safe to do.
+                    // It's bascally (buffer[n] -> buffer[n + len(buffer[n])
+                    let d: &linux_dirent = unsafe {
+                        std::mem::transmute::<usize, &linux_dirent>(bufptr  + bpos )
+                    };
 
                     // Name lenegth is overallocated, true length can be found by checking with strlen
                     let name_len = d.d_reclen as usize -
@@ -454,14 +490,17 @@ pub fn from_getdents(fd: i32, path: &Path, nothidden: &AtomicUsize)  -> Vec<File
                     if bpos + name_len > BUFFER_SIZE {
                         HError::log::<()>(&format!("WARNING: Name for file was out of bounds in: {}",
                                                    path.to_string_lossy())).ok();
-                        return;
+                        return DentStatus::Err(FileError::GetDents(path.to_string_lossy().to_string()));
                     }
 
-                    // Doing it here simplifies skipping
+                    // Add length of current dirent to the current offset
+                    // tbuffer[n] -> buffer[n + len(buffer[n])
                     bpos = bpos + d.d_reclen as usize;
 
                     let name: &OsStr = {
+                        // Safe as long as d_name is NULL terminated
                         let true_len = unsafe { libc::strlen(d.d_name.as_ptr() as *const i8) };
+                        // Safe if strlen returned without SEGFAULT on OOB (if d_name weren't NULL terminated)
                         let bytes: &[u8] = unsafe { std::slice::from_raw_parts(d.d_name.as_ptr() as *const u8,
                                                                                true_len) };
 
@@ -470,9 +509,37 @@ pub fn from_getdents(fd: i32, path: &Path, nothidden: &AtomicUsize)  -> Vec<File
                             continue;
                         }
 
-                        unsafe { std::mem::transmute(bytes) }
+                        // A bit sketchy maybe, but if all checks passed, should be OK.
+                        unsafe { std::mem::transmute::<&[u8], &OsStr>(bytes) }
                     };
 
+                    // See dirent.h
+                    // Some file systems and Linux < 2.6.4 don't support d_type
+                    let kind = match d.d_type {
+                        4 => Kind::Directory,
+                        0 => {
+                            use nix::sys::stat::*;
+
+                            // This is a bit unfortunate, since the
+                            // Metadata can't be seaved, but at lest
+                            // stat is faster with an open fd
+                            let flags = nix::fcntl::AtFlags::AT_SYMLINK_NOFOLLOW;
+                            let stat =
+                                match fstatat(fd, name, flags) {
+                                    Ok(stat) => stat,
+                                    Err(_) => return DentStatus::Err(FileError::GetDents(path.to_string_lossy()
+                                                                                         .to_string()))
+                                };
+
+                            let mode = SFlag::from_bits_truncate(stat.st_mode);
+
+                            match mode & SFlag::S_IFMT {
+                                SFlag::S_IFDIR => Kind::Directory,
+                                _ => Kind::File
+                            }
+                        }
+                        _ => Kind::File,
+                    };
 
                     // Avoid reallocation on push
                     let mut pathstr = std::ffi::OsString::with_capacity(path.as_os_str().len() +
@@ -495,35 +562,31 @@ pub fn from_getdents(fd: i32, path: &Path, nothidden: &AtomicUsize)  -> Vec<File
                         nothidden.fetch_add(1, Ordering::Relaxed);
                     }
 
-                    let kind = match d.d_type {
-                        4 => Kind::Directory,
-                        _ => Kind::File,
-                    };
 
-                    let file = File {
-                        name: name,
-                        hidden: hidden,
-                        kind: kind,
-                        path: path,
-                        dirsize: None,
-                        target: None,
-                        meta: None,
-                        selected: false,
-                        tag: None,
-                    };
+                    // Finally the File is created
+                    let mut file = File::default();
+                    file.name = name;
+                    file.hidden = hidden;
+                    file.kind = kind;
+                    file.path = path;
 
+                    // Push into local Vec
                     localfiles.push(file);
-
-
                 }
 
+                // Successfully looped over all dirents. Now append everything at once
                 files.lock().unwrap().append(&mut localfiles);
+                DentStatus::Done
             });
         }
-    }).unwrap();
+    });
 
-    return std::mem::take(&mut *files.lock().unwrap());
+    match result {
+        Ok(()) => Ok(std::mem::take(&mut *files.lock().unwrap())),
+        Err(_) => Err(FileError::GetDents(path.to_string_lossy().to_string()))
+    }
 }
+
 
 
 impl Files {
@@ -539,7 +602,7 @@ impl Files {
                              Mode::empty())
             .map_err(|e| FileError::OpenDir(e))?;
 
-        let direntries = from_getdents(dir.as_raw_fd(), path, &nonhidden);
+        let direntries = from_getdents(dir.as_raw_fd(), path, &nonhidden)?;
 
         if stale.is_stale()? {
             HError::stale()?;
