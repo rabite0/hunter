@@ -1,13 +1,11 @@
-dist: xenial
+dist: bionic
 language: rust
 rust: nightly
 cache: cargo
 
 branches:
   only:
-    - /^v\d+\.\d+\.\d+.*$/
-    - holy
-    - master
+    - travis-test
 
 matrix:
   include:
@@ -31,6 +29,7 @@ install:
   - command -v cross || cargo install cross
 
 script:
+  - sudo apt-get install libsixel-bin libsixel libgstreamer1.0-x gstreamer1.0-plugins-base gstreamer1.0-plugins-base-app
   - PKG_CONFIG_ALLOW_CROSS=1 cross build --target $TARGET ${TRAVIS_TAG:+"--release"}
 
 before_deploy:
