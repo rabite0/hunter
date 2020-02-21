@@ -104,27 +104,27 @@ impl Listable for ListView<Files> {
         if self.content.len() == 0 {
             let path = &self.content.directory.path;
             let placeholder = File::new_placeholder(&path)?;
-            self.content.files.push(placeholder);
+            self.content.files.insert(placeholder);
             self.content.len = 1;
         }
 
         let meta_upto = self.content.meta_upto.unwrap_or(0);
         let ysize = self.core.coordinates.ysize_u();
 
-        if  self.offset + ysize >= meta_upto {
-            let sender = self.core.get_sender();
-            let njobs = self.offset + ysize;
+        // if  self.offset + ysize >= meta_upto {
+        //     let sender = self.core.get_sender();
+        //     let njobs = self.offset + ysize;
 
-            self.content.enqueue_jobs(njobs);
-            self.content.run_jobs(sender);
-        }
+        //     self.content.enqueue_jobs(njobs);
+        //     self.content.run_jobs(sender);
+        // }
 
-        self.refresh_files().log();
+        // self.refresh_files().log();
 
-        if self.content.is_dirty() {
-            self.content.set_clean();
-            self.core.set_dirty();
-        }
+        // if self.content.is_dirty() {
+        //     self.content.set_clean();
+        //     self.core.set_dirty();
+        // }
 
         Ok(())
     }
@@ -333,7 +333,7 @@ impl FileListBuilder {
 
         // TODO: Fix sorting so it works with lazy/partial sorting
         if !nosort {
-            files.sort();
+            //files.sort();
         }
 
         let mut view = ListView::new(&core, files);
@@ -347,6 +347,8 @@ impl FileListBuilder {
         self.cache.map(|c| view.content.cache = Some(c));
         view.content.set_clean();
         view.core.set_clean();
+        let  len = view.content.len();
+        view.content.meta_upto = Some(len);
 
         crate::files::stop_ticking();
 
@@ -376,8 +378,10 @@ impl ListView<Files>
                 false => 0
             };
 
+        let sel = self.selected_file().clone();
+
         let file = self.content
-                       .iter_files_from(self.selected_file(), seek_back)
+                       .iter_files_from(&sel, seek_back)
                        .skip(skip)
                        .nth(0);
 
@@ -426,10 +430,10 @@ impl ListView<Files>
         let posfile = self
             .content
             .iter_files()
-            .collect::<Vec<&File>>()
-            .into_par_iter()
+            // .collect::<Vec<&File>>()
+            // .into_par_iter()
             .enumerate()
-            .find_any(|(_, item)| item == &&file);
+            .find(|(_, item)| item == &&file);
 
         match posfile {
             Some((i, file)) => {
@@ -439,7 +443,7 @@ impl ListView<Files>
             // Something went wrong?
             None => {
                 let dir = &self.content.directory.path;
-                let file = file.path;
+                let file = file.path.clone();
 
                 HError::wrong_directory::<()>(dir.clone(),
                                               file.clone()).log();
@@ -910,32 +914,39 @@ impl ListView<Files>
         }
     }
 
-
+    #[allow(mutable_transmutes)]
     fn render(&self) -> Vec<String> {
         let render_fn = self.render_line_fn();
         let ysize = self.get_coordinates().unwrap().ysize_u();
-        let files_above_selection = self.get_selection() - self.offset;
-        let selected_file = self.selected_file();
+        // let files_above_selection = self.get_selection() - self.offset;
+        // let selected_file = self.selected_file();
 
-        self.content
-            .iter_files_from(selected_file, files_above_selection)
-            .take(ysize+1)
-            .map(|file| render_fn(file))
-            .collect()
+        use splay_tree::set::SuperIter;
+
+        unsafe {
+            std::mem::transmute::<&Self, &mut Self>(self)
+                .content
+                .files
+                .better_iter_from(self.offset)
+                //.inspect(|f| { dbg!(&f.name); })
+                .take(ysize+1)
+                .map(|file| render_fn(file))
+                .collect()
+        }
     }
 
     fn refresh_files(&mut self) -> HResult<()> {
-        let file = self.clone_selected_file();
+        // let file = self.clone_selected_file();
 
-        if let Ok(Some(_)) = self.content.get_refresh() {
-            // Positions might change when files are added/removed/renamed
-            self.select_file(&file);
-            self.content.run_jobs(self.core.get_sender());
-        }
+         // if let Ok(Some(_)) = self.content.get_refresh() {
+        //     // Positions might change when files are added/removed/renamed
+        //     self.select_file(&file);
+        //     self.content.run_jobs(self.core.get_sender());
+        // }
 
-        if self.content.ready_to_refresh()? {
-            self.content.process_fs_events(self.core.get_sender())?;
-        }
+        // if self.content.ready_to_refresh()? {
+        //     self.content.process_fs_events(self.core.get_sender())?;
+        // }
 
         Ok(())
     }

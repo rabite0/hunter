@@ -46,7 +46,9 @@ itertools = "0.8"
 nix = "0.17"
 strip-ansi-escapes = "0.1"
 crossbeam = "0.7"
-
+bumpalo = { versioon = "*", features = [ "collections" ] }
+splay_tree = { path = "../splay_tree" }
+dmsort = "0.1.3"
 
 image = { version = "0.21.1", optional = true }
 gstreamer = { version = "0.14", optional = true }

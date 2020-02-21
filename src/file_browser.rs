@@ -673,6 +673,7 @@ impl FileBrowser {
     }
 
     pub fn update_preview(&mut self) -> HResult<()> {
+        return Ok(());
         if !self.main_async_widget_mut()?.ready() { return Ok(()) }
         if self.main_widget()?
             .content
@@ -904,7 +905,7 @@ impl FileBrowser {
     }
 
     pub fn quit_with_dir(&self) -> HResult<()> {
-        let cwd = self.cwd()?.clone().path;
+        let cwd = self.cwd()?.clone().path.clone();
         let selected_file = self.selected_file()?;
         let selected_file = selected_file.path.to_string_lossy();
         let selected_files = self.selected_files()?;
@@ -1382,11 +1383,11 @@ impl FileBrowser {
         let count_xpos = xsize - file_count.len() as u16;
         let count_ypos = ypos + self.get_coordinates()?.ysize();
 
-        let fs = self.fs_stat.read()?.find_fs(&file.path)?.clone();
+        //let fs = self.fs_stat.read()?.find_fs(&file.path)?.clone();
 
-        let dev = fs.get_dev().unwrap_or(String::from(""));
-        let free_space = fs.get_free();
-        let total_space = fs.get_total();
+        let dev = String::from("");
+        let free_space = 0;
+        let total_space = 0;
         let space = format!("{}{} / {}",
                             dev,
                             free_space,
@@ -1485,7 +1486,7 @@ impl Widget for FileBrowser {
     fn refresh(&mut self) -> HResult<()> {
         self.set_title().log();
         self.columns.refresh().log();
-        self.set_left_selection().log();
+        //self.set_left_selection().log();
         self.set_cwd().log();
         if !self.columns.zoom_active { self.update_preview().log(); }
         self.columns.refresh().log();

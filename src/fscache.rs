@@ -343,15 +343,15 @@ impl FsCache {
             files.show_hidden = tab_settings.dir_settings.show_hidden;
             files.filter = tab_settings.dir_settings.filter.clone();
 
-            if tab_settings.multi_selections.len() > 0 {
-                for file in &mut files.files {
-                    for selected_files in &tab_settings.multi_selections {
-                        if file.path == selected_files.path {
-                            file.selected = true;
-                        }
-                    }
-                }
-            }
+            // if tab_settings.multi_selections.len() > 0 {
+            //     for file in &mut files.files {
+            //         for selected_files in &tab_settings.multi_selections {
+            //             if file.path == selected_files.path {
+            //                 file.selected = true;
+            //             }
+            //         }
+            //     }
+            // }
 
             let files = FsCache::ensure_not_empty(files)?;
             Ok(files)
@@ -384,15 +384,15 @@ impl FsCache {
 
 
 
-        if tab_settings.multi_selections.len() > 0 {
-            for file in &mut files.files {
-                for selected_files in &tab_settings.multi_selections {
-                    if file.path == selected_files.path {
-                        file.selected = true;
-                    }
-                }
-            }
-        }
+        // if tab_settings.multi_selections.len() > 0 {
+        //     for file in &mut files.files {
+        //         for selected_files in &tab_settings.multi_selections {
+        //             if file.path == selected_files.path {
+        //                 file.selected = true;
+        //             }
+        //         }
+        //     }
+        // }
 
         Ok(())
     }
@@ -401,7 +401,7 @@ impl FsCache {
         if files.len() == 0 {
             let path = &files.directory.path;
             let placeholder = File::new_placeholder(&path)?;
-            files.files.push(placeholder);
+            files.files.insert(placeholder);
             files.len = 1;
         }
         Ok(files)

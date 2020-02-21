@@ -144,7 +144,7 @@ impl HError {
     }
     pub fn preview_failed<T>(file: &crate::files::File) -> HResult<T> {
         let name = file.name.clone();
-        Err(HError::PreviewFailed{ file: name })
+        Err(HError::PreviewFailed{ file: name.to_string() })
 
     }
 

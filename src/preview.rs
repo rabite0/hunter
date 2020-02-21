@@ -444,7 +444,8 @@ impl Previewer {
                 let mut blank = TextView::new_blank(&core);
                 blank.set_coordinates(&coordinates).log();
                 blank.refresh().log();
-                blank.animate_slide_up(Some(&animator)).log();
+                //blank.animate_slide_up(Some(&animator)).log();
+                blank.draw().log();
                 return Ok(PreviewWidget::TextView(blank))
 
             })))

@@ -2,6 +2,7 @@
 #![feature(trivial_bounds)]
 #![feature(try_trait)]
 #![allow(dead_code)]
+#![feature(vec_into_raw_parts)]
 
 extern crate termion;
 extern crate unicode_width;
@@ -32,6 +33,9 @@ extern crate derivative;
 extern crate nix;
 extern crate strip_ansi_escapes;
 extern crate crossbeam;
+extern crate bumpalo;
+extern crate splay_tree;
+extern crate dmsort;
 
 extern crate osstrtools;
 extern crate pathbuftools;
@@ -70,6 +74,7 @@ mod config_installer;
 mod imgview;
 mod mediaview;
 mod keybind;
+mod alloc;
 
 
 
