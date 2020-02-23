@@ -239,7 +239,7 @@ pub fn sized_string(string: &str, xsize: u16) -> &str {
                     .last()
                     .unwrap_or(0);
 
-    string
+    &string[0..len]
 }
 
 #[derive(Debug)]

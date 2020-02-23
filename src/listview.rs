@@ -3,7 +3,6 @@ use std::path::PathBuf;
 
 use termion::event::Key;
 use unicode_width::UnicodeWidthStr;
-use rayon::prelude::*;
 
 use async_value::Stale;
 
@@ -111,13 +110,13 @@ impl Listable for ListView<Files> {
         let meta_upto = self.content.meta_upto.unwrap_or(0);
         let ysize = self.core.coordinates.ysize_u();
 
-        // if  self.offset + ysize >= meta_upto {
-        //     let sender = self.core.get_sender();
-        //     let njobs = self.offset + ysize;
+        if  self.offset + ysize >= meta_upto {
+            let sender = self.core.get_sender();
+            let njobs = self.offset + ysize;
 
-        //     self.content.enqueue_jobs(njobs);
-        //     self.content.run_jobs(sender);
-        // }
+            self.content.enqueue_jobs(njobs);
+            self.content.run_jobs(sender);
+        }
 
         // self.refresh_files().log();
 
@@ -347,8 +346,8 @@ impl FileListBuilder {
         self.cache.map(|c| view.content.cache = Some(c));
         view.content.set_clean();
         view.core.set_clean();
-        let  len = view.content.len();
-        view.content.meta_upto = Some(len);
+        // let  len = view.content.len();
+        // view.content.meta_upto = Some(len);
 
         crate::files::stop_ticking();
 
@@ -364,28 +363,36 @@ impl ListView<Files>
         FileListBuilder::new(core, source)
     }
 
-    pub fn update_selected_file(&mut self, oldpos: usize) {
-        let newpos = self.get_selection();
+    pub fn update_selected_file(&mut self, oldsel: usize) {
+        let newsel = self.get_selection();
+
         let skip =
-            match newpos > oldpos {
-                true => newpos - oldpos,
+            match newsel > oldsel {
+                true => newsel - oldsel,
                 false => 0
             };
 
         let seek_back =
-            match newpos < oldpos {
-                true => oldpos - newpos,
+            match newsel < oldsel {
+                true => oldsel - newsel,
                 false => 0
             };
 
-        let sel = self.selected_file().clone();
+        let oldfile = self.selected_file().clone();
+        let fpos = self.content.find_file(&oldfile).unwrap_or(0);
 
         let file = self.content
-                       .iter_files_from(&sel, seek_back)
-                       .skip(skip)
-                       .nth(0);
+                       .iter_files()
+                       .set_raw_pos(fpos)
+                       .seek_back(seek_back)
+                       .nth(skip)
+                       .unwrap()
+                       .clone();
 
-        self.current_item = file.cloned();
+        let new_fpos = self.content.find_file(&file).unwrap_or(0);
+        self.content.current_raw_pos = new_fpos;
+
+        self.current_item = Some(file);
     }
 
     pub fn selected_file(&self) -> &File {
@@ -396,10 +403,11 @@ impl ListView<Files>
     }
 
     pub fn selected_file_mut(&mut self) -> &mut File {
-        let selected_file = self.selected_file().clone();
+        let raw_pos = self.content.current_raw_pos;
 
         let file = self.content
-            .iter_files_mut_from(&selected_file, 0)
+            .iter_files_mut()
+            .set_raw_pos(raw_pos)
             .nth(0)
             .map(|f| f as *mut File);
 
@@ -914,25 +922,19 @@ impl ListView<Files>
         }
     }
 
-    #[allow(mutable_transmutes)]
     fn render(&self) -> Vec<String> {
         let render_fn = self.render_line_fn();
         let ysize = self.get_coordinates().unwrap().ysize_u();
-        // let files_above_selection = self.get_selection() - self.offset;
-        // let selected_file = self.selected_file();
+        let files_above_selection = self.get_selection() - self.offset;
+        let current_raw_pos = self.content.current_raw_pos;
 
-        use splay_tree::set::SuperIter;
-
-        unsafe {
-            std::mem::transmute::<&Self, &mut Self>(self)
-                .content
-                .files
-                .better_iter_from(self.offset)
-                //.inspect(|f| { dbg!(&f.name); })
-                .take(ysize+1)
-                .map(|file| render_fn(file))
-                .collect()
-        }
+        self.content
+            .iter_files()
+            .set_raw_pos(current_raw_pos)
+            .seek_back(files_above_selection)
+            .take(ysize+1)
+            .map(|file| render_fn(file))
+            .collect()
     }
 
     fn refresh_files(&mut self) -> HResult<()> {

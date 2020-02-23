@@ -36,6 +36,7 @@ extern crate crossbeam;
 extern crate bumpalo;
 extern crate splay_tree;
 extern crate dmsort;
+extern crate is_utf8;
 
 extern crate osstrtools;
 extern crate pathbuftools;
@@ -75,7 +76,7 @@ mod imgview;
 mod mediaview;
 mod keybind;
 mod alloc;
-
+mod iter;
 
 
 

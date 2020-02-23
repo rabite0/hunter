@@ -673,7 +673,6 @@ impl FileBrowser {
     }
 
     pub fn update_preview(&mut self) -> HResult<()> {
-        return Ok(());
         if !self.main_async_widget_mut()?.ready() { return Ok(()) }
         if self.main_widget()?
             .content
@@ -1383,9 +1382,9 @@ impl FileBrowser {
         let count_xpos = xsize - file_count.len() as u16;
         let count_ypos = ypos + self.get_coordinates()?.ysize();
 
-        //let fs = self.fs_stat.read()?.find_fs(&file.path)?.clone();
+        let fs = self.fs_stat.read()?.find_fs(&file.path)?.clone();
 
-        let dev = String::from("");
+        let dev = fs.get_dev().unwrap_or(String::from(""));
         let free_space = 0;
         let total_space = 0;
         let space = format!("{}{} / {}",

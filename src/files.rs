@@ -1,10 +1,9 @@
-#![feature(vec_into_raw_parts)]
-
 use std::cmp::Ord;
 use std::collections::{HashMap, HashSet};
 use std::ops::Index;
 use std::fs::Metadata;
-use std::os::unix::fs::MetadataExt;
+use std::os::unix::{fs::MetadataExt,
+                    ffi::OsStrExt};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, RwLock, Mutex};
 use std::sync::mpsc::Sender;
@@ -12,8 +11,7 @@ use std::hash::{Hash, Hasher};
 use std::str::FromStr;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::ffi::OsStr;
-use std::cell::RefCell;
-
+use std::default::Default;
 
 use failure;
 use failure::Fail;
@@ -28,20 +26,21 @@ use failure::Error;
 use rayon::{ThreadPool, ThreadPoolBuilder};
 use natord::compare;
 use mime_guess;
-use rayon::prelude::*;
 use nix::{dir::*,
           fcntl::OFlag,
           sys::stat::Mode};
+use bumpalo::Bump;
 
 use pathbuftools::PathBufTools;
 use async_value::{Async, Stale, StopIter};
-use bumpalo::Bump;
+
 
 use crate::fail::{HResult, HError, ErrorLog};
 use crate::dirty::{DirtyBit, Dirtyable};
 use crate::widget::Events;
 use crate::icon::Icons;
 use crate::fscache::{FsCache, FsEvent};
+use crate::iter::{FileIter, FileIterMut};
 
 lazy_static! {
     static ref COLORS: LsColors = LsColors::from_env().unwrap_or_default();
@@ -297,17 +296,13 @@ pub type Job = (PathBuf,
                 Option<Arc<RwLock<Option<Metadata>>>>,
                 Option<Arc<(AtomicBool, AtomicUsize)>>);
 
-// unsafe impl Sync for Files {}
-// unsafe impl Send for Files {}
-// unsafe impl Sync for File {}
-// unsafe impl Send for File {}
-
 #[derive(Derivative)]
 #[derivative(PartialEq, Eq, Hash, Clone, Debug)]
 pub struct Files {
     pub directory: File,
     pub files: SplaySet<File>,
     pub len: usize,
+    pub current_raw_pos: usize,
     #[derivative(Debug="ignore")]
     #[derivative(PartialEq="ignore")]
     #[derivative(Hash="ignore")]
@@ -364,13 +359,14 @@ impl Dirtyable for Files {
     }
 }
 
-use std::default::Default;
+
 
 impl Default for Files {
     fn default() -> Files {
         Files {
             directory: File::new_placeholder(Path::new("")).unwrap(),
             files: SplaySet::new(),
+            current_raw_pos: 0,
             len: 0,
             pending_events: Arc::new(RwLock::new(vec![])),
             refresh: None,
@@ -396,7 +392,7 @@ impl Drop for Files {
         self.stale
             .as_ref()
             .map(|s| s.set_stale());
-    }
+   }
 }
 
 
@@ -470,11 +466,11 @@ pub fn from_getdents(fd: i32,
     use libc::SYS_getdents64;
 
     // Buffer size was chosen after measuring different sizes and 4k seemed best
-    const BUFFER_SIZE: usize = 1024 * 1024 * 2 * 4;
-    const BUFFER_SUBSLICE_SIZE: usize = BUFFER_SIZE / 4;
+    const BUFFER_SIZE: usize = 1024 * 1024 * 4;
 
-    // Abuse Vec<u8> as byte buffer
-    let mut buf: Vec<u8> = vec![0; BUFFER_SIZE];
+    // To hold temporary allocations only necessary for this function call
+    let tmpalloc = &Allocator::new();
+
 
     let path_ostr = path.as_os_str();
     let path_len = path_ostr.len();
@@ -485,17 +481,13 @@ pub fn from_getdents(fd: i32,
         let files = &files;
 
         loop {
-            // let (buf, localfiles, used) = get_buffers();
-            let bufptr = buf.as_mut_ptr() as usize;
-            // let mut localfiles: &mut Vec<_> = localfiles;
-
-            //dbg!(&bufptr);
+            let buf = tmpalloc.dentbuf(BUFFER_SIZE) as usize;
 
             // Returns number of bytes written to buffer
             let nread = unsafe { libc::syscall(SYS_getdents64,
                                                fd,
-                                               bufptr,
-                                               BUFFER_SUBSLICE_SIZE) };
+                                               buf,
+                                               BUFFER_SIZE) };
 
             // 0 means done, -1 means an error happened
             if dbg!(nread) == 0 {
@@ -507,19 +499,14 @@ pub fn from_getdents(fd: i32,
                 return;
             }
 
-
-            // // Clone buffer for parallel processing in another thread
-            let mut buf: Vec<u8> = Vec::from(&buf[..nread as usize + 1]);
-
-            let files = s.spawn(move |_| {
-                //let bump = std::sync::Mutex::new(Bump::new());
+            s.spawn(move |_| {
                 // Rough approximation of the number of entries. Actual
                 // size changes from entry to entry due to variable string
                 // size.
                 let cap = nread as usize / std::mem::size_of::<linux_dirent>();
                 // Use a local Vec to avoid contention on Mutex
-                let mut localfiles = Vec::with_capacity(dbg!(cap));
-                let bufptr = buf.as_mut_ptr() as usize;
+                let mut tmpfiles = tmpalloc.tmpfiles(cap);
+
 
                 let mut bpos: usize = 0;
 
@@ -531,43 +518,29 @@ pub fn from_getdents(fd: i32,
                     // long as the kernel doesn't provide wrong values and
                     // the calculations are corrent this is safe to do.
                     // It's bascally (buffer[n] -> buffer[n + len(buffer[n])
+                    let buf = buf as *mut u8;
                     let d: &linux_dirent = unsafe {
-                        std::mem::transmute::<usize, &linux_dirent>(bufptr  + bpos )
+                        buf.add(bpos).cast::<linux_dirent>().as_ref().unwrap()
                     };
-
-                    // Name lenegth is overallocated, true length can be found by checking with strlen
-                    let name_len = d.d_reclen as usize -
-                        std::mem::size_of::<u64>() -
-                        std::mem::size_of::<u64>() -
-                        std::mem::size_of::<u16>() -
-                        std::mem::size_of::<u8>();
-
-                    // OOB!!!
-                    if bpos + name_len > BUFFER_SIZE {
-                        panic!("LOLWUT");
-                        HError::log::<()>(&format!("WARNING: Name for file was out of bounds in: {}",
-                                                   path.to_string_lossy())).ok();
-                        return Err(FileError::GetDents(path.to_string_lossy().to_string()));
-                    }
 
                     // Add length of current dirent to the current offset
                     // tbuffer[n] -> buffer[n + len(buffer[n])
                     bpos = bpos + d.d_reclen as usize;
 
-                    let (name_ostr, name_bytes, name_len): (&OsStr, &[u8], usize) = {
+                    let (name_ostr, name_bytes, name_len): (&OsStr, &[u8], usize) = unsafe {
                         // Safe as long as d_name is NULL terminated
-                        let true_len = unsafe { libc::strlen(d.d_name.as_ptr() as *const i8) };
-                        // Safe if strlen returned without SEGFAULT on OOB (if d_name weren't NULL terminated)
-                        let bytes: &[u8] = unsafe { std::slice::from_raw_parts(d.d_name.as_ptr() as *const u8,
-                                                                               true_len) };
+                        let true_len = libc::strlen(d.d_name.as_ptr() as *const i8);
 
-                        // Don't want this
+                        // Safe if strlen returned without SEGFAULT on OOB (if d_name weren't NULL terminated)
+                        let bytes: &[u8] = std::slice::from_raw_parts(d.d_name.as_ptr(), true_len);
+
+                        // Don't want this crap
                         if true_len == 0  || bytes == b"." || bytes == b".." {
                             continue;
                         }
 
                         // A bit sketchy maybe, but if all checks passed, should be OK.
-                        (unsafe { std::mem::transmute::<&[u8], &OsStr>(bytes) },
+                        (OsStr::from_bytes(bytes),
                          bytes,
                          true_len)
                     };
@@ -624,7 +597,7 @@ pub fn from_getdents(fd: i32,
                     // Avoid reallocation on push
                     let path = {
                         let pathlen = path_len;
-                        let totallen = pathlen + name_len + 2;
+                        let totallen = pathlen + name_len + 1;
 
                         let mut path = alloc.pathbuf(totallen);
                         path.write(path_ostr.as_bytes());
@@ -659,12 +632,12 @@ pub fn from_getdents(fd: i32,
                         tag: None,
                     };
 
-                    localfiles.push(file)
+                    tmpfiles.push(file)
                 }
 
                 // Now add all files from this worker thread
                 files.lock().map(|mut f| {
-                    f.extend(localfiles);
+                    f.extend(tmpfiles);
                 }).unwrap();
 
                 Ok(())
@@ -672,25 +645,13 @@ pub fn from_getdents(fd: i32,
         }
     });
 
-
-    dbg!(files.lock().unwrap().len());
-
     match result {
         Ok(()) => {
-            // let len = workset.iter().map(|(_, f, _)| f.len()).sum();
-            // let mut files = Vec::with_capacity(len);
-
-            // for i in 0..4 {
-            //     files.par_extend(std::mem::take(&mut workset[i].1));
-            // }
-
             return Ok(std::mem::take(&mut *files.lock().unwrap()))
         }
         Err(_) => Err(FileError::GetDents(path.to_string_lossy().to_string()))
     }
 }
-
-
 
 impl Files {
     // Use getdents64 on Linux
@@ -771,7 +732,7 @@ impl Files {
     }
 
     pub fn enqueue_jobs(&mut self, n: usize) {
-        return;
+        use rayon::prelude::*;
         let from = self.meta_upto.unwrap_or(0);
         self.meta_upto = Some(from + n);
 
@@ -780,19 +741,18 @@ impl Files {
             None => return
         };
 
-        // let mut jobs = self.iter_files_mut()
-        //                    .collect::<Vec<&mut File>>()
-        //                    .into_par_iter()
-        //                    .skip(from)
-        //                    .take(n)
-        //                    .filter_map(|f| f.prepare_meta_job(&cache))
-        //                    .collect::<Vec<_>>();
+        let mut jobs = self.iter_files_mut()
+                           .collect::<Vec<&mut File>>()
+                           .into_par_iter()
+                           .skip(from)
+                           .take(n)
+                           .filter_map(|f| f.prepare_meta_job(&cache))
+                           .collect::<Vec<_>>();
 
-        // self.jobs.append(&mut jobs);
+        self.jobs.append(&mut jobs);
     }
 
     pub fn run_jobs(&mut self, sender: Sender<Events>) {
-        return;
         let jobs = std::mem::take(&mut self.jobs);
         let stale = self.stale
                         .clone()
@@ -841,99 +801,21 @@ impl Files {
         self.len = self.iter_files().count();
     }
 
-    pub fn get_file_mut(&mut self, index: usize) -> Option<&mut File> {
-        // Need actual length of self.files for this
-        let hidden_in_between = self.files_in_between(index, self.files.len());
-
-        let  file = self.files.as_vec_like_mut().get(index + hidden_in_between);
-        None
+    pub fn par_iter_files(&self) -> FileIter<'_> {
+        FileIter::new(&self.files,
+                      Box::new(self.filter_fn()))
     }
 
-    pub fn par_iter_files(&self) -> impl Iterator<Item=&File> {
-        let filter_fn = self.filter_fn();
-
-        self.files
-            .as_vec_like()
-            .iter()
-            .filter(move |f| filter_fn(f))
+    pub fn iter_files(&self) -> FileIter<'_> {
+        FileIter::new(&self.files,
+                      Box::new(self.filter_fn()))
     }
 
-    pub fn iter_files(&self) -> impl Iterator<Item=&File> {
+
+    pub fn iter_files_mut(&mut self) -> FileIterMut<'_> {
         let filter_fn = self.filter_fn();
-
-        self.files
-            .as_vec_like()
-            .iter()
-            .filter(move |&f| filter_fn(f))
-    }
-
-    #[allow(mutable_transmutes)]
-    pub fn files_in_between(&self, pos: usize, n_before: usize) -> usize {
-        let filter_fn = self.filter_fn();
-
-        unsafe {std::mem::transmute(self.files
-                                    .iter()
-                                    .take(pos)
-                                    .collect::<Vec<_>>()
-                                    .iter()
-                                    .rev()
-                                    .enumerate()
-                                    .filter(|(_, f)| filter_fn(f))
-                                    .take(n_before)
-                                    .map(|(i, _)| i + 1)
-                                    .last()
-                                    .unwrap_or(0)) }
-
-    }
-
-    pub fn iter_files_from(&mut self, from: &File, n_before: usize) -> impl Iterator<Item=&File> {
-        // let fpos = self.find_file(from).unwrap_or(0);
-
-        // let files_in_between = self.files_in_between(fpos, n_before);
-
-        let filter_fn = self.filter_fn();
-
-        use splay_tree::set::SuperIter;
-        self.files
-            .better_iter_from(n_before)
-            .filter(move |f| filter_fn(f))
-    }
-
-    pub fn iter_files_mut_from(&mut self, from: &File, n_before: usize) -> impl Iterator<Item=&mut File> {
-        let fpos = self.find_file(from).unwrap_or(0);
-        let files_in_between = self.files_in_between(fpos, n_before);
-
-        let filter_fn = self.filter_fn();
-
-        self.iter_files_mut()
-            .skip(fpos.saturating_sub(files_in_between))
-            .filter(move |f| filter_fn(f))
-    }
-
-    #[allow(mutable_transmutes)]
-    pub fn iter_files_mut(&mut self) -> impl Iterator<Item=&mut File>  {
-        let filter_fn = self.filter_fn();
-        self.files
-            .iter()
-            .filter(move |f| filter_fn(f))
-            .map(|f| unsafe { std::mem::transmute(f) })
-        //let wut = &mut self;
-
-        // std::iter::from_fn(move || -> Option<&mut File> {
-        //     // match wut.files.take_smallest() {
-        //     //     Some(f) => {
-        //     //         wut.taken.push(f);
-        //     //         wut.taken.last_mut()
-        //     //     }
-        //     //     None => {
-        //     //         for file in std::mem::take(&mut wut.taken).into_iter() {
-        //     //             wut.files.insert(file.clone());
-        //     //         }
-        //     //         None
-        //     //     }
-        //     // }
-        //     None
-        // })
+        FileIterMut::new(&mut self.files,
+                         Box::new(filter_fn))
     }
 
     #[allow(trivial_bounds)]
@@ -1152,10 +1034,7 @@ impl Files {
     }
 
     pub fn find_file(&mut self, file: &File) -> Option<usize> {
-        let comp = self.sorter();
         let pos = self.files.as_vec_like_mut().find_index(file)?;
-            //.// binary_search_by(|probe| comp(probe, file))
-            // .ok()?;
 
         debug_assert_eq!(file.path, self[pos].path);
 
@@ -1233,14 +1112,9 @@ pub enum SortBy {
 }
 
 
-use std::os::unix::ffi::OsStrExt;
 impl PartialEq for File {
     fn eq(&self, other: &File) -> bool {
-        if unsafe { self.path.as_os_str().as_bytes() == other.path.as_os_str().as_bytes() } {
-            true
-        } else {
-            false
-        }
+        self.path == other.path
     }
 }
 
@@ -1676,8 +1550,6 @@ impl File {
         let state = self.tag.unwrap();
 
         std::thread::spawn(move || -> HResult<()> {
-            use std::os::unix::ffi::OsStrExt;
-
             let tagfile_path = crate::paths::tagfile_path()?;
             let mut tags = TAGS.write()?;
 
