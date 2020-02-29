@@ -513,34 +513,6 @@ pub fn from_getdents(fd: i32, path: &Path, nothidden: &AtomicUsize)  -> Result<V
                         unsafe { std::mem::transmute::<&[u8], &OsStr>(bytes) }
                     };
 
-                    // See dirent.h
-                    // Some file systems and Linux < 2.6.4 don't support d_type
-                    let kind = match d.d_type {
-                        4 => Kind::Directory,
-                        0 => {
-                            use nix::sys::stat::*;
-
-                            // This is a bit unfortunate, since the
-                            // Metadata can't be seaved, but at lest
-                            // stat is faster with an open fd
-                            let flags = nix::fcntl::AtFlags::AT_SYMLINK_NOFOLLOW;
-                            let stat =
-                                match fstatat(fd, name, flags) {
-                                    Ok(stat) => stat,
-                                    Err(_) => return DentStatus::Err(FileError::GetDents(path.to_string_lossy()
-                                                                                         .to_string()))
-                                };
-
-                            let mode = SFlag::from_bits_truncate(stat.st_mode);
-
-                            match mode & SFlag::S_IFMT {
-                                SFlag::S_IFDIR => Kind::Directory,
-                                _ => Kind::File
-                            }
-                        }
-                        _ => Kind::File,
-                    };
-
                     // Avoid reallocation on push
                     let mut pathstr = std::ffi::OsString::with_capacity(path.as_os_str().len() +
                                                                         name.len() +
@@ -551,10 +523,48 @@ pub fn from_getdents(fd: i32, path: &Path, nothidden: &AtomicUsize)  -> Result<V
 
                     let path = PathBuf::from(pathstr);
 
+                    // See dirent.h
+                    // Some file systems and Linux < 2.6.4 don't support d_type
+                    let (kind, target) = match d.d_type {
+                        4 => (Kind::Directory, None),
+                        0 => {
+                            use nix::sys::stat::*;
+
+                            // This is a bit unfortunate, since the
+                            // Metadata can't be seaved, but at lest
+                            // stat is faster with an open fd
+                            let flags = nix::fcntl::AtFlags::AT_SYMLINK_NOFOLLOW;
+                            let stat =
+                                match fstatat(fd, &path, flags) {
+                                    Ok(stat) => stat,
+                                    Err(_) => return DentStatus::Err(FileError::GetDents(path.to_string_lossy()
+                                                                                         .to_string()))
+                                };
+
+                            let mode = SFlag::from_bits_truncate(stat.st_mode);
+
+                            match mode & SFlag::S_IFMT {
+                                SFlag::S_IFDIR => (Kind::Directory, None),
+                                _ => (Kind::File, None)
+                            }
+                        }
+                        10 => {
+                            // This is a link
+                            let target = nix::fcntl::readlinkat(fd, &path)
+                                .map(PathBuf::from).ok();
+                            let target_kind =
+                                match path.is_dir() {
+                                    true => Kind::Directory,
+                                    false => Kind::File
+                                };
+                            (target_kind, target)
+                        }
+                        _ => (Kind::File, None)
+                    };
+
                     let name = name.to_str()
                                    .map(|n| String::from(n))
                                    .unwrap_or_else(|| name.to_string_lossy().to_string());
-
 
                     let hidden = name.as_bytes()[0] == b'.';
 
@@ -569,7 +579,7 @@ pub fn from_getdents(fd: i32, path: &Path, nothidden: &AtomicUsize)  -> Result<V
                         kind: kind,
                         path: path,
                         dirsize: None,
-                        target: None,
+                        target: target,
                         meta: None,
                         selected: false,
                         tag: None,
@@ -627,16 +637,22 @@ impl Files {
 
     #[cfg(not(target_os = "linux"))]
     pub fn new_from_path_cancellable(path: &Path, stale: Stale) -> HResult<Files> {
+        use std::os::unix::io::AsRawFd;
+
         let nonhidden = AtomicUsize::default();
 
-        let direntries  = Dir::open(path.clone(),
-                                    OFlag::O_DIRECTORY,
-                                    Mode::empty())
-            .map_err(|e| FileError::OpenDir(e))?
+        let mut dir = Dir::open(path.clone(),
+                                OFlag::O_DIRECTORY,
+                                Mode::empty())
+            .map_err(|e| FileError::OpenDir(e))?;
+
+        let dirfd = dir.as_raw_fd();
+
+        let direntries  = dir
             .iter()
             .stop_stale(stale.clone())
             .map(|f| {
-                let f = File::new_from_nixentry(f?, path);
+                let f = File::new_from_nixentry(f?, path, dirfd);
                 // Fast check to avoid iterating twice
                 if f.name.as_bytes()[0] != b'.' {
                     nonhidden.fetch_add(1, Ordering::Relaxed);
@@ -1149,7 +1165,9 @@ impl File {
         }
     }
 
-    pub fn new_from_nixentry(direntry: Entry, path: &Path) -> File {
+    pub fn new_from_nixentry(direntry: Entry,
+                             path: &Path,
+                             dirfd: i32) -> File {
         // Scary stuff to avoid some of the overhead in Rusts conversions
         // Speedup is a solid ~10%
         let name: &OsStr = unsafe {
@@ -1178,12 +1196,23 @@ impl File {
 
         let hidden = name.as_bytes()[0] == b'.';
 
-        let kind = match direntry.file_type() {
+        let (kind, target) = match direntry.file_type() {
             Some(ftype) => match ftype {
-                Type::Directory => Kind::Directory,
-                _ => Kind::File
+                Type::Directory => (Kind::Directory, None),
+                Type::Symlink => {
+                    // Read link target
+                    let target = nix::fcntl::readlinkat(dirfd, &path)
+                        .map(PathBuf::from).ok();
+                    let target_kind =
+                        match path.is_dir() {
+                                    true => Kind::Directory,
+                                    false => Kind::File
+                                };
+                    (target_kind, target)
+                }
+                _ => (Kind::File, None)
             }
-            _ => Kind::Placeholder
+            _ => (Kind::Placeholder, None)
         };
 
         File {
@@ -1192,7 +1221,7 @@ impl File {
             kind: kind,
             path: path,
             dirsize: None,
-            target: None,
+            target: target,
             meta: None,
             selected: false,
             tag: None,
