@@ -392,6 +392,11 @@ pub fn find_files(comp_name: &str) -> HResult<Vec<OsString>> {
     let comp_path = std::path::PathBuf::from(&comp_name);
     path.push(&comp_path);
 
+    // Tried to complete on an incorrect path
+    if comp_name.ends_with("/") && !path.is_dir() {
+        return Err(HError::NoCompletionsError)
+    }
+
     let comp_name = OsStr::new(comp_name);
     let filename_part = path.file_name()?;
 
