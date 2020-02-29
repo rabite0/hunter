@@ -409,8 +409,15 @@ pub fn find_files(comp_name: &str) -> HResult<Vec<OsString>> {
             let mut completion = OsString::new();
             if file.file_type()?.is_dir() {
                 completion.push(prefix.trim_end("/"));
-                completion.push("/");
+
+                // When completing something in the curren dir this will be empty
+                if completion != "" {
+                    completion.push("/");
+                }
                 completion.push(name);
+
+                // Add final slash to directory
+                completion.push("/");
                 Ok(completion)
             } else {
                 completion.push(prefix);
