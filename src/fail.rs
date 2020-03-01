@@ -70,10 +70,6 @@ pub enum HError {
     INotifyError(String),
     #[fail(display = "Tags not loaded yet")]
     TagsNotLoadedYetError,
-    #[fail(display = "Input cancelled!")]
-    MiniBufferCancelledInput,
-    #[fail(display = "Empty input!")]
-    MiniBufferEmptyInput,
     #[fail(display = "Undefined key: {:?}", key)]
     WidgetUndefinedKeyError{key: Key},
     #[fail(display = "Terminal has been resized!")]
@@ -107,7 +103,11 @@ pub enum HError {
     #[fail(display = "{}", _0)]
     FileError(crate::files::FileError),
     #[fail(display = "{}", _0)]
-    Nix(#[cause] nix::Error)
+    Nix(#[cause] nix::Error),
+    #[fail(display = "Refresh parent widget!")]
+    RefreshParent,
+    #[fail(display = "Refresh parent widget!")]
+    MiniBufferEvent(crate::minibuffer::MiniBufferEvent),
 }
 
 impl HError {
@@ -133,12 +133,6 @@ impl HError {
     }
     pub fn tags_not_loaded<T>() -> HResult<T> {
         Err(HError::TagsNotLoadedYetError)
-    }
-    pub fn minibuffer_cancel<T>() -> HResult<T> {
-        Err(HError::MiniBufferCancelledInput)
-    }
-    pub fn minibuffer_empty<T>() -> HResult<T> {
-        Err(HError::MiniBufferEmptyInput)
     }
     pub fn undefined_key<T>(key: Key) -> HResult<T> {
         Err(HError::WidgetUndefinedKeyError { key: key })
@@ -414,6 +408,12 @@ impl From<MimeError> for HError {
 impl From<KeyBindError> for HError {
     fn from(e: KeyBindError) -> Self {
         HError::KeyBind(e)
+    }
+}
+
+impl From<crate::minibuffer::MiniBufferEvent> for HError {
+    fn from(e: crate::minibuffer::MiniBufferEvent) -> Self {
+        HError::MiniBufferEvent(e)
     }
 }
 

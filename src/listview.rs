@@ -602,20 +602,38 @@ impl ListView<Files>
                     // Only set this, search is on-the-fly
                     self.searching = Some(input);
                 }
-                Err(HError::MiniBufferInputUpdated(input)) => {
-                    let file = self.content
-                        .find_file_with_name(&input)
-                        .cloned();
-
-                    file.map(|f| self.select_file(&f));
-
-                    self.draw().log();
-
+                Err(HError::RefreshParent) => {
+                    self.refresh().log();
                     continue;
-                },
-                Err(HError::MiniBufferEmptyInput) |
-                Err(HError::MiniBufferCancelledInput) => {
-                    self.select_file(&selected_file);
+                }
+                Err(HError::MiniBufferEvent(ev)) => {
+                    use crate::minibuffer::MiniBufferEvent::*;
+
+                    match ev {
+                        Done(_) => {}
+                        NewInput(input) => {
+                            let file = self.content
+                                           .find_file_with_name(&input)
+                                           .cloned();
+
+                            file.map(|f| self.select_file(&f));
+
+                            self.draw().log();
+
+                            self.searching = Some(input);
+
+                            continue;
+                        }
+                        Empty | Cancelled => {
+                            self.select_file(&selected_file);
+                        }
+                        CycleNext => {
+                            self.search_next().log();
+                        }
+                        CyclePrev => {
+                            self.search_prev().log();
+                        }
+                    }
                 }
                 _ => {  }
             }
@@ -688,35 +706,61 @@ impl ListView<Files>
         Ok(())
     }
 
+    pub fn set_filter(&mut self, filter: Option<String>) {
+        let prev_len = self.len();
+        let selected_file = self.clone_selected_file();
+
+        self.content.set_filter(filter);
+
+        // Only do something if filter changed something
+        if self.len() != prev_len {
+            self.refresh().ok();
+            self.select_file(&selected_file);
+            // Clear away that wouldn't get drawn over
+            if self.len() < prev_len {
+                self.core.clear().ok();
+            }
+            self.draw().ok();
+        }
+    }
+
     fn filter(&mut self) -> HResult<()> {
+        use crate::minibuffer::MiniBufferEvent::*;
+
         let selected_file = self.selected_file().clone();
+        let mut prev_filter = self.content.get_filter();
 
         loop {
             let filter = self.core.minibuffer_continuous("filter");
 
             match filter {
-                Err(HError::MiniBufferInputUpdated(input)) => {
-                    self.content.set_filter(Some(input));
-                    self.refresh().ok();
+                Err(HError::MiniBufferEvent(event)) => {
+                    match event {
+                        Done(filter) => {
+                            self.core.show_status(&format!("Filtering with: \"{}\"",
+                                                           &filter)).log();
 
-                    self.select_file(&selected_file);
-                    self.draw().ok();
-
-                    continue;
-                }
-                Err(HError::MiniBufferEmptyInput) |
-                Err(HError::MiniBufferCancelledInput) => {
-                    self.content.set_filter(None);
-                    self.refresh().ok();
-                    self.select_file(&selected_file);
+                            self.set_filter(Some(filter));
+                        }
+                        NewInput(input) => {
+                            self.set_filter(Some(input.clone()));
+                            continue;
+                        }
+                        Empty => {
+                            self.set_filter(None);
+                        }
+                        Cancelled => {
+                            self.set_filter(prev_filter.take());
+                            self.select_file(&selected_file);
+                        }
+                        _ => {}
+                    }
                 }
                 _ => {}
             }
 
-            let msgstr = filter.clone().unwrap_or(String::from(""));
-            self.core.show_status(&format!("Filtering with: \"{}\"", msgstr)).log();
-
             break;
+
         }
 
         Ok(())

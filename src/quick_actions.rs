@@ -277,7 +277,15 @@ pub fn open(files: Vec<File>,
     act_base.map(|act| action_view.content.push(act)).ok();
     act_sub.map(|act| action_view.content.push(act)).ok();
 
-    action_view.popup()
+    loop {
+        // TODO: Handle this properly
+        match action_view.popup() {
+            Err(HError::RefreshParent) => continue,
+            Err(HError::WidgetResizedError) => continue,
+            Err(HError::TerminalResizedError) => continue,
+            r @ _ => break r
+        }
+    }
 }
 
 
@@ -355,6 +363,7 @@ impl QuickAction {
            files: Vec<File>,
            core: &WidgetCore,
            proc_view: Arc<Mutex<ProcView>>) -> HResult<()> {
+        use crate::minibuffer::MiniBufferEvent::*;;
 
         let answers = self.queries
             .iter()
@@ -364,7 +373,7 @@ impl QuickAction {
                 if acc.is_err() { return acc; }
 
                 match core.minibuffer(query) {
-                    Err(HError::MiniBufferEmptyInput) => {
+                    Err(HError::MiniBufferEvent(Empty)) => {
                         acc.as_mut()
                             .map(|acc| acc.push((OsString::from(query),
                                                  OsString::from(""))))

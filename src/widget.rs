@@ -139,6 +139,15 @@ impl WidgetCore {
         Ok(())
     }
 
+    pub fn minibuffer_clear(&self) -> HResult<()> {
+        self.minibuffer
+            .lock()?
+            .as_mut()?
+            .clear();
+
+        Ok(())
+    }
+
     pub fn minibuffer(&self, query: &str) -> HResult<String> {
         let answer = self.minibuffer
             .lock()?
@@ -338,7 +347,11 @@ pub trait Widget {
             print!("\x1b_Ga=d,d=y,y={}\x1b\\", ypos+1);
         }
         let result = self.run_widget();
-        self.get_core()?.clear().log();
+        match result {
+            Err(HError::RefreshParent) => {},
+            _ => self.get_core()?.clear().log()
+        }
+
         self.get_core()?.get_sender().send(Events::ExclusiveEvent(None))?;
         result
     }
@@ -364,17 +377,15 @@ pub trait Widget {
                     match self.on_event(input) {
                         err @ Err(HError::PopupFinnished) |
                         err @ Err(HError::Quit) |
-                        err @ Err(HError::MiniBufferCancelledInput) => err?,
-                        err @ Err(HError::MiniBufferInputUpdated(_)) => err?,
                         err @ Err(HError::WidgetResizedError) => err?,
+                        event @ Err(HError::MiniBufferEvent(_)) => event?,
                         err @ Err(_) => err.log(),
                         Ok(_) => {}
                     }
                     self.get_core()?.get_sender().send(Events::RequestInput)?;
                 }
                 Events::WidgetReady => {
-                    self.refresh().log();
-                    self.draw().log();
+                    return Err(HError::RefreshParent);
                 }
                 Events::Status(status) => {
                     self.get_core()?.show_status(&status).log();

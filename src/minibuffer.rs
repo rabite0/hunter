@@ -128,6 +128,16 @@ impl History {
     }
 }
 
+#[derive(Clone, Debug)]
+pub enum MiniBufferEvent {
+    Done(String),
+    NewInput(String),
+    Empty,
+    Cancelled,
+    CycleNext,
+    CyclePrev
+}
+
 #[derive(Debug)]
 pub struct MiniBuffer {
     core: WidgetCore,
@@ -171,8 +181,8 @@ impl MiniBuffer {
         self.core.screen()?.cursor_hide().log();
 
         match self.popup() {
-            Err(HError::MiniBufferCancelledInput) => self.input_cancelled()?,
-            err @ Err(HError::MiniBufferInputUpdated(_)) => err?,
+            event @ Err(HError::MiniBufferEvent(_)) => event?,
+            err @ Err(HError::RefreshParent) => err?,
             _ => {}
         };
 
@@ -186,7 +196,6 @@ impl MiniBuffer {
     pub fn clear(&mut self) {
         self.input.clear();
         self.position = 0;
-        self.history.reset();
         self.completions.clear();
         self.last_completion = None;
     }
@@ -255,6 +264,11 @@ impl MiniBuffer {
     }
 
     pub fn history_up(&mut self) -> HResult<()> {
+        if self.query.as_str() == "nav" {
+            return Err(MiniBufferEvent::CyclePrev)?;
+        }
+
+
         if let Ok(historic) = self.history.get_prev(&self.query) {
             self.position = historic.len();
             self.input = historic;
@@ -263,6 +277,11 @@ impl MiniBuffer {
     }
 
     pub fn history_down(&mut self) -> HResult<()> {
+        if self.query.as_str() == "nav" {
+            return Err(MiniBufferEvent::CycleNext)?;
+        }
+
+
         if let Ok(historic) = self.history.get_next(&self.query) {
             self.position = historic.len();
             self.input = historic;
@@ -340,16 +359,16 @@ impl MiniBuffer {
 
     pub fn input_cancelled(&self) -> HResult<()> {
         self.core.show_status("Input cancelled").log();
-        return HError::minibuffer_cancel()
+        return Err(MiniBufferEvent::Cancelled)?;
     }
 
     pub fn input_updated(&self) -> HResult<()> {
-        return HError::input_updated(self.input.clone())
+        return Err(MiniBufferEvent::NewInput(self.input.clone()))?;
     }
 
     pub fn input_empty(&self) -> HResult<()> {
         self.core.show_status("Empty!").log();
-        return HError::minibuffer_empty()
+        return Err(MiniBufferEvent::Empty)?;
     }
 }
 

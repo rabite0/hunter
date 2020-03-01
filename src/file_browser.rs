@@ -631,6 +631,13 @@ impl FileBrowser {
                 self.draw().log();
                 continue;
             }
+
+            if let Err(HError::RefreshParent) = bookmark {
+                self.refresh().log();
+                self.draw().log();
+                continue;
+            }
+
             return bookmark;
         }
     }
@@ -876,11 +883,146 @@ impl FileBrowser {
     }
 
     pub fn turbo_cd(&mut self) -> HResult<()> {
-        let dir = self.core.minibuffer("cd")?;
+        use crate::minibuffer::MiniBufferEvent::*;
 
-        let path = std::path::PathBuf::from(&dir);
-        let dir = File::new_from_path(&path.canonicalize()?)?;
-        self.main_widget_goto(&dir)?;
+        // Return and reset on cancel
+        let orig_dir = self.cwd()?.clone();
+        let orig_dir_selected_file = self.selected_file()?;
+        let mut orig_dir_filter = self.main_widget()?
+                                      .content
+                                      .get_filter();
+
+        // For current dir
+        let mut selected_file = Some(orig_dir_selected_file.clone());
+        let mut filter = Some(orig_dir_filter.clone());
+
+        // Helper function to restore any previous filter/selection
+        let dir_restore =
+            |s: &mut FileBrowser, filter: Option<Option<String>>, file: Option<File>| {
+                s.main_widget_mut()
+                 .map(|mw| {
+                     filter.map(|f| mw.set_filter(f));
+                     file.map(|f| mw.select_file(&f));
+                 }).log();
+            };
+
+        loop {
+            let input = self.core.minibuffer_continuous("nav");
+            // dbg!(&input);
+            // self.refresh().log();
+            // self.draw().log();
+
+            match input {
+                // While minibuffer runs it steals all events, thus explicit refresh/redraw
+                Err(HError::RefreshParent) => {
+                    self.refresh().log();
+                    self.draw().log();
+                    continue;
+                }
+                Err(HError::MiniBufferEvent(event)) => {
+                    match event {
+                        // Done here, restore filter, but leave selection as is
+                        Done(_) | Empty => {
+                            dir_restore(self, filter.take(), None);
+                            self.core.minibuffer_clear().log();
+                            break;
+                        }
+                        NewInput(input) => {
+                            // Don't filter anything until a letter appears
+                            if input.as_str() == "." || input.as_str() == ".." {
+                                continue;
+                            }
+
+                            if input.ends_with('/') {
+                                match input.as_str() {
+                                    "../" => {
+                                        dir_restore(self,
+                                                    filter.take(),
+                                                    selected_file.take());
+                                        self.go_back().log();
+                                        self.core.minibuffer_clear().log();
+                                    }
+                                    _ => {
+                                        let sel = self.selected_file()?;
+
+                                        if sel.is_dir() {
+                                            dir_restore(self,
+                                                        filter.take(),
+                                                        selected_file.take());
+                                            self.main_widget_goto(&sel)?;
+                                            self.core.minibuffer_clear().log();
+                                        }
+                                    }
+                                }
+                                continue;
+                            }
+
+                            // Save current filter, if existing, before overwriting it
+                            // Type is Option<Option<_>>, because filter itself is Option<_>
+                            if filter.is_none() {
+                                let dir_filter = self.main_widget()?
+                                                     .content
+                                                     .get_filter();
+                                filter = Some(dir_filter);
+                            }
+
+                            // To restore on leave/cancel
+                            if selected_file.is_none() {
+                                selected_file = Some(self.selected_file()?);
+                            }
+
+                            self.main_widget_mut()?
+                                .set_filter(Some(input));
+                        }
+                        // Restore original directory and filter/selection
+                        Cancelled => {
+                            self.main_widget_goto(&orig_dir)?;
+                            // Special case, because all others fail if directory isn't ready anyway
+                            self.main_async_widget_mut()?
+                                .widget
+                                .on_ready(move |mw,_| {
+                                    let mw = mw?;
+                                    mw.set_filter(orig_dir_filter.take());
+                                    mw.select_file(&orig_dir_selected_file);
+                                    Ok(())
+                                })?;
+                            break;
+                        }
+                        CycleNext => {
+                            // Because of filtering the selected file isn't just at n+1
+                            let oldpos = self.main_widget()?.get_selection();
+
+                            let mw = self.main_widget_mut()?;
+                            mw.move_down();
+                            mw.update_selected_file(oldpos);
+
+                            // Refresh preview and draw header, too
+                            self.refresh().log();
+                            self.draw().log();
+
+                            // Explicitly selected
+                            selected_file = Some(self.selected_file()?);
+                        }
+                        CyclePrev => {
+                            // Because of filtering the selected file isn't just at n-1
+                            let oldpos = self.main_widget()?.get_selection();
+
+                            let mw = self.main_widget_mut()?;
+                            mw.move_up();
+                            mw.update_selected_file(oldpos);
+
+                            // Refresh preview and draw header, too
+                            self.refresh().log();
+                            self.draw().log();
+
+                            // Explicitly selected
+                            selected_file = Some(self.selected_file()?);
+                        }
+                    }
+                },
+                _ => {  }
+            }
+        }
 
         Ok(())
     }
@@ -1121,13 +1263,36 @@ impl FileBrowser {
 
     pub fn show_procview(&mut self) -> HResult<()> {
         self.preview_widget().map(|preview| preview.cancel_animation()).log();
-        self.proc_view.lock()?.popup()?;
+        let procview = self.proc_view.clone();
+        loop {
+            match procview.lock()?.popup() {
+                // Ignore refresh
+                Err(HError::RefreshParent) => continue,
+                Err(HError::TerminalResizedError) |
+                Err(HError::WidgetResizedError) => self.resize().log(),
+                _ => break
+            }
+        }
         Ok(())
     }
 
     pub fn show_log(&mut self) -> HResult<()> {
         self.preview_widget().map(|preview| preview.cancel_animation()).log();
-        self.log_view.lock()?.popup()?;
+        loop {
+            let res = self.log_view.lock()?.popup();
+
+            if let Err(HError::RefreshParent) = res {
+                continue
+            }
+
+            if let Err(HError::TerminalResizedError) = res {
+                self.resize().log();
+                continue;
+            }
+
+            break
+        }
+
         Ok(())
     }
 
