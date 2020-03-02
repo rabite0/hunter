@@ -61,8 +61,6 @@ impl Acting for ListView<Files> {
     fn do_action(&mut self, action: &Self::Action) -> HResult<()> {
         use FileListAction::*;
 
-        let pos = self.get_selection();
-
         match action {
             Search => self.search_file()?,
             SearchNext => self.search_next()?,
@@ -79,10 +77,6 @@ impl Acting for ListView<Files> {
             ToNextMtime => self.select_next_mtime(),
             ToPrevMtime => self.select_prev_mtime(),
             ToggleDirsFirst => self.toggle_dirs_first(),
-        }
-
-        if pos != self.get_selection() {
-            self.update_selected_file(pos);
         }
 
         Ok(())
@@ -528,7 +522,6 @@ impl ListView<Files>
         let file = self.clone_selected_file();
         self.content.toggle_hidden();
         self.select_file(&file);
-        self.refresh().log();
         self.core.show_status(&format!("Showing hidden files: {}",
                                         self.content.show_hidden)).log();
     }
@@ -546,12 +539,14 @@ impl ListView<Files>
     fn multi_select_file(&mut self) {
         self.selected_file_mut().toggle_selection();
 
-        // Create mutable clone to render change
-        let mut file = self.clone_selected_file();
-        file.toggle_selection();
-
         if !self.content.filter_selected {
+            let oldpos = self.get_selection();
             self.move_down();
+            let newpos = self.get_selection();
+
+            if newpos > oldpos {
+                self.update_selected_file(oldpos);
+            }
         } else {
             if self.content.filter_selected && self.content.len() == 0 {
                 self.content.toggle_filter_selected();
@@ -913,6 +908,7 @@ impl ListView<Files>
         let file = self.clone_selected_file();
 
         if let Ok(Some(_)) = self.content.get_refresh() {
+            // Positions might change when files are added/removed/renamed
             self.select_file(&file);
             self.content.run_jobs(self.core.get_sender());
         }
