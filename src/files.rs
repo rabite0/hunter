@@ -1173,11 +1173,12 @@ impl File {
         let name: &OsStr = unsafe {
             use std::ffi::CStr;
             // &CStr -> &[u8]
-            let s: &[u8] = std::mem::transmute::<&CStr, &[u8]>(direntry.file_name());
+            let s = direntry.file_name() as *const CStr;
+            let s: &[u8] = s.cast::<&[u8]>().as_ref().unwrap();
             // &Cstr -> &OsStr, minus the NULL byte
             let len = s.len();
-            let s = &s[..len-1];
-            std::mem::transmute::<&[u8], &OsStr>(s)
+            let s = &s[..len-1] as *const [u8];
+            s.cast::<&OsStr>().as_ref().unwrap()
         };
 
         // Avoid reallocation on push
