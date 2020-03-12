@@ -33,11 +33,7 @@ pub enum Events {
 
 impl PartialEq for WidgetCore {
     fn eq(&self, other: &WidgetCore) -> bool {
-        if self.coordinates == other.coordinates {
-            true
-        } else {
-            false
-        }
+        self.coordinates == other.coordinates
     }
 }
 
