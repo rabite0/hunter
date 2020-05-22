@@ -72,6 +72,14 @@ impl Widget for FileBrowserWidgets {
             FileBrowserWidgets::Blank(widget) => widget.get_drawlist(),
         }
     }
+
+    fn on_key(&mut self, key: Key) -> HResult<()> {
+        match self {
+            FileBrowserWidgets::FileList(widget) => widget.on_key(key),
+            FileBrowserWidgets::Previewer(widget) => widget.on_key(key),
+            FileBrowserWidgets::Blank(widget) => widget.on_key(key)
+        }
+    }
 }
 
 pub struct FileBrowser {
@@ -854,9 +862,45 @@ impl FileBrowser {
         }
     }
 
+    fn cancel_preview_animation(&mut self) {
+        self.preview_widget_mut()
+            .map(|preview| preview.cancel_animation())
+            .log();
+    }
+
+    fn activate_main_widget(&mut self) {
+        const MAIN_INDEX: usize = 1;
+        self.columns
+            .set_active(MAIN_INDEX)
+            .log();
+    }
+
+    fn activate_preview_widget(&mut self) {
+        const PREVIEW_INDEX: usize = 2;
+        self.columns
+            .set_active(PREVIEW_INDEX)
+            .log();
+    }
+
     pub fn toggle_colums(&mut self) {
-        self.preview_widget().map(|preview| preview.cancel_animation()).log();
-        self.columns.toggle_zoom().log();
+        self.cancel_preview_animation();
+        self.activate_main_widget();
+        self.columns
+            .toggle_zoom()
+            .log();
+    }
+
+    pub fn zoom_preview(&mut self) {
+        self.cancel_preview_animation();
+        self.activate_preview_widget();
+        self.preview_widget_mut()
+            .map(|preview| {
+                preview.reload_text();
+            }).log();
+
+        self.columns
+            .toggle_zoom()
+            .log();
     }
 
     pub fn quit_with_dir(&self) -> HResult<()> {
@@ -1419,13 +1463,25 @@ impl Widget for FileBrowser {
         let sized_path = crate::term::sized_string(&pretty_path, xsize);
         Ok(sized_path.to_string())
     }
+
     fn render_footer(&self) -> HResult<String> {
         let xsize = term::xsize_u();
-        match self.get_core()?.status_bar_content.lock()?.as_mut().take() {
-            Some(status) => Ok(term::sized_string_u(&status, xsize)),
-            _ => { self.get_footer() },
+        let mut status = self.get_core()?
+                             .status_bar_content
+                             .lock()?;
+        let status = status.as_mut()
+                           .take();
+        let active = self.columns
+                         .active
+                         .unwrap_or(1);
+
+        match (status, active) {
+            (Some(status), _) => Ok(term::sized_string_u(&status, xsize)),
+            (_,            2) => self.preview_widget()?.render_footer(),
+            _                 => self.get_footer(),
         }
     }
+
     fn refresh(&mut self) -> HResult<()> {
         self.set_title().log();
         self.columns.refresh().log();
@@ -1441,6 +1497,26 @@ impl Widget for FileBrowser {
     }
 
     fn on_key(&mut self, key: Key) -> HResult<()> {
+        // Special handling for preview zoom
+        let binds = self.search_in();
+        let action = binds.get(key);
+
+        match (action, self.columns.active) {
+            (Some(FileBrowserAction::ZoomPreview), Some(2)) => {
+                self.toggle_colums();
+                return Ok(());
+            }
+            (Some(FileBrowserAction::ZoomPreview), Some(1)) => {
+                self.zoom_preview();
+                return Ok(());
+            }
+            (_, Some(2)) => {
+                self.columns.active_widget_mut()?.on_key(key)?;
+                return Ok(());
+            }
+            _ => {}
+        }
+
         match self.do_key(key) {
             Err(HError::WidgetUndefinedKeyError{..}) => {
                 match self.main_widget_mut()?.on_key(key) {
@@ -1509,6 +1585,7 @@ impl Acting for FileBrowser {
             ShowQuickActions => self.quick_action()?,
             RunSubshell => self.run_subshell()?,
             ToggleColumns => self.toggle_colums(),
+            ZoomPreview => self.zoom_preview(),
             // Tab implementation needs to call exec_cmd because ALL files are needed
             ExecCmd => Err(HError::FileBrowserNeedTabFiles)?
         }

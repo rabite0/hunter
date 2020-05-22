@@ -210,4 +210,8 @@ impl<T> Widget for HBox<T> where T: Widget + PartialEq {
         self.active_widget_mut()?.on_event(event)?;
         Ok(())
     }
+
+    fn on_key(&mut self, key: termion::event::Key) -> HResult<()> {
+        self.active_widget_mut()?.on_key(key)
+    }
 }

@@ -481,6 +481,7 @@ pub enum FileBrowserAction {
     ShowQuickActions,
     RunSubshell,
     ToggleColumns,
+    ZoomPreview,
     ExecCmd
 }
 
@@ -686,6 +687,7 @@ impl Default for Bindings<FileBrowserAction> {
                 ShowQuickActions => Char('a'),
                 RunSubshell => Char('z'),
                 ToggleColumns => Char('c'),
+                ZoomPreview => Char('C'),
                 ExecCmd => Char('!')
             };
 

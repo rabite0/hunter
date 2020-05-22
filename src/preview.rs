@@ -19,7 +19,7 @@ pub type AsyncWidgetFn<W> = dyn FnOnce(&Stale, WidgetCore)
                                        -> HResult<W> + Send + Sync;
 
 lazy_static! {
-    static ref SUBPROC: Arc<Mutex<Option<u32>>> = { Arc::new(Mutex::new(None)) };
+    static ref SUBPROC: Arc<Mutex<Option<u32>>> = Arc::new(Mutex::new(None));
 }
 
 fn kill_proc() -> HResult<()> {
@@ -198,6 +198,10 @@ impl<T: Widget + Send + 'static> Widget for AsyncWidget<T> {
     fn on_key(&mut self, key: termion::event::Key) -> HResult<()> {
         if self.widget().is_err() { return Ok(()) }
         self.widget_mut()?.on_key(key)
+    }
+    fn render_footer(&self) -> HResult<String> {
+        if self.widget().is_err() { return Ok(String::new()) }
+        self.widget()?.render_footer()
     }
 }
 
@@ -454,6 +458,12 @@ impl Previewer {
         }
     }
 
+    pub fn reload_text(&mut self) {
+        match self.widget.widget_mut() {
+            Ok(PreviewWidget::TextView(w)) => w.load_full(),
+            _ => {}
+        }
+    }
 
 
     fn preview_failed<T>(file: &File) -> HResult<T> {
@@ -564,14 +574,11 @@ impl Previewer {
         match previewer {
             ExtPreviewer::Text(previewer) => {
                 if stale.is_stale()? { return Previewer::preview_failed(&file) }
-                let lines = Previewer::run_external(previewer, file, stale);
+                let lines = Previewer::run_external(previewer, file, stale)?;
                 if stale.is_stale()? { return Previewer::preview_failed(&file) }
 
-                let mut textview = TextView {
-                    lines: lines?,
-                    core: core.clone(),
-                    follow: false,
-                    offset: 0};
+                let mut textview = TextView::new_blank(&core);
+                textview.set_lines(lines)?;
                 textview.set_coordinates(&core.coordinates).log();
                 textview.refresh().log();
                 textview.animate_slide_up(Some(animator)).log();
@@ -633,6 +640,10 @@ impl Widget for Previewer {
         self.widget.get_drawlist()
     }
 
+    fn render_footer(&self) -> HResult<String> {
+        self.widget.render_footer()
+    }
+
     fn on_key(&mut self, key: Key) -> HResult<()> {
         self.widget.on_key(key)
     }
@@ -677,6 +688,15 @@ impl Widget for PreviewWidget {
             PreviewWidget::TextView(widget) => widget.get_drawlist(),
             PreviewWidget::ImgView(widget) => widget.get_drawlist(),
             PreviewWidget::MediaView(widget) => widget.get_drawlist()
+        }
+    }
+
+    fn render_footer(&self) -> HResult<String> {
+        match self {
+            PreviewWidget::FileList(widget) => widget.render_footer(),
+            PreviewWidget::TextView(widget) => widget.render_footer(),
+            PreviewWidget::ImgView(widget) => widget.render_footer(),
+            PreviewWidget::MediaView(widget) => widget.render_footer()
         }
     }
 

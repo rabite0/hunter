@@ -455,6 +455,8 @@ pub trait Widget {
             std::thread::sleep(pause);
         }
 
+        self.get_core()?.write_to_screen(&clear).log();
+
         Ok(())
     }
 
