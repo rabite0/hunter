@@ -593,7 +593,15 @@ impl ListView<Files>
 
     fn toggle_tag(&mut self) -> HResult<()> {
         self.selected_file_mut().toggle_tag()?;
+
+        let oldpos = self.get_selection();
         self.move_down();
+        let newpos = self.get_selection();
+
+        if newpos > oldpos {
+            self.update_selected_file(oldpos);
+        }
+
         Ok(())
     }
 
