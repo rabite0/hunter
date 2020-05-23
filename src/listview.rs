@@ -305,6 +305,9 @@ impl FileListBuilder {
         let source = self.source;
         let selected_file = self.selected_file.take();
 
+        // Run ticker for those nice loading animations (...)
+        crate::files::start_ticking(core.get_sender());
+
         // Already sorted
         let nosort = match source {
             FileSource::Files(_) => true,
@@ -344,6 +347,8 @@ impl FileListBuilder {
         self.cache.map(|c| view.content.cache = Some(c));
         view.content.set_clean();
         view.core.set_clean();
+
+        crate::files::stop_ticking();
 
         dbg!(now.elapsed().as_millis());
 
