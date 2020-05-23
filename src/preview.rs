@@ -4,7 +4,7 @@ use termion::event::Key;
 use std::sync::{Arc, Mutex};
 use std::path::PathBuf;
 
-use crate::files::{File, Files, Kind};
+use crate::files::{File, Files, Kind, Ticker};
 use crate::fscache::FsCache;
 use crate::listview::{ListView, FileSource};
 use crate::textview::TextView;
@@ -74,14 +74,12 @@ impl<W: Widget + Send + 'static> AsyncWidget<W> {
         let mut widget = Async::new(move |stale|
                                     closure(stale).map_err(|e| e.into()));
         widget.on_ready(move |_, stale| {
-            crate::files::stop_ticking();
             if !stale.is_stale()? {
                 sender.lock().map(|s| s.send(crate::widget::Events::WidgetReady)).ok();
             }
             Ok(())
         }).log();
 
-        crate::files::start_ticking(core.get_sender());
         widget.run().log();
 
         AsyncWidget {
@@ -104,7 +102,6 @@ impl<W: Widget + Send + 'static> AsyncWidget<W> {
         });
 
         widget.on_ready(move |_, stale| {
-            crate::files::stop_ticking();
             if !stale.is_stale()? {
                 sender.lock()
                     .map(|s| s.send(crate::widget::Events::WidgetReady))
@@ -113,7 +110,6 @@ impl<W: Widget + Send + 'static> AsyncWidget<W> {
             Ok(())
         }).log();
 
-        crate::files::start_ticking(self.core.get_sender());
         widget.run().log();
 
         self.widget = widget;
@@ -414,6 +410,8 @@ impl Previewer {
                             return Ok(PreviewWidget::MediaView(mediaview));
                         }
                         "image" if has_media => {
+                            // Show animation while image is loading, Drop stops it automatically
+                            Ticker::start_ticking(core.get_sender());
                             let imgview = ImgView::new_from_file(core.clone(),
                                                                  &file.path())?;
                             return Ok(PreviewWidget::ImgView(imgview));
@@ -499,7 +497,11 @@ impl Previewer {
                     stale: &Stale,
                     animator: &Stale)
                     -> HResult<PreviewWidget> {
+        // Show animation while text is loading
+        let mut ticker = Ticker::start_ticking(core.get_sender());
+
         let lines = core.coordinates.ysize() as usize;
+
         let mut textview
             = TextView::new_from_file_limit_lines(&core,
                                                   &file,
@@ -511,6 +513,8 @@ impl Previewer {
 
         if stale.is_stale()? { return Previewer::preview_failed(&file) }
 
+        // Prevent flicker during slide up
+        ticker.stop_ticking();
         textview.animate_slide_up(Some(animator))?;
         Ok(PreviewWidget::TextView(textview))
     }
@@ -565,6 +569,9 @@ impl Previewer {
                         stale: &Stale,
                         animator: &Stale)
                         -> HResult<PreviewWidget> {
+        // Show animation while preview is being generated
+        let mut ticker = Ticker::start_ticking(core.get_sender());
+
         let previewer = if core.config().graphics.as_str() != "unicode" {
              find_previewer(&file, true)?
         } else {
@@ -581,6 +588,8 @@ impl Previewer {
                 textview.set_lines(lines)?;
                 textview.set_coordinates(&core.coordinates).log();
                 textview.refresh().log();
+                // Prevent flicker during slide up
+                ticker.stop_ticking();
                 textview.animate_slide_up(Some(animator)).log();
 
                 Ok(PreviewWidget::TextView(textview))
@@ -590,7 +599,6 @@ impl Previewer {
                 let gfile = lines.first()?;
                 let imgview = ImgView::new_from_file(core.clone(),
                                                      &PathBuf::from(&gfile))?;
-
                 Ok(PreviewWidget::ImgView(imgview))
             }
         }

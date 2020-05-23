@@ -60,7 +60,7 @@ pub fn start_ticking(sender: Sender<Events>) {
     use std::time::Duration;
 
     IOTICK_CLIENTS.fetch_add(1, Ordering::Relaxed);
-    if IOTICK_CLIENTS.load(Ordering::Acquire) == 1 {
+    if IOTICK_CLIENTS.load(Ordering::Relaxed) == 1 {
         std::thread::spawn(move || {
             IOTICK.store(0, Ordering::Relaxed);
 
@@ -76,7 +76,7 @@ pub fn start_ticking(sender: Sender<Events>) {
                       .unwrap();
 
                 // All jobs done?
-                if IOTICK_CLIENTS.load(Ordering::Acquire) == 0 {
+                if IOTICK_CLIENTS.load(Ordering::Relaxed) == 0 {
                     IOTICK.store(0, Ordering::Relaxed);
                     return;
                 }
@@ -1645,5 +1645,34 @@ impl File {
 
     pub fn short_string(&self) -> String {
         self.path.short_string()
+    }
+}
+
+
+
+// Small wrapper that simplifies stopping with more complex control flow
+pub struct Ticker {
+    invalidated: bool
+}
+
+impl Ticker {
+    pub fn start_ticking(sender: Sender<Events>) -> Self {
+        start_ticking(sender);
+        Ticker {
+            invalidated: false
+        }
+    }
+
+    pub fn stop_ticking(&mut self) {
+        stop_ticking();
+        self.invalidated = true;
+    }
+}
+
+impl Drop for Ticker {
+    fn drop(&mut self) {
+        if !self.invalidated {
+            self.stop_ticking();
+        }
     }
 }
