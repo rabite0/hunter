@@ -1,26 +1,26 @@
-use std::sync::{Arc, Mutex};
-use std::sync::mpsc::Sender;
-use std::process::{Child, Command};
-use std::os::unix::process::{CommandExt, ExitStatusExt};
-use std::io::{BufRead, BufReader};
 use std::ffi::OsString;
+use std::io::{BufRead, BufReader};
 use std::os::unix::ffi::OsStrExt;
+use std::os::unix::process::{CommandExt, ExitStatusExt};
+use std::process::{Child, Command};
+use std::sync::mpsc::Sender;
+use std::sync::{Arc, Mutex};
 
+use async_value::Stale;
+use osstrtools::{OsStrConcat, OsStrTools, OsStringTools};
 use termion::event::Key;
 use unicode_width::UnicodeWidthStr;
-use osstrtools::{OsStringTools, OsStrTools, OsStrConcat};
-use async_value::Stale;
 
-use crate::listview::{Listable, ListView};
-use crate::textview::TextView;
-use crate::widget::{Widget, Events, WidgetCore};
 use crate::coordinates::Coordinates;
-use crate::preview::AsyncWidget;
 use crate::dirty::Dirtyable;
-use crate::hbox::HBox;
-use crate::fail::{HResult, HError, ErrorLog};
-use crate::term::{self, ScreenExt};
+use crate::fail::{ErrorLog, HError, HResult};
 use crate::files::File;
+use crate::hbox::HBox;
+use crate::listview::{ListView, Listable};
+use crate::preview::AsyncWidget;
+use crate::term::{self, ScreenExt};
+use crate::textview::TextView;
+use crate::widget::{Events, Widget, WidgetCore};
 
 #[derive(Debug)]
 struct Process {
@@ -29,8 +29,7 @@ struct Process {
     output: Arc<Mutex<String>>,
     status: Arc<Mutex<Option<i32>>>,
     success: Arc<Mutex<Option<bool>>>,
-    sender: Sender<Events>
-
+    sender: Sender<Events>,
 }
 
 pub struct Cmd {
@@ -47,7 +46,9 @@ pub struct Cmd {
 impl Cmd {
     fn process(&mut self) -> Vec<OsString> {
         // Split the string now, so inserted files aren't screwed up by substitutions
-        let cmd = self.cmd.split(" ")
+        let cmd = self
+            .cmd
+            .split(" ")
             .into_iter()
             .map(|s| s.to_os_string())
             .collect();
@@ -59,13 +60,17 @@ impl Cmd {
         cmd
     }
 
-    fn perform_substitution(&self,
-                            cmd: Vec<OsString>,
-                            pat: &str,
-                            files: Vec<File>) -> Vec<OsString> {
-        if !self.cmd.contains(pat) { return cmd; }
+    fn perform_substitution(
+        &self,
+        cmd: Vec<OsString>,
+        pat: &str,
+        files: Vec<File>,
+    ) -> Vec<OsString> {
+        if !self.cmd.contains(pat) {
+            return cmd;
+        }
 
-        let files =  files
+        let files = files
             .into_iter()
             .map(|file|
                  // strip out the cwd part to make path shorter
@@ -80,25 +85,30 @@ impl Cmd {
                 // If this part isn't the pattern, just return it as is
                 match part != pat {
                     true => part,
-                    false => part.splice(pat,
-                                         &files)
-                        .assemble_with_sep_and_wrap(" ", "'")
+                    false => part
+                        .splice(pat, &files)
+                        .assemble_with_sep_and_wrap(" ", "'"),
                 }
             })
             .collect()
     }
 
     fn substitute_cwd_files(&mut self, cmd: Vec<OsString>) -> Vec<OsString> {
-        if self.cwd_files.is_none() { return cmd; }
+        if self.cwd_files.is_none() {
+            return cmd;
+        }
         let files = self.cwd_files.take().unwrap();
         self.perform_substitution(cmd, "$s", files)
     }
 
     fn substitute_tab_files(&mut self, cmd: Vec<OsString>) -> Vec<OsString> {
-        if self.tab_files.is_none() { return cmd; }
+        if self.tab_files.is_none() {
+            return cmd;
+        }
         let tab_files = self.tab_files.take().unwrap();
 
-        tab_files.into_iter()
+        tab_files
+            .into_iter()
             .enumerate()
             .fold(cmd, |cmd, (i, tab_files)| {
                 let tab_files_pat = String::from(format!("${}s", i));
@@ -107,10 +117,13 @@ impl Cmd {
     }
 
     fn substitute_tab_paths(&mut self, cmd: Vec<OsString>) -> Vec<OsString> {
-        if self.tab_paths.is_none() { return cmd; }
+        if self.tab_paths.is_none() {
+            return cmd;
+        }
         let tab_paths = self.tab_paths.take().unwrap();
 
-        tab_paths.into_iter()
+        tab_paths
+            .into_iter()
             .enumerate()
             .fold(cmd, |cmd, (i, tab_path)| {
                 let tab_path_pat = String::from(format!("${}", i));
@@ -136,7 +149,11 @@ impl Process {
         let pid = self.handle.lock()?.id();
 
         std::thread::spawn(move || -> HResult<()> {
-            let stdout = handle.lock()?.stdout.take()?;
+            let stdout = handle
+                .lock()?
+                .stdout
+                .take()
+                .ok_or_else(|| HError::NoneError)?;
             let mut stdout = BufReader::new(stdout);
             let mut processor = move |cmd, sender: &Sender<Events>| -> HResult<()> {
                 loop {
@@ -144,7 +161,9 @@ impl Process {
                     let len = buffer.len();
                     let buffer = String::from_utf8_lossy(buffer);
 
-                    if len == 0 { return Ok(()) }
+                    if len == 0 {
+                        return Ok(());
+                    }
 
                     output.lock()?.push_str(&buffer);
 
@@ -163,32 +182,32 @@ impl Process {
                 let proc_success = proc_status.success();
                 let proc_status = match proc_status.code() {
                     Some(status) => status,
-                    None => proc_status.signal().unwrap_or(-1)
+                    None => proc_status.signal().unwrap_or(-1),
                 };
 
                 *success.lock()? = Some(proc_success);
                 *status.lock()? = Some(proc_status);
 
-                let color_success =
-                    if proc_success {
-                        format!("{}successfully", term::color_green())
-                    } else {
-                        format!("{}unsuccessfully", term::color_red())
-                    };
+                let color_success = if proc_success {
+                    format!("{}successfully", term::color_green())
+                } else {
+                    format!("{}unsuccessfully", term::color_red())
+                };
 
-                let color_status =
-                    if proc_success {
-                        format!("{}{}", term::color_green(), proc_status)
-                    } else {
-                        format!("{}{}", term::color_red(), proc_status)
-                    };
+                let color_status = if proc_success {
+                    format!("{}{}", term::color_green(), proc_status)
+                } else {
+                    format!("{}{}", term::color_red(), proc_status)
+                };
 
-                let status = format!("Process: {}:{} exited {}{} with status: {}",
-                                     cmd,
-                                     pid,
-                                     color_success,
-                                     term::normal_color(),
-                                     color_status);
+                let status = format!(
+                    "Process: {}:{} exited {}{} with status: {}",
+                    cmd,
+                    pid,
+                    color_success,
+                    term::normal_color(),
+                    color_status
+                );
                 sender.send(Events::Status(status))?;
             }
             Ok(())
@@ -200,11 +219,14 @@ impl Process {
 
 impl Listable for ListView<Vec<Process>> {
     type Item = ();
-    fn len(&self) -> usize { self.content.len() }
+    fn len(&self) -> usize {
+        self.content.len()
+    }
     fn render(&self) -> Vec<String> {
-        self.content.iter().map(|proc| {
-            self.render_proc(proc).unwrap()
-        }).collect()
+        self.content
+            .iter()
+            .map(|proc| self.render_proc(proc).unwrap())
+            .collect()
     }
     fn on_refresh(&mut self) -> HResult<()> {
         self.core.set_dirty();
@@ -227,7 +249,8 @@ impl ListView<Vec<Process>> {
 
         // Nicer for display
         let short = "~";
-        let short_cmd = cmd_args.clone()
+        let short_cmd = cmd_args
+            .clone()
             .replace(&home, short)
             .replace("'\''", "'")
             .replace("\"", "")
@@ -256,14 +279,15 @@ impl ListView<Vec<Process>> {
 
     fn run_proc_raw(&mut self, cmd: Cmd) -> HResult<()> {
         let real_cmd = cmd.cmd;
-        let short_cmd = cmd.short_cmd
-            .unwrap_or(real_cmd
-                       .to_string_lossy()
-                       .to_string());
+        let short_cmd = cmd
+            .short_cmd
+            .unwrap_or(real_cmd.to_string_lossy().to_string());
         let args = cmd.args.unwrap_or(vec![]);
         let vars = cmd.vars.unwrap_or(vec![]);
 
-        self.core.show_status(&format!("Running: {}", &short_cmd)).log();
+        self.core
+            .show_status(&format!("Running: {}", &short_cmd))
+            .log();
 
         // Need pre_exec here to interleave stderr with stdout
         let handle = unsafe {
@@ -273,15 +297,17 @@ impl ListView<Vec<Process>> {
                 .stdin(std::process::Stdio::null())
                 .stdout(std::process::Stdio::piped())
                 // Without this stderr would be separate which is no good for procview
-                .pre_exec(||  { libc::dup2(1, 2); Ok(()) })
+                .pre_exec(|| {
+                    libc::dup2(1, 2);
+                    Ok(())
+                })
                 .spawn()
         };
 
         let handle = match handle {
             Ok(handle) => handle,
             Err(e) => {
-                let msg = format!("Error! Failed to start process: {}",
-                                  e);
+                let msg = format!("Error! Failed to start process: {}", e);
                 self.core.show_status(&msg)?;
                 return Err(e)?;
             }
@@ -293,7 +319,7 @@ impl ListView<Vec<Process>> {
             output: Arc::new(Mutex::new(String::new())),
             status: Arc::new(Mutex::new(None)),
             success: Arc::new(Mutex::new(None)),
-            sender: self.get_core()?.get_sender()
+            sender: self.get_core()?.get_sender(),
         };
         proc.read_proc()?;
         self.content.push(proc);
@@ -302,67 +328,63 @@ impl ListView<Vec<Process>> {
 
     fn run_proc_raw_fg(&mut self, cmd: Cmd) -> HResult<()> {
         let real_cmd = cmd.cmd;
-        let short_cmd = cmd.short_cmd
-                           .unwrap_or(real_cmd
-                                      .to_string_lossy()
-                                      .to_string());
+        let short_cmd = cmd
+            .short_cmd
+            .unwrap_or(real_cmd.to_string_lossy().to_string());
         let args = cmd.args.unwrap_or(vec![]);
 
-        self.core.show_status(&format!("Running (fg): {}", &short_cmd)).log();
+        self.core
+            .show_status(&format!("Running (fg): {}", &short_cmd))
+            .log();
 
-        self.core.screen.goto_xy(0,0)?;
+        self.core.screen.goto_xy(0, 0)?;
         self.core.screen.reset()?;
         self.core.screen.suspend()?;
 
-        match Command::new(real_cmd)
-            .args(args)
-            .status() {
-                Ok(status) => {
-                    let color_success =
-                        if status.success() {
-                            format!("{}successfully", term::color_green())
-                        } else {
-                            format!("{}unsuccessfully", term::color_red())
-                        };
+        match Command::new(real_cmd).args(args).status() {
+            Ok(status) => {
+                let color_success = if status.success() {
+                    format!("{}successfully", term::color_green())
+                } else {
+                    format!("{}unsuccessfully", term::color_red())
+                };
 
-                    let color_status =
-                        if status.success() {
-                            format!("{}{}",
-                                    term::color_green(),
-                                    status.code().unwrap_or(status
-                                                            .signal()
-                                                            .unwrap_or(-1)))
-                        } else {
-                            format!("{}{}",
-                                    term::color_red(),
-                                    status.code().unwrap_or(status
-                                                            .signal()
-                                                            .unwrap_or(-1)))
+                let color_status = if status.success() {
+                    format!(
+                        "{}{}",
+                        term::color_green(),
+                        status.code().unwrap_or(status.signal().unwrap_or(-1))
+                    )
+                } else {
+                    format!(
+                        "{}{}",
+                        term::color_red(),
+                        status.code().unwrap_or(status.signal().unwrap_or(-1))
+                    )
+                };
 
-                        };
+                let procinfo = format!(
+                    "{} exited {}{}{} with status: {}",
+                    short_cmd,
+                    color_success,
+                    term::reset(),
+                    term::status_bg(),
+                    color_status
+                );
 
-
-                    let procinfo = format!("{} exited {}{}{} with status: {}",
-                                           short_cmd,
-                                           color_success,
-                                           term::reset(),
-                                           term::status_bg(),
-                                           color_status);
-
-                    self.core.show_status(&procinfo)?;
-                },
-                err @ Err(_) => {
-                    self.core.show_status(&format!("{}{} ",
-                                                  "Couldn't start process:",
-                                                   short_cmd))?;
-                    err?;
-                }
+                self.core.show_status(&procinfo)?;
             }
+            err @ Err(_) => {
+                self.core
+                    .show_status(&format!("{}{} ", "Couldn't start process:", short_cmd))?;
+                err?;
+            }
+        }
         Ok(())
     }
 
     fn kill_proc(&mut self) -> HResult<()> {
-        let proc = self.selected_proc()?;
+        let proc = self.selected_proc().ok_or_else(|| HError::NoneError)?;
         proc.handle.lock()?.kill()?;
         Ok(())
     }
@@ -393,22 +415,25 @@ impl ListView<Vec<Process>> {
         let padding = xsize - padding as u16;
 
         let color_status = match *proc.success.lock().unwrap() {
-            Some(false) => { format!("{}{}", term::color_red(), status) }
-            _ => { status }
+            Some(false) => format!("{}{}", term::color_red(), status),
+            _ => status,
         };
 
         Ok(format!(
             "{}{}{}{}{}{}",
             termion::cursor::Save,
-            format!("{}{:padding$}{}",
-                    term::normal_color(),
-                    &sized_string,
-                    term::normal_color(),
-                    padding = padding as usize),
+            format!(
+                "{}{:padding$}{}",
+                term::normal_color(),
+                &sized_string,
+                term::normal_color(),
+                padding = padding as usize
+            ),
             termion::cursor::Restore,
             termion::cursor::Right(status_pos),
             term::highlight_color(),
-            color_status))
+            color_status
+        ))
     }
 }
 
@@ -422,25 +447,25 @@ impl Widget for ProcViewWidgets {
     fn get_core(&self) -> HResult<&WidgetCore> {
         match self {
             ProcViewWidgets::List(widget) => widget.get_core(),
-            ProcViewWidgets::TextView(widget) => widget.get_core()
+            ProcViewWidgets::TextView(widget) => widget.get_core(),
         }
     }
     fn get_core_mut(&mut self) -> HResult<&mut WidgetCore> {
         match self {
             ProcViewWidgets::List(widget) => widget.get_core_mut(),
-            ProcViewWidgets::TextView(widget) => widget.get_core_mut()
+            ProcViewWidgets::TextView(widget) => widget.get_core_mut(),
         }
     }
     fn refresh(&mut self) -> HResult<()> {
         match self {
             ProcViewWidgets::List(widget) => widget.refresh(),
-            ProcViewWidgets::TextView(widget) => widget.refresh()
+            ProcViewWidgets::TextView(widget) => widget.refresh(),
         }
     }
     fn get_drawlist(&self) -> HResult<String> {
         match self {
             ProcViewWidgets::List(widget) => widget.get_drawlist(),
-            ProcViewWidgets::TextView(widget) => widget.get_drawlist()
+            ProcViewWidgets::TextView(widget) => widget.get_drawlist(),
         }
     }
 }
@@ -450,26 +475,26 @@ pub struct ProcView {
     core: WidgetCore,
     hbox: HBox<ProcViewWidgets>,
     viewing: Option<usize>,
-    animator: Stale
+    animator: Stale,
 }
 
 impl HBox<ProcViewWidgets> {
     fn get_listview(&self) -> &ListView<Vec<Process>> {
         match &self.widgets[0] {
             ProcViewWidgets::List(listview) => listview,
-            _ => unreachable!()
+            _ => unreachable!(),
         }
     }
     fn get_listview_mut(&mut self) -> &mut ListView<Vec<Process>> {
         match &mut self.widgets[0] {
             ProcViewWidgets::List(listview) => listview,
-            _ => unreachable!()
+            _ => unreachable!(),
         }
     }
     fn get_textview(&mut self) -> &mut AsyncWidget<TextView> {
         match &mut self.widgets[1] {
             ProcViewWidgets::TextView(textview) => textview,
-            _ => unreachable!()
+            _ => unreachable!(),
         }
     }
 }
@@ -491,11 +516,11 @@ impl ProcView {
             core: core.clone(),
             hbox: hbox,
             viewing: None,
-            animator: Stale::new()
+            animator: Stale::new(),
         }
     }
 
-    fn get_listview(& self) -> & ListView<Vec<Process>> {
+    fn get_listview(&self) -> &ListView<Vec<Process>> {
         self.hbox.get_listview()
     }
 
@@ -518,7 +543,9 @@ impl ProcView {
     }
 
     pub fn remove_proc(&mut self) -> HResult<()> {
-        if self.get_listview_mut().content.len() == 0 { return Ok(()) }
+        if self.get_listview_mut().content.len() == 0 {
+            return Ok(());
+        }
         self.get_listview_mut().remove_proc()?;
         self.get_textview().get_core()?.clear().log();
         self.get_textview().widget_mut()?.set_text("").log();
@@ -530,17 +557,25 @@ impl ProcView {
         if Some(self.get_listview_mut().get_selection()) == self.viewing {
             return Ok(());
         }
-        let output = self.get_listview_mut().selected_proc()?.output.lock()?.clone();
+        let output = self
+            .get_listview_mut()
+            .selected_proc()
+            .ok_or_else(|| HError::NoneError)?
+            .output
+            .lock()?
+            .clone();
 
         let animator = self.animator.clone();
         animator.set_fresh().log();
 
-        self.get_textview().change_to(move |_, core| {
-            let mut textview = TextView::new_blank(&core);
-            textview.set_text(&output).log();
-            textview.animate_slide_up(Some(&animator)).log();
-            Ok(textview)
-        }).log();
+        self.get_textview()
+            .change_to(move |_, core| {
+                let mut textview = TextView::new_blank(&core);
+                textview.set_text(&output).log();
+                textview.animate_slide_up(Some(&animator)).log();
+                Ok(textview)
+            })
+            .log();
 
         self.viewing = Some(self.get_listview_mut().get_selection());
         Ok(())
@@ -604,9 +639,7 @@ impl Widget for ProcView {
             .filter(|proc| proc.status.lock().unwrap().is_none())
             .count();
 
-        let header = format!("Running processes: {} / {}",
-                             procs_running,
-                             procs_num);
+        let header = format!("Running processes: {} / {}", procs_running, procs_num);
         Ok(header)
     }
 
@@ -622,36 +655,42 @@ impl Widget for ProcView {
             let proc_success = proc.success.lock()?;
 
             let procinfo = if proc_status.is_some() {
-                let color_success =
-                    if let Some(_) = *proc_success {
-                        format!("{}successfully", term::color_green())
+                let color_success = if let Some(_) = *proc_success {
+                    format!("{}successfully", term::color_green())
+                } else {
+                    format!("{}unsuccessfully", term::color_red())
+                };
+
+                let color_status = if let Some(success) = *proc_success {
+                    if success {
+                        format!("{}{}", term::color_green(), proc_status.unwrap())
                     } else {
-                        format!("{}unsuccessfully", term::color_red())
-                    };
+                        format!("{}{}", term::color_red(), proc_status.unwrap())
+                    }
+                } else {
+                    "wtf".to_string()
+                };
 
-                let color_status =
-                    if let Some(success) = *proc_success {
-                        if success {
-                            format!("{}{}", term::color_green(), proc_status.unwrap())
-                        } else {
-                            format!("{}{}", term::color_red(), proc_status.unwrap())
-                        }
-                    } else { "wtf".to_string() };
-
-                let procinfo = format!("{}:{} exited {}{}{} with status: {}",
-                                     cmd,
-                                     pid,
-                                     color_success,
-                                     term::reset(),
-                                     term::status_bg(),
-                                     color_status);
+                let procinfo = format!(
+                    "{}:{} exited {}{}{} with status: {}",
+                    cmd,
+                    pid,
+                    color_success,
+                    term::reset(),
+                    term::status_bg(),
+                    color_status
+                );
                 procinfo
-            } else { "still running".to_string() };
+            } else {
+                "still running".to_string()
+            };
 
             let footer = term::sized_string_u(&procinfo, xsize);
 
             Ok(footer)
-        } else { Ok("No proccesses".to_string()) }
+        } else {
+            Ok("No proccesses".to_string())
+        }
     }
 
     fn refresh(&mut self) -> HResult<()> {
@@ -677,8 +716,6 @@ impl Widget for ProcView {
     }
 }
 
-
-
 use crate::keybind::*;
 
 impl Acting for ProcView {
@@ -696,9 +733,11 @@ impl Acting for ProcView {
         use ProcessAction::*;
 
         match action {
-            Close => { self.animator.set_stale().log();
-                       self.core.clear().log();
-                       Err(HError::PopupFinnished)? }
+            Close => {
+                self.animator.set_stale().log();
+                self.core.clear().log();
+                Err(HError::PopupFinnished)?
+            }
             Remove => self.remove_proc()?,
             Kill => self.get_listview_mut().kill_proc()?,
             FollowOutput => self.toggle_follow()?,
@@ -707,16 +746,15 @@ impl Acting for ProcView {
             ScrollOutputPageDown => self.page_down()?,
             ScrollOutputPageUp => self.page_up()?,
             ScrollOutputBottom => self.scroll_bottom()?,
-            ScrollOutputTop => self.scroll_top()?
+            ScrollOutputTop => self.scroll_top()?,
         }
 
         Ok(())
     }
 }
 
-
 impl Acting for ListView<Vec<Process>> {
-    type Action=ProcessAction;
+    type Action = ProcessAction;
 
     fn search_in(&self) -> Bindings<Self::Action> {
         self.core.config().keybinds.process
@@ -726,8 +764,18 @@ impl Acting for ListView<Vec<Process>> {
         use Movement::*;
 
         match movement {
-            Up(n) => { for _ in 0..*n { self.move_up(); }; self.refresh()?; }
-            Down(n) => { for _ in 0..*n { self.move_down(); }; self.refresh()?; }
+            Up(n) => {
+                for _ in 0..*n {
+                    self.move_up();
+                }
+                self.refresh()?;
+            }
+            Down(n) => {
+                for _ in 0..*n {
+                    self.move_down();
+                }
+                self.refresh()?;
+            }
             PageUp => self.page_up(),
             PageDown => self.page_down(),
             Top => self.move_top(),

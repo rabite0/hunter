@@ -1,13 +1,12 @@
-use lazy_static;
 use clap;
+use lazy_static;
 
 use std::sync::RwLock;
 
 use crate::paths;
 
-use crate::fail::{HError, HResult, ErrorLog};
+use crate::fail::{ErrorLog, HError, HResult};
 use crate::keybind::KeyBinds;
-
 
 #[derive(Clone)]
 // These are options, so we know if they have been set or not
@@ -24,15 +23,14 @@ impl ArgvConfig {
             animation: None,
             show_hidden: None,
             icons: None,
-            graphics: None
+            graphics: None,
         }
     }
 }
 
 lazy_static! {
-    static ref ARGV_CONFIG: RwLock<ArgvConfig>  = RwLock::new(ArgvConfig::new());
+    static ref ARGV_CONFIG: RwLock<ArgvConfig> = RwLock::new(ArgvConfig::new());
 }
-
 
 pub fn set_argv_config(args: clap::ArgMatches) -> HResult<()> {
     let animation = args.is_present("animation-off");
@@ -66,7 +64,7 @@ pub fn set_argv_config(args: clap::ArgMatches) -> HResult<()> {
 }
 
 fn get_argv_config() -> HResult<ArgvConfig> {
-        Ok(ARGV_CONFIG.try_read()?.clone())
+    Ok(ARGV_CONFIG.try_read()?.clone())
 }
 
 fn infuse_argv_config(mut config: Config) -> Config {
@@ -93,11 +91,10 @@ pub struct Config {
     pub media_mute: bool,
     pub media_previewer: String,
     pub media_previewer_exists: bool,
-    pub ratios: Vec::<usize>,
+    pub ratios: Vec<usize>,
     pub graphics: String,
     pub keybinds: KeyBinds,
 }
-
 
 impl Config {
     pub fn new() -> Config {
@@ -119,7 +116,7 @@ impl Config {
             media_mute: false,
             media_previewer: "hunter-media".to_string(),
             media_previewer_exists: false,
-            ratios: vec![20,30,49],
+            ratios: vec![20, 30, 49],
             graphics: detect_g_mode(),
             keybinds: KeyBinds::default(),
         }
@@ -134,80 +131,84 @@ impl Config {
 
         let config_string = std::fs::read_to_string(config_path)?;
 
-        let config = config_string.lines().fold(Config::new(), |mut config, line| {
-            match Config::prep_line(line) {
-                Ok(("animation", "on")) => config.animation = true,
-                Ok(("animation", "off")) => config.animation = false,
-                Ok(("animation_refresh_frequency", frequency)) => {
-                    match frequency.parse::<usize>() {
-                        Ok(parsed_freq) => config.animation_refresh_frequency = parsed_freq,
-                        _ => HError::config_error::<Config>(line.to_string()).log()
+        let config = config_string
+            .lines()
+            .fold(Config::new(), |mut config, line| {
+                match Config::prep_line(line) {
+                    Ok(("animation", "on")) => config.animation = true,
+                    Ok(("animation", "off")) => config.animation = false,
+                    Ok(("animation_refresh_frequency", frequency)) => {
+                        match frequency.parse::<usize>() {
+                            Ok(parsed_freq) => config.animation_refresh_frequency = parsed_freq,
+                            _ => HError::config_error::<Config>(line.to_string()).log(),
+                        }
                     }
-                }
-                Ok(("show_hidden", "on")) => config.show_hidden = true,
-                Ok(("show_hidden", "off")) => config.show_hidden = false,
-                Ok(("icons", "on")) => config.icons = true,
-                Ok(("icons", "off")) => config.icons = false,
-                Ok(("icons_space", "on")) => config.icons_space = true,
-                Ok(("icons_space", "off")) => config.icons_space = false,
-                Ok(("select_cmd", cmd)) => {
-                    let cmd = cmd.to_string();
-                    config.select_cmd = cmd;
-                }
-                Ok(("cd_cmd", cmd)) => {
-                    let cmd = cmd.to_string();
-                    config.cd_cmd = cmd;
-                }
-                Ok(("media_autoplay", "on")) => config.media_autoplay = true,
-                Ok(("media_autoplay", "off")) => config.media_autoplay = false,
-                Ok(("media_mute", "on")) => config.media_mute = true,
-                Ok(("media_mute", "off")) => config.media_mute = false,
-                Ok(("media_previewer", cmd)) => {
-                    let cmd = cmd.to_string();
-                    config.media_previewer = cmd;
-                },
-                Ok(("ratios", ratios)) => {
-                    let ratios_str = ratios.to_string();
-                    if ratios_str.chars().all(|x| x.is_digit(10) || x.is_whitespace()
-                        || x == ':' || x == ',' ) {
-                        let ratios: Vec<usize> = ratios_str.split([',', ':'].as_ref())
-                            .map(|r| r.trim()
-                                 .parse().unwrap())
-                            .collect();
-                        let ratios_sum: usize = ratios.iter().sum();
-                        if ratios.len() == 3 && ratios_sum > 0 &&
-                            ratios
-                            .iter()
-                            .filter(|&r| *r > u16::max_value() as usize)
-                            .next() == None {
+                    Ok(("show_hidden", "on")) => config.show_hidden = true,
+                    Ok(("show_hidden", "off")) => config.show_hidden = false,
+                    Ok(("icons", "on")) => config.icons = true,
+                    Ok(("icons", "off")) => config.icons = false,
+                    Ok(("icons_space", "on")) => config.icons_space = true,
+                    Ok(("icons_space", "off")) => config.icons_space = false,
+                    Ok(("select_cmd", cmd)) => {
+                        let cmd = cmd.to_string();
+                        config.select_cmd = cmd;
+                    }
+                    Ok(("cd_cmd", cmd)) => {
+                        let cmd = cmd.to_string();
+                        config.cd_cmd = cmd;
+                    }
+                    Ok(("media_autoplay", "on")) => config.media_autoplay = true,
+                    Ok(("media_autoplay", "off")) => config.media_autoplay = false,
+                    Ok(("media_mute", "on")) => config.media_mute = true,
+                    Ok(("media_mute", "off")) => config.media_mute = false,
+                    Ok(("media_previewer", cmd)) => {
+                        let cmd = cmd.to_string();
+                        config.media_previewer = cmd;
+                    }
+                    Ok(("ratios", ratios)) => {
+                        let ratios_str = ratios.to_string();
+                        if ratios_str
+                            .chars()
+                            .all(|x| x.is_digit(10) || x.is_whitespace() || x == ':' || x == ',')
+                        {
+                            let ratios: Vec<usize> = ratios_str
+                                .split([',', ':'].as_ref())
+                                .map(|r| r.trim().parse().unwrap())
+                                .collect();
+                            let ratios_sum: usize = ratios.iter().sum();
+                            if ratios.len() == 3
+                                && ratios_sum > 0
+                                && ratios
+                                    .iter()
+                                    .filter(|&r| *r > u16::max_value() as usize)
+                                    .next()
+                                    == None
+                            {
                                 config.ratios = ratios;
                             }
+                        }
+                    }
+                    #[cfg(feature = "sixel")]
+                    Ok(("graphics", "sixel")) => config.graphics = "sixel".to_string(),
+                    Ok(("graphics", "kitty")) => config.graphics = "kitty".to_string(),
+                    Ok(("graphics", "auto")) => config.graphics = detect_g_mode(),
+                    _ => {
+                        HError::config_error::<Config>(line.to_string()).log();
                     }
                 }
-                #[cfg(feature = "sixel")]
-                Ok(("graphics",
-                    "sixel")) => config.graphics = "sixel".to_string(),
-                Ok(("graphics",
-                    "kitty")) => config.graphics = "kitty".to_string(),
-                Ok(("graphics",
-                    "auto")) => config.graphics = detect_g_mode(),
-                _ => { HError::config_error::<Config>(line.to_string()).log(); }
-            }
 
-            #[cfg(feature = "img")]
-            match has_media_previewer(&config.media_previewer) {
-                t @ _ => config.media_previewer_exists = t
-            }
+                #[cfg(feature = "img")]
+                match has_media_previewer(&config.media_previewer) {
+                    t @ _ => config.media_previewer_exists = t,
+                }
 
-            config
-        });
+                config
+            });
 
         let mut config = infuse_argv_config(config);
 
         //use std::iter::Extend;
-        KeyBinds::load()
-            .map(|kb| config.keybinds = kb)
-            .log();
+        KeyBinds::load().map(|kb| config.keybinds = kb).log();
 
         Ok(config)
     }
@@ -219,7 +220,6 @@ impl Config {
         } else {
             HError::config_error(line.to_string())
         }
-
     }
 
     pub fn animate(&self) -> bool {
@@ -241,8 +241,9 @@ fn detect_g_mode() -> String {
         "xterm-kitty" => "kitty",
         #[cfg(feature = "sixel")]
         "xterm" => "sixel",
-        _ => "unicode"
-    }.to_string()
+        _ => "unicode",
+    }
+    .to_string()
 }
 
 fn has_media_previewer(name: &str) -> bool {
@@ -250,6 +251,6 @@ fn has_media_previewer(name: &str) -> bool {
     let previewer = std::path::Path::new(name);
     match previewer.is_absolute() {
         true => previewer.exists(),
-        false => find_bins(name).is_ok()
+        false => find_bins(name).is_ok(),
     }
 }
