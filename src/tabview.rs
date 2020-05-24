@@ -1,8 +1,8 @@
 use termion::event::Key;
 
-use crate::widget::{Widget, WidgetCore};
-use crate::fail::{HResult, HError, ErrorLog};
 use crate::coordinates::Coordinates;
+use crate::fail::{ErrorLog, HError, HResult};
+use crate::widget::{Widget, WidgetCore};
 
 pub trait Tabbable {
     type Tab: Widget;
@@ -21,26 +21,38 @@ pub trait Tabbable {
     fn on_key(&mut self, key: Key) -> HResult<()> {
         self.on_key_sub(key)
     }
-    fn on_refresh(&mut self) -> HResult<()> { Ok(()) }
-    fn on_config_loaded(&mut self) -> HResult<()> { Ok(()) }
-    fn on_new(&mut self) -> HResult<()> { Ok(()) }
-
+    fn on_refresh(&mut self) -> HResult<()> {
+        Ok(())
+    }
+    fn on_config_loaded(&mut self) -> HResult<()> {
+        Ok(())
+    }
+    fn on_new(&mut self) -> HResult<()> {
+        Ok(())
+    }
 }
-
 
 #[derive(PartialEq)]
-pub struct TabView<T> where T: Widget, TabView<T>: Tabbable {
+pub struct TabView<T>
+where
+    T: Widget,
+    TabView<T>: Tabbable,
+{
     pub widgets: Vec<T>,
     pub active: usize,
-    pub core: WidgetCore
+    pub core: WidgetCore,
 }
 
-impl<T> TabView<T> where T: Widget, TabView<T>: Tabbable {
+impl<T> TabView<T>
+where
+    T: Widget,
+    TabView<T>: Tabbable,
+{
     pub fn new(core: &WidgetCore) -> TabView<T> {
         let mut tabview = TabView {
             widgets: vec![],
             active: 0,
-            core: core.clone()
+            core: core.clone(),
         };
 
         Tabbable::on_new(&mut tabview).log();
@@ -54,7 +66,7 @@ impl<T> TabView<T> where T: Widget, TabView<T>: Tabbable {
     }
 
     pub fn pop_widget(&mut self) -> HResult<T> {
-        let widget = self.widgets.pop()?;
+        let widget = self.widgets.pop().ok_or_else(|| HError::NoneError)?;
         if self.widgets.len() <= self.active {
             self.active -= 1;
         }
@@ -65,7 +77,7 @@ impl<T> TabView<T> where T: Widget, TabView<T>: Tabbable {
         let len = self.widgets.len();
         if len > 1 {
             self.widgets.remove(index);
-            if index+1 == len {
+            if index + 1 == len {
                 self.active -= 1;
             }
         }
@@ -112,7 +124,11 @@ impl<T> TabView<T> where T: Widget, TabView<T>: Tabbable {
     }
 }
 
-impl<T> Widget for TabView<T> where T: Widget, TabView<T>: Tabbable {
+impl<T> Widget for TabView<T>
+where
+    T: Widget,
+    TabView<T>: Tabbable,
+{
     fn get_core(&self) -> HResult<&WidgetCore> {
         Ok(&self.core)
     }
@@ -137,34 +153,36 @@ impl<T> Widget for TabView<T> where T: Widget, TabView<T>: Tabbable {
         let header = self.active_tab_().render_header()?;
         let tab_names = self.get_tab_names();
         let mut nums_length = 0;
-        let tabnums = (0..self.widgets.len()).map(|num| {
-            nums_length += format!("{}:{} ",
-                                   num,
-                                   tab_names[num].as_ref().unwrap()).len();
-            if num == self.active {
-                format!(" {}{}:{}{}{}",
+        let tabnums = (0..self.widgets.len())
+            .map(|num| {
+                nums_length += format!("{}:{} ", num, tab_names[num].as_ref().unwrap()).len();
+                if num == self.active {
+                    format!(
+                        " {}{}:{}{}{}",
                         crate::term::invert(),
                         num,
                         tab_names[num].as_ref().unwrap(),
                         crate::term::reset(),
-                        crate::term::header_color())
-            } else {
-                format!(" {}:{}", num, tab_names[num].as_ref().unwrap())
-            }
-        }).collect::<String>();
-
+                        crate::term::header_color()
+                    )
+                } else {
+                    format!(" {}:{}", num, tab_names[num].as_ref().unwrap())
+                }
+            })
+            .collect::<String>();
 
         let nums_pos = xsize.saturating_sub(nums_length as u16);
 
-        Ok(format!("{}{}{}{}",
-                header,
-                crate::term::header_color(),
-                crate::term::goto_xy(nums_pos, 1),
-                tabnums))
+        Ok(format!(
+            "{}{}{}{}",
+            header,
+            crate::term::header_color(),
+            crate::term::goto_xy(nums_pos, 1),
+            tabnums
+        ))
     }
 
-    fn render_footer(&self) -> HResult<String>
-    {
+    fn render_footer(&self) -> HResult<String> {
         self.active_tab_().render_footer()
     }
 
@@ -179,8 +197,8 @@ impl<T> Widget for TabView<T> where T: Widget, TabView<T>: Tabbable {
 
     fn on_key(&mut self, key: Key) -> HResult<()> {
         match self.do_key(key) {
-            Err(HError::WidgetUndefinedKeyError{..}) => Tabbable::on_key(self, key)?,
-            e @ _ => e?
+            Err(HError::WidgetUndefinedKeyError { .. }) => Tabbable::on_key(self, key)?,
+            e @ _ => e?,
         }
 
         Ok(())
@@ -189,7 +207,10 @@ impl<T> Widget for TabView<T> where T: Widget, TabView<T>: Tabbable {
 
 use crate::keybind::*;
 
-impl<T: Widget> Acting for TabView<T> where TabView<T>: Tabbable {
+impl<T: Widget> Acting for TabView<T>
+where
+    TabView<T>: Tabbable,
+{
     type Action = TabAction;
 
     fn search_in(&self) -> Bindings<Self::Action> {

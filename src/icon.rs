@@ -1,8 +1,8 @@
 // Stolen from lsd: https://github.com/Peltoche/lsd
 // Apache License 2.0
 
-use std::path::PathBuf;
 use std::collections::HashMap;
+use std::path::PathBuf;
 
 pub struct Icons {
     icons_by_name: HashMap<&'static str, &'static str>,
@@ -17,13 +17,12 @@ pub struct Icons {
 // s#\\u[0-9a-f]*#\=eval('"'.submatch(0).'"')#
 impl Icons {
     pub fn new() -> Self {
-        let (icons_by_name,
-             icons_by_extension,
-             default_file_icon,
-             default_folder_icon) = (Self::get_default_icons_by_name(),
-                                     Self::get_default_icons_by_extension(),
-                                     "\u{f016}",  // 
-                                     "\u{f115}"); // 
+        let (icons_by_name, icons_by_extension, default_file_icon, default_folder_icon) = (
+            Self::get_default_icons_by_name(),
+            Self::get_default_icons_by_extension(),
+            "\u{f016}", // 
+            "\u{f115}",
+        ); // 
 
         Self {
             icons_by_name,
@@ -34,12 +33,12 @@ impl Icons {
     }
 
     pub fn get(&self, name: &PathBuf) -> &'static str {
-        let file_name = name.file_name()
+        let file_name = name
+            .file_name()
             .and_then(|name| name.to_str())
             .unwrap_or("");
 
-        let extension = name.extension()
-            .and_then(|ext| ext.to_str());
+        let extension = name.extension().and_then(|ext| ext.to_str());
 
         // Check the known names.
         if let Some(icon) = self.icons_by_name.get(file_name) {

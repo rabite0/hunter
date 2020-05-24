@@ -1,19 +1,18 @@
-use notify::{RecommendedWatcher, Watcher, DebouncedEvent, RecursiveMode};
+use notify::{DebouncedEvent, RecommendedWatcher, RecursiveMode, Watcher};
 
 use async_value::{Async, Stale};
 
-use std::sync::{Arc, RwLock, Weak};
-use std::sync::mpsc::{channel, Sender, Receiver};
 use std::collections::{HashMap, HashSet};
-use std::time::Duration;
 use std::path::{Path, PathBuf};
+use std::sync::mpsc::{channel, Receiver, Sender};
+use std::sync::{Arc, RwLock, Weak};
+use std::time::Duration;
 
-use crate::files::{Files, File, SortBy};
+use crate::fail::{ErrorLog, HError, HResult};
+use crate::files::{File, Files, SortBy};
 use crate::widget::Events;
-use crate::fail::{HResult, HError, ErrorLog};
 
 pub type CachedFiles = (Option<File>, Async<Files>);
-
 
 #[derive(Debug, Clone)]
 pub struct DirSettings {
@@ -22,7 +21,7 @@ pub struct DirSettings {
     reverse: bool,
     show_hidden: bool,
     filter: Option<String>,
-    filter_selected: bool
+    filter_selected: bool,
 }
 
 impl DirSettings {
@@ -33,7 +32,7 @@ impl DirSettings {
             reverse: false,
             show_hidden: true,
             filter: None,
-            filter_selected: false
+            filter_selected: false,
         }
     }
 }
@@ -50,73 +49,65 @@ impl TabSettings {
         TabSettings {
             selection: None,
             multi_selections: vec![],
-            dir_settings: DirSettings::new()
+            dir_settings: DirSettings::new(),
         }
     }
 }
 
-
 impl std::fmt::Debug for FsCache {
     fn fmt(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
-        write!(formatter,
-               "{:?}\n{:?}\n{:?}",
-               self.tab_settings,
-               self.watched_dirs,
-               self.files)
+        write!(
+            formatter,
+            "{:?}\n{:?}\n{:?}",
+            self.tab_settings, self.watched_dirs, self.files
+        )
     }
 }
 
 #[derive(Clone)]
 struct FsEventDispatcher {
-    targets: Arc<RwLock<HashMap<File, Vec<Weak<RwLock<Vec<FsEvent>>>>>>>
+    targets: Arc<RwLock<HashMap<File, Vec<Weak<RwLock<Vec<FsEvent>>>>>>>,
 }
 
 impl FsEventDispatcher {
     fn new() -> Self {
         FsEventDispatcher {
-            targets: Arc::new(RwLock::new(HashMap::new()))
+            targets: Arc::new(RwLock::new(HashMap::new())),
         }
     }
 
-    fn add_target(&self,
-                  dir: &File,
-                  target: &Arc<RwLock<Vec<FsEvent>>>) -> HResult<()> {
+    fn add_target(&self, dir: &File, target: &Arc<RwLock<Vec<FsEvent>>>) -> HResult<()> {
         let target = Arc::downgrade(target);
 
         self.targets
             .write()
-            .map(|mut targets| {
-                match targets.get_mut(dir) {
-                    Some(targets) => targets.push(target),
-                    None => { targets.insert(dir.clone(), vec![target]); }
+            .map(|mut targets| match targets.get_mut(dir) {
+                Some(targets) => targets.push(target),
+                None => {
+                    targets.insert(dir.clone(), vec![target]);
                 }
             })?;
         Ok(())
     }
 
     fn remove_target(&self, dir: &File) -> HResult<()> {
-        self.targets
-            .write()?
-            .get_mut(dir)
-            .map(|targets| {
-                targets.retain(|t| t.upgrade().is_some());
-            });
+        self.targets.write()?.get_mut(dir).map(|targets| {
+            targets.retain(|t| t.upgrade().is_some());
+        });
         Ok(())
     }
 
     fn dispatch(&self, events: HashMap<File, Vec<FsEvent>>) -> HResult<()> {
         for (dir, events) in events {
-            for target_dirs in self.targets
-                .read()?
-                .get(&dir) {
-                    for target in target_dirs {
-                        if let Some(target) = target.upgrade() {
-                            let events = events.clone();
+            for target_dirs in self.targets.read()?.get(&dir) {
+                for target in target_dirs {
+                    if let Some(target) = target.upgrade() {
+                        let events = events.clone();
 
-                            target.write()?.extend(events)
-                        }
+                        target.write()?.extend(events)
                     }
                 }
+            }
         }
         Ok(())
     }
@@ -127,20 +118,17 @@ use std::sync::atomic::{AtomicBool, AtomicUsize};
 #[derive(Clone)]
 pub struct FsCache {
     files: Arc<RwLock<HashMap<File, Files>>>,
-    dirsizes: Arc<RwLock<HashMap<PathBuf, HashMap<PathBuf,
-                                                  Arc<(AtomicBool, AtomicUsize)>>>>>,
+    dirsizes: Arc<RwLock<HashMap<PathBuf, HashMap<PathBuf, Arc<(AtomicBool, AtomicUsize)>>>>>,
     pub tab_settings: Arc<RwLock<HashMap<File, TabSettings>>>,
     watched_dirs: Arc<RwLock<HashSet<File>>>,
     watcher: Arc<RwLock<RecommendedWatcher>>,
-    fs_event_dispatcher: FsEventDispatcher
+    fs_event_dispatcher: FsEventDispatcher,
 }
 
 impl FsCache {
     pub fn new(sender: Sender<Events>) -> FsCache {
         let (tx_fs_event, rx_fs_event) = channel();
-        let watcher = RecommendedWatcher::new(tx_fs_event,
-                                              Duration::from_secs(2)).unwrap();
-
+        let watcher = RecommendedWatcher::new(tx_fs_event, Duration::from_secs(2)).unwrap();
 
         let fs_cache = FsCache {
             files: Arc::new(RwLock::new(HashMap::new())),
@@ -148,12 +136,10 @@ impl FsCache {
             tab_settings: Arc::new(RwLock::new(HashMap::new())),
             watched_dirs: Arc::new(RwLock::new(HashSet::new())),
             watcher: Arc::new(RwLock::new(watcher)),
-            fs_event_dispatcher: FsEventDispatcher::new()
+            fs_event_dispatcher: FsEventDispatcher::new(),
         };
 
-        watch_fs(rx_fs_event,
-                 fs_cache.fs_event_dispatcher.clone(),
-                 sender);
+        watch_fs(rx_fs_event, fs_cache.fs_event_dispatcher.clone(), sender);
 
         fs_cache
     }
@@ -176,8 +162,10 @@ impl FsCache {
             let files = Async::new(move |_| {
                 let mut files = Files::new_from_path_cancellable(&dir.path, stale)?;
                 cache.add_watch(&dir).log();
-                cache.fs_event_dispatcher.add_target(&dir,
-                                                     &files.pending_events).log();
+                cache
+                    .fs_event_dispatcher
+                    .add_target(&dir, &files.pending_events)
+                    .log();
                 FsCache::apply_settingss(&cache, &mut files).ok();
                 Ok(files)
             });
@@ -200,21 +188,23 @@ impl FsCache {
     }
 
     pub fn get_selection(&self, dir: &File) -> HResult<File> {
-        Ok(self.tab_settings
-           .read()?
-           .get(&dir)
-           .as_ref()?
-           .selection
-           .as_ref()?
-           .clone())
+        Ok(self
+            .tab_settings
+            .read()?
+            .get(&dir)
+            .as_ref()
+            .ok_or_else(|| HError::NoneError)?
+            .selection
+            .as_ref()
+            .ok_or_else(|| HError::NoneError)?
+            .clone())
     }
 
     pub fn set_selection(&self, dir: File, selection: File) -> HResult<()> {
-        self.tab_settings.write()
-            .map(|mut settings| {
-                let setting = settings.entry(dir).or_insert(TabSettings::new());
-                setting.selection = Some(selection);
-            })?;
+        self.tab_settings.write().map(|mut settings| {
+            let setting = settings.entry(dir).or_insert(TabSettings::new());
+            setting.selection = Some(selection);
+        })?;
         Ok(())
     }
 
@@ -230,28 +220,22 @@ impl FsCache {
     }
 
     pub fn get_dirsize(&self, dir: &File) -> Option<Arc<(AtomicBool, AtomicUsize)>> {
-        let parent_dir = dir.parent()
-                            .unwrap_or_else(|| Path::new("/"));
+        let parent_dir = dir.parent().unwrap_or_else(|| Path::new("/"));
 
         self.dirsizes
             .read()
             .unwrap()
             .get(parent_dir)
-            .map(|parent_map| {
-                parent_map.get(&dir.path)
-            })
+            .map(|parent_map| parent_map.get(&dir.path))
             .flatten()
             .cloned()
     }
 
     pub fn make_dirsize(&self, dir: &File) -> Arc<(AtomicBool, AtomicUsize)> {
-        let parent_dir = dir.parent()
-                            .unwrap_or_else(|| Path::new("/"));
+        let parent_dir = dir.parent().unwrap_or_else(|| Path::new("/"));
         let dir = dir.path.as_path();
 
-        let mut dirsizes = self.dirsizes
-                               .write()
-                               .unwrap();
+        let mut dirsizes = self.dirsizes.write().unwrap();
 
         match dirsizes.contains_key(parent_dir) {
             false => {
@@ -259,16 +243,10 @@ impl FsCache {
                 let ready = AtomicBool::new(false);
                 let size = AtomicUsize::default();
                 let dirsize = Arc::new((ready, size));
-                dir_map.insert(dir.to_path_buf(),
-                               dirsize);
-                dirsizes.insert(parent_dir.to_path_buf(),
-                                dir_map);
+                dir_map.insert(dir.to_path_buf(), dirsize);
+                dirsizes.insert(parent_dir.to_path_buf(), dir_map);
 
-                return dirsizes.get(parent_dir)
-                               .unwrap()
-                               .get(dir)
-                               .unwrap()
-                               .clone();
+                return dirsizes.get(parent_dir).unwrap().get(dir).unwrap().clone();
             }
             true => {
                 let pmap = dirsizes.get_mut(parent_dir).unwrap();
@@ -281,9 +259,7 @@ impl FsCache {
                         let dirsize = Arc::new((ready, size));
                         pmap.insert(dir.to_path_buf(), dirsize);
 
-                        return pmap.get(dir)
-                                   .unwrap()
-                                   .clone()
+                        return pmap.get(dir).unwrap().clone();
                     }
                 }
             }
@@ -291,7 +267,8 @@ impl FsCache {
     }
 
     pub fn watch_only(&self, open_dirs: HashSet<File>) -> HResult<()> {
-        let removable = self.watched_dirs
+        let removable = self
+            .watched_dirs
             .read()?
             .difference(&open_dirs)
             .map(|dir| dir.clone())
@@ -306,7 +283,9 @@ impl FsCache {
 
     fn add_watch(&self, dir: &File) -> HResult<()> {
         if !self.watched_dirs.read()?.contains(&dir) {
-            self.watcher.write()?.watch(&dir.path, RecursiveMode::NonRecursive)?;
+            self.watcher
+                .write()?
+                .watch(&dir.path, RecursiveMode::NonRecursive)?;
             self.watched_dirs.write()?.insert(dir.clone());
         }
         Ok(())
@@ -322,15 +301,16 @@ impl FsCache {
 
     fn get_cached_files(&self, dir: &File) -> HResult<CachedFiles> {
         let tab_settings = match self.tab_settings.read()?.get(&dir) {
-                Some(tab_settings) => tab_settings.clone(),
-                None => TabSettings::new()
+            Some(tab_settings) => tab_settings.clone(),
+            None => TabSettings::new(),
         };
         let selection = tab_settings.selection.clone();
         let file_cache = self.files.clone();
         let dir = dir.clone();
 
         let files = Async::new(move |_| {
-            let mut files = file_cache.read()
+            let mut files = file_cache
+                .read()
                 .map_err(|e| HError::from(e))?
                 .get(&dir)
                 .ok_or(HError::NoneError)?
@@ -360,20 +340,20 @@ impl FsCache {
         Ok((selection, files))
     }
 
-
-    pub fn apply_settingss(cache: &FsCache,
-                       files: &mut Files)
-                       -> HResult<()> {
+    pub fn apply_settingss(cache: &FsCache, files: &mut Files) -> HResult<()> {
         let dir = &files.directory;
         let tab_settings = cache.tab_settings.read()?.get(&dir).cloned();
-        if tab_settings.is_none() { return Ok(()) }
-        let tab_settings = tab_settings?;
+        if tab_settings.is_none() {
+            return Ok(());
+        }
+        let tab_settings = tab_settings.ok_or_else(|| HError::NoneError)?;
 
-        if files.show_hidden != tab_settings.dir_settings.show_hidden ||
-            files.filter != tab_settings.dir_settings.filter ||
-            files.filter_selected != tab_settings.dir_settings.filter_selected {
-                files.recalculate_len();
-            }
+        if files.show_hidden != tab_settings.dir_settings.show_hidden
+            || files.filter != tab_settings.dir_settings.filter
+            || files.filter_selected != tab_settings.dir_settings.filter_selected
+        {
+            files.recalculate_len();
+        }
 
         files.sort = tab_settings.dir_settings.sort;
         files.dirs_first = tab_settings.dir_settings.dirs_first;
@@ -381,8 +361,6 @@ impl FsCache {
         files.show_hidden = tab_settings.dir_settings.show_hidden;
         files.filter = tab_settings.dir_settings.filter.clone();
         files.filter_selected = tab_settings.dir_settings.filter_selected;
-
-
 
         if tab_settings.multi_selections.len() > 0 {
             for file in &mut files.files {
@@ -407,7 +385,6 @@ impl FsCache {
         Ok(files)
     }
 
-
     fn extract_tab_settings(files: &Files, selection: Option<File>) -> TabSettings {
         TabSettings {
             selection: selection,
@@ -418,39 +395,38 @@ impl FsCache {
                 reverse: files.reverse,
                 show_hidden: files.show_hidden,
                 filter: files.filter.clone(),
-                filter_selected: files.filter_selected
-            }
+                filter_selected: files.filter_selected,
+            },
         }
     }
 }
-
 
 #[derive(PartialEq, Eq, Hash, Clone, Debug)]
 pub enum FsEvent {
     Create(File),
     Change(File),
     Rename(File, File),
-    Remove(File)
+    Remove(File),
 }
 
 impl FsEvent {
     pub fn file(&self) -> &File {
         use FsEvent::*;
         match self {
-            Create(event_file) |
-            Change(event_file) |
-            Remove(event_file) |
-            Rename(_, event_file) => &event_file
+            Create(event_file)
+            | Change(event_file)
+            | Remove(event_file)
+            | Rename(_, event_file) => &event_file,
         }
     }
 
     pub fn for_file(&self, file: &File) -> bool {
         use FsEvent::*;
         match self {
-            Create(event_file) |
-            Change(event_file) |
-            Remove(event_file) |
-            Rename(_, event_file) => event_file.path == file.path
+            Create(event_file)
+            | Change(event_file)
+            | Remove(event_file)
+            | Rename(_, event_file) => event_file.path == file.path,
         }
     }
 }
@@ -461,86 +437,82 @@ impl TryFrom<DebouncedEvent> for FsEvent {
 
     fn try_from(event: DebouncedEvent) -> HResult<Self> {
         let event = match event {
-            DebouncedEvent::Create(path)
-                => FsEvent::Create(File::new_from_path(&path)?),
+            DebouncedEvent::Create(path) => FsEvent::Create(File::new_from_path(&path)?),
 
-            DebouncedEvent::Remove(path)
-                => FsEvent::Remove(File::new_from_path(&path)?),
+            DebouncedEvent::Remove(path) => FsEvent::Remove(File::new_from_path(&path)?),
 
-            DebouncedEvent::Write(path)       |
-            DebouncedEvent::Chmod(path)
-                =>  FsEvent::Change(File::new_from_path(&path)?),
+            DebouncedEvent::Write(path) | DebouncedEvent::Chmod(path) => {
+                FsEvent::Change(File::new_from_path(&path)?)
+            }
 
-            DebouncedEvent::Rename(old_path, new_path)
-                => FsEvent::Rename(File::new_from_path(&old_path)?,
-                                   File::new_from_path(&new_path)?),
+            DebouncedEvent::Rename(old_path, new_path) => FsEvent::Rename(
+                File::new_from_path(&old_path)?,
+                File::new_from_path(&new_path)?,
+            ),
 
-            DebouncedEvent::Error(err, path)
-                => Err(HError::INotifyError(format!("{}, {:?}", err, path)))?,
-            DebouncedEvent::Rescan
-                => Err(HError::INotifyError("Need to rescan".to_string()))?,
+            DebouncedEvent::Error(err, path) => {
+                Err(HError::INotifyError(format!("{}, {:?}", err, path)))?
+            }
+            DebouncedEvent::Rescan => Err(HError::INotifyError("Need to rescan".to_string()))?,
             // Ignore NoticeRemove/NoticeWrite
-            _ => None?,
+            _ => None.ok_or_else(|| HError::NoneError)?,
         };
 
         Ok(event)
     }
 }
 
-
-fn watch_fs(rx_fs_events: Receiver<DebouncedEvent>,
-            fs_event_dispatcher: FsEventDispatcher,
-            sender: Sender<Events>) {
+fn watch_fs(
+    rx_fs_events: Receiver<DebouncedEvent>,
+    fs_event_dispatcher: FsEventDispatcher,
+    sender: Sender<Events>,
+) {
     std::thread::spawn(move || -> HResult<()> {
-        let transform_event =
-            move |event: DebouncedEvent| -> HResult<(File, FsEvent)> {
-                let path = event.get_source_path()?;
-                let dirpath = path.parent()
-                    .map(|path| path)
-                    .unwrap_or(std::path::Path::new("/"));
-                let dir = File::new_from_path(&dirpath)?;
-                let event = FsEvent::try_from(event)?;
-                Ok((dir, event))
+        let transform_event = move |event: DebouncedEvent| -> HResult<(File, FsEvent)> {
+            let path = event.get_source_path()?;
+            let dirpath = path
+                .parent()
+                .map(|path| path)
+                .unwrap_or(std::path::Path::new("/"));
+            let dir = File::new_from_path(&dirpath)?;
+            let event = FsEvent::try_from(event)?;
+            Ok((dir, event))
+        };
+
+        let collect_events = move || -> HResult<HashMap<File, Vec<FsEvent>>> {
+            let event = loop {
+                use DebouncedEvent::*;
+
+                let event = rx_fs_events.recv()?;
+                match event {
+                    NoticeWrite(_) => continue,
+                    NoticeRemove(_) => continue,
+                    _ => break std::iter::once(event),
+                }
             };
 
-        let collect_events =
-            move || -> HResult<HashMap<File, Vec<FsEvent>>> {
-                let event = loop {
-                    use DebouncedEvent::*;
+            // Wait a bit to batch up more events
+            std::thread::sleep(std::time::Duration::from_millis(100));
 
-                    let event = rx_fs_events.recv()?;
-                    match event {
-                        NoticeWrite(_) => continue,
-                        NoticeRemove(_) => continue,
-                        _ => break std::iter::once(event)
-                    }
-                };
+            // Batch up all other remaining events received so far
+            let events = event
+                .chain(rx_fs_events.try_iter())
+                .map(transform_event)
+                .flatten()
+                .fold(HashMap::with_capacity(1000), |mut events, (dir, event)| {
+                    events.entry(dir).or_insert(vec![]).push(event);
 
-                // Wait a bit to batch up more events
-                std::thread::sleep(std::time::Duration::from_millis(100));
+                    events
+                });
 
-                // Batch up all other remaining events received so far
-                let events = event.chain(rx_fs_events.try_iter())
-                    .map(transform_event)
-                    .flatten()
-                    .fold(HashMap::with_capacity(1000), |mut events, (dir, event)| {
-                        events.entry(dir)
-                            .or_insert(vec![])
-                            .push(event);
+            Ok(events)
+        };
 
-                        events
-                    });
-
-                Ok(events)
-            };
-
-
-        let dispatch_events =
-            move |events| -> HResult<()> {
-                fs_event_dispatcher.dispatch(events)?;
-                sender.send(Events::WidgetReady)?;
-                Ok(())
-            };
+        let dispatch_events = move |events| -> HResult<()> {
+            fs_event_dispatcher.dispatch(events)?;
+            sender.send(Events::WidgetReady)?;
+            Ok(())
+        };
 
         loop {
             if let Ok(events) = collect_events().log_and() {
@@ -550,8 +522,6 @@ fn watch_fs(rx_fs_events: Receiver<DebouncedEvent>,
     });
 }
 
-
-
 trait PathFromEvent {
     fn get_source_path(&self) -> HResult<&PathBuf>;
 }
@@ -559,18 +529,17 @@ trait PathFromEvent {
 impl PathFromEvent for DebouncedEvent {
     fn get_source_path(&self) -> HResult<&PathBuf> {
         match self {
-            DebouncedEvent::Create(path)      |
-            DebouncedEvent::Write(path)       |
-            DebouncedEvent::Chmod(path)       |
-            DebouncedEvent::Remove(path)      |
-            DebouncedEvent::NoticeWrite(path) |
-            DebouncedEvent::NoticeRemove(path)  => Ok(path),
+            DebouncedEvent::Create(path)
+            | DebouncedEvent::Write(path)
+            | DebouncedEvent::Chmod(path)
+            | DebouncedEvent::Remove(path)
+            | DebouncedEvent::NoticeWrite(path)
+            | DebouncedEvent::NoticeRemove(path) => Ok(path),
             DebouncedEvent::Rename(old_path, _) => Ok(old_path),
-            DebouncedEvent::Error(err, path)
-                => Err(HError::INotifyError(format!("{}, {:?}", err, path))),
-            DebouncedEvent::Rescan
-                => Err(HError::INotifyError("Need to rescan".to_string()))
-
+            DebouncedEvent::Error(err, path) => {
+                Err(HError::INotifyError(format!("{}, {:?}", err, path)))
+            }
+            DebouncedEvent::Rescan => Err(HError::INotifyError("Need to rescan".to_string())),
         }
     }
 }

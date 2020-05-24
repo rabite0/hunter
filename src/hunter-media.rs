@@ -1,20 +1,19 @@
 // Based on https://github.com/jD91mZM2/termplay
 // MIT License
 
-use image::{RgbaImage, DynamicImage, GenericImageView};
 use base64;
+use image::{DynamicImage, GenericImageView, RgbaImage};
 
 use termion::color::{Bg, Fg, Rgb};
 #[cfg(feature = "video")]
 use termion::input::TermRead;
-
 
 #[cfg(feature = "video")]
 use gstreamer::prelude::*;
 #[cfg(feature = "video")]
 use gstreamer_app;
 
-use failure::{Error, format_err};
+use failure::{format_err, Error};
 
 use std::io::Write;
 #[cfg(feature = "video")]
@@ -24,41 +23,38 @@ pub type MResult<T> = Result<T, Error>;
 
 fn main() -> MResult<()> {
     let args = std::env::args().collect::<Vec<String>>();
-    let xsize: usize = args.get(1)
+    let xsize: usize = args
+        .get(1)
         .expect("Provide xsize")
         .parse::<usize>()
         .unwrap();
-    let ysize = args.get(2)
-        .expect("provide ysize")
-        .parse()
-        .unwrap();
-    let mut xpix = args.get(3)
+    let ysize = args.get(2).expect("provide ysize").parse().unwrap();
+    let mut xpix = args
+        .get(3)
         .expect("provide xsize in pixels")
         .parse::<usize>()
         .unwrap();
-    let mut ypix = args.get(4)
+    let mut ypix = args
+        .get(4)
         .expect("provide ysize in pixels")
         .parse::<usize>()
         .unwrap();
-    let cell_ratio = args.get(5)
+    let cell_ratio = args
+        .get(5)
         .expect("Provide cell ratio")
         .parse::<f32>()
         .unwrap();
-    let preview_type = args.get(6)
+    let preview_type = args
+        .get(6)
         .expect("Provide preview type")
         .parse::<String>()
         .unwrap();
     #[allow(unused_variables)]
-    let autoplay = args.get(7)
-        .expect("Autoplay?")
-        .parse::<bool>()
-        .unwrap();
+    let autoplay = args.get(7).expect("Autoplay?").parse::<bool>().unwrap();
     #[allow(unused_variables)]
-    let mute = args.get(8)
-        .expect("Muted?")
-        .parse::<bool>()
-        .unwrap();
-    let target = args.get(9)
+    let mute = args.get(8).expect("Muted?").parse::<bool>().unwrap();
+    let target = args
+        .get(9)
         .expect("Render target?")
         .parse::<String>()
         .unwrap();
@@ -77,7 +73,7 @@ fn main() -> MResult<()> {
                 _ => RenderTarget::Unicode,
             }
         }
-        _ => RenderTarget::Unicode
+        _ => RenderTarget::Unicode,
     };
 
     if target == RenderTarget::Unicode {
@@ -85,37 +81,23 @@ fn main() -> MResult<()> {
         ypix = ysize * 2;
     }
 
+    let renderer = Renderer::new(target, xsize, ysize, xpix, ypix, cell_ratio);
 
+    let result = match preview_type.as_ref() {
+        #[cfg(feature = "video")]
+        "video" => video_preview(path, renderer, autoplay, mute),
 
-    let renderer = Renderer::new(target,
-                                 xsize,
-                                 ysize,
-                                 xpix,
-                                 ypix,
-                                 cell_ratio);
+        "image" => image_preview(path, renderer),
 
-    let result =
-        match preview_type.as_ref() {
-            #[cfg(feature = "video")]
-            "video" => video_preview(path,
-                                     renderer,
-                                     autoplay,
-                                     mute),
+        #[cfg(feature = "video")]
+        "audio" => audio_preview(path, autoplay, mute),
 
-            "image" => image_preview(path,
-                                     renderer),
+        #[cfg(feature = "video")]
+        _ => panic!("Available types: video/image/audio"),
 
-            #[cfg(feature = "video")]
-            "audio" => audio_preview(path,
-                                     autoplay,
-                                     mute),
-
-            #[cfg(feature = "video")]
-            _ => { panic!("Available types: video/image/audio") }
-
-            #[cfg(not(feature = "video"))]
-            _ => { panic!("Available type: image") }
-        };
+        #[cfg(not(feature = "video"))]
+        _ => panic!("Available type: image"),
+    };
 
     if result.is_err() {
         println!("{:?}", &result);
@@ -125,14 +107,16 @@ fn main() -> MResult<()> {
     }
 }
 
-fn image_preview(path: &str,
-                 renderer: Renderer) -> MResult<()> {
+fn image_preview(path: &str, renderer: Renderer) -> MResult<()> {
     let img = image::open(&path)?;
     let max_size = renderer.max_size_pix(&img);
 
-    let img = img.resize_exact(max_size.0 as u32,
-                               max_size.1 as u32,
-                               image::FilterType::Gaussian)
+    let img = img
+        .resize_exact(
+            max_size.0 as u32,
+            max_size.1 as u32,
+            image::FilterType::Gaussian,
+        )
         .to_rgba();
     renderer.send_image(&img)?;
 
@@ -173,13 +157,8 @@ impl ImgSize for DynamicImage {
     }
 }
 
-
 #[cfg(feature = "video")]
-fn video_preview(path: &String,
-                 renderer: Renderer,
-                 autoplay: bool,
-                 mute: bool)
-                 -> MResult<()> {
+fn video_preview(path: &String, renderer: Renderer, autoplay: bool, mute: bool) -> MResult<()> {
     let gst = Gstreamer::new(path)?;
 
     let renderer = Arc::new(RwLock::new(renderer));
@@ -196,7 +175,7 @@ fn video_preview(path: &String,
 
                     let sample = match sink.pull_sample() {
                         Some(sample) => sample,
-                        None => return Err(gstreamer::FlowError::Eos)
+                        None => return Err(gstreamer::FlowError::Eos),
                     };
 
                     let pos = gst.position();
@@ -205,15 +184,15 @@ fn video_preview(path: &String,
                     std::thread::spawn(move || {
                         // This will lock make sure only one frame is being sent
                         // at a time
-                        renderer.try_write()
-                            .map(|mut r| r.new_frame(sample,
-                                                     pos,
-                                                     dur).unwrap())
+                        renderer
+                            .try_write()
+                            .map(|mut r| r.new_frame(sample, pos, dur).unwrap())
                             .map_err(|_| {
                                 // But if processing takes too long, reduce rate
                                 let rate = gst.get_rate().unwrap();
-                                gst.set_rate(rate-1)
-                            }).ok();
+                                gst.set_rate(rate - 1)
+                            })
+                            .ok();
                     });
 
                     Ok(gstreamer::FlowSuccess::Ok)
@@ -224,7 +203,7 @@ fn video_preview(path: &String,
                     std::process::exit(0);
                 }
             })
-            .build()
+            .build(),
     );
 
     // Flush pipeline and restart with corrent resizing
@@ -243,16 +222,12 @@ fn video_preview(path: &String,
 }
 
 #[cfg(feature = "video")]
-fn read_keys(gst: Gstreamer,
-             renderer: Option<Arc<RwLock<Renderer>>>) -> MResult<()> {
+fn read_keys(gst: Gstreamer, renderer: Option<Arc<RwLock<Renderer>>>) -> MResult<()> {
     let stdin = std::io::stdin();
     let mut stdin = stdin.lock();
 
     loop {
-        let input = stdin
-            .read_line()?
-            .unwrap_or_else(|| String::from("q"));
-
+        let input = stdin.read_line()?.unwrap_or_else(|| String::from("q"));
 
         match input.as_str() {
             "q" => return gst.stop(),
@@ -263,7 +238,7 @@ fn read_keys(gst: Gstreamer,
                         gst.send_preroll(&r).unwrap();
                     }
                 });
-            },
+            }
             "<" => {
                 gst.seek_backward()?;
                 renderer.as_ref().map(|r| {
@@ -278,19 +253,24 @@ fn read_keys(gst: Gstreamer,
             "u" => gst.unmute()?,
             "xy" => {
                 if let Some(ref renderer) = renderer {
-                    let xsize = stdin.read_line()?
+                    let xsize = stdin
+                        .read_line()?
                         .unwrap_or(String::from("0"))
                         .parse::<usize>()?;
-                    let ysize = stdin.read_line()?
+                    let ysize = stdin
+                        .read_line()?
                         .unwrap_or(String::from("0"))
                         .parse::<usize>()?;
-                    let mut xpix = stdin.read_line()?
+                    let mut xpix = stdin
+                        .read_line()?
                         .unwrap_or(String::from("0"))
                         .parse::<usize>()?;
-                    let mut ypix = stdin.read_line()?
+                    let mut ypix = stdin
+                        .read_line()?
                         .unwrap_or(String::from("0"))
                         .parse::<usize>()?;
-                    let cell_ratio = stdin.read_line()?
+                    let cell_ratio = stdin
+                        .read_line()?
                         .unwrap_or(String::from("0"))
                         .parse::<f32>()?;
                     let mut renderer = renderer
@@ -299,9 +279,8 @@ fn read_keys(gst: Gstreamer,
 
                     if renderer.target == RenderTarget::Unicode {
                         xpix = xsize;
-                        ypix = ysize*2;
+                        ypix = ysize * 2;
                     }
-
 
                     renderer.set_widget_size(xsize, ysize, xpix, ypix, cell_ratio)?;
                     match renderer.last_frame {
@@ -311,8 +290,6 @@ fn read_keys(gst: Gstreamer,
                         }
                         _ => {}
                     }
-
-
                 }
             }
             _ => {}
@@ -321,10 +298,7 @@ fn read_keys(gst: Gstreamer,
 }
 
 #[cfg(feature = "video")]
-pub fn audio_preview(path: &String,
-                     autoplay: bool,
-                     mute: bool)
-                     -> MResult<()> {
+pub fn audio_preview(path: &String, autoplay: bool, mute: bool) -> MResult<()> {
     let gst = Gstreamer::new(path)?;
     let tgst = gst.clone();
 
@@ -342,7 +316,7 @@ pub fn audio_preview(path: &String,
 
             // Just redo loop until position changes
             if last_pos == Some(position) {
-                continue
+                continue;
             }
 
             last_pos = Some(position);
@@ -355,7 +329,6 @@ pub fn audio_preview(path: &String,
             writeln!(stdout, "{}", duration)?;
             stdout.flush()?;
         }
-
     });
 
     if autoplay && !mute {
@@ -378,24 +351,24 @@ struct Gstreamer {
 #[cfg(feature = "video")]
 impl Gstreamer {
     fn new(file: &str) -> MResult<Gstreamer> {
-        use gstreamer::{Element, ElementFactory, GhostPad, Bin};
+        use gstreamer::{Bin, Element, ElementFactory, GhostPad};
         gstreamer::init()?;
 
-        let player = ElementFactory::make("playbin", None)
-            .ok_or(format_err!("Can't create playbin"))?;
+        let player =
+            ElementFactory::make("playbin", None).ok_or(format_err!("Can't create playbin"))?;
 
         let videorate = ElementFactory::make("videorate", None)
             .ok_or(format_err!("Can't create videorate element"))?;
 
-        let sink = ElementFactory::make("appsink", None)
-            .ok_or(format_err!("Can't create appsink"))?;
+        let sink =
+            ElementFactory::make("appsink", None).ok_or(format_err!("Can't create appsink"))?;
 
-        let appsink = sink.clone()
-            .downcast::<gstreamer_app::AppSink>()
-            .unwrap();
+        let appsink = sink.clone().downcast::<gstreamer_app::AppSink>().unwrap();
 
-        let elems = &[&videorate,  //&videoscale,
-                      &sink];
+        let elems = &[
+            &videorate, //&videoscale,
+            &sink,
+        ];
 
         let bin = Bin::new(None);
 
@@ -404,8 +377,8 @@ impl Gstreamer {
 
         // make input for bin point to first element
         let sink = elems[0].get_static_pad("sink").unwrap();
-        let ghost = GhostPad::new(Some("sink"), &sink)
-            .ok_or(format_err!("Can't create GhostPad"))?;
+        let ghost =
+            GhostPad::new(Some("sink"), &sink).ok_or(format_err!("Can't create GhostPad"))?;
 
         ghost.set_active(true)?;
         bin.add_pad(&ghost)?;
@@ -437,9 +410,7 @@ impl Gstreamer {
         let state = self.get_state();
         self.pause()?;
 
-
-        let appsink = self.appsink.clone()
-            .upcast::<Element>();
+        let appsink = self.appsink.clone().upcast::<Element>();
 
         Element::unlink_many(&[&self.videorate, &appsink]);
 
@@ -450,19 +421,19 @@ impl Gstreamer {
         std::thread::sleep(std::time::Duration::from_millis(100));
         self.player.set_state(state)?;
 
-
-
         Ok(())
     }
 
-    pub fn process_first_frame(&self,
-                               renderer: &Arc<RwLock<Renderer>>) -> MResult<()> {
+    pub fn process_first_frame(&self, renderer: &Arc<RwLock<Renderer>>) -> MResult<()> {
         self.pause()?;
 
-        let sample = self.appsink.pull_preroll()
+        let sample = self
+            .appsink
+            .pull_preroll()
             .ok_or_else(|| format_err!("Couldn't read first frame!"))?;
 
-        let (max_x, max_y) = renderer.read()
+        let (max_x, max_y) = renderer
+            .read()
             .map_err(|_| format_err!("Failed at locking renderer!"))?
             .max_size_pix(&sample);
 
@@ -471,10 +442,11 @@ impl Gstreamer {
         Ok(())
     }
 
-
-    pub fn send_preroll(&self,
-                       renderer: &Arc<RwLock<Renderer>>) -> MResult<()> {
-        let appsink = self.appsink.downcast_ref::<gstreamer_app::AppSink>().unwrap();
+    pub fn send_preroll(&self, renderer: &Arc<RwLock<Renderer>>) -> MResult<()> {
+        let appsink = self
+            .appsink
+            .downcast_ref::<gstreamer_app::AppSink>()
+            .unwrap();
         let sample = appsink.pull_preroll().unwrap();
         let pos = self.position();
         let dur = self.duration();
@@ -484,19 +456,18 @@ impl Gstreamer {
     pub fn set_scaling(&self, x: usize, y: usize) -> MResult<()> {
         use gstreamer::Caps;
 
-        let caps =
-            format!("video/x-raw,format=RGBA,width={},height={}",
-                    x,
-                    y);
+        let caps = format!("video/x-raw,format=RGBA,width={},height={}", x, y);
         let caps = Caps::from_string(&caps).unwrap();
 
         self.change_format(caps)
     }
 
     pub fn get_rate(&self) -> MResult<i32> {
-        let rate = self.videorate
+        let rate = self
+            .videorate
             .get_property("max-rate")?
-            .downcast::<i32>().unwrap()
+            .downcast::<i32>()
+            .unwrap()
             .get()
             .ok_or_else(|| format_err!("No video rate???"))?;
 
@@ -514,13 +485,15 @@ impl Gstreamer {
     }
 
     pub fn position(&self) -> usize {
-        self.player.query_position::<gstreamer::ClockTime>()
+        self.player
+            .query_position::<gstreamer::ClockTime>()
             .map(|p| p.seconds().unwrap_or(0))
             .unwrap_or(0) as usize
     }
 
     pub fn duration(&self) -> usize {
-        self.player.query_duration::<gstreamer::ClockTime>()
+        self.player
+            .query_duration::<gstreamer::ClockTime>()
             .map(|d| d.seconds().unwrap_or(0))
             .unwrap_or(0) as usize
     }
@@ -571,53 +544,48 @@ impl Gstreamer {
 
     pub fn seek_forward(&self) -> MResult<()> {
         let seek_time = gstreamer::ClockTime::from_seconds(5);
-        if let Some(mut time) = self.player
-            .query_position::<gstreamer::ClockTime>() {
-                time += seek_time;
+        if let Some(mut time) = self.player.query_position::<gstreamer::ClockTime>() {
+            time += seek_time;
 
-                self.player.seek_simple(
-                    gstreamer::SeekFlags::FLUSH,
-                    gstreamer::format::GenericFormattedValue::Time(time)
-                )?;
-            }
+            self.player.seek_simple(
+                gstreamer::SeekFlags::FLUSH,
+                gstreamer::format::GenericFormattedValue::Time(time),
+            )?;
+        }
         Ok(())
     }
 
     pub fn seek_backward(&self) -> MResult<()> {
         let seek_time = gstreamer::ClockTime::from_seconds(5);
-        if let Some(mut time) = self.player
-            .query_position::<gstreamer::ClockTime>() {
-                if time >= seek_time {
-                    time -= seek_time;
-                } else {
-                    time = gstreamer::ClockTime(Some(0));
-                }
-
-                self.player.seek_simple(
-                    gstreamer::SeekFlags::FLUSH,
-                    gstreamer::format::GenericFormattedValue::Time(time)
-                )?;
+        if let Some(mut time) = self.player.query_position::<gstreamer::ClockTime>() {
+            if time >= seek_time {
+                time -= seek_time;
+            } else {
+                time = gstreamer::ClockTime(Some(0));
             }
+
+            self.player.seek_simple(
+                gstreamer::SeekFlags::FLUSH,
+                gstreamer::format::GenericFormattedValue::Time(time),
+            )?;
+        }
         Ok(())
     }
 }
 
-
 trait WithRaw {
-    fn with_raw(&self,
-                fun: impl FnOnce(&[u8]) -> MResult<()>)
-                -> MResult<()>;
+    fn with_raw(&self, fun: impl FnOnce(&[u8]) -> MResult<()>) -> MResult<()>;
 }
 
 #[cfg(feature = "video")]
 impl WithRaw for gstreamer::Sample {
-    fn with_raw(&self,
-                fun: impl FnOnce(&[u8]) -> MResult<()>)
-                -> MResult<()> {
-        let buffer = self.get_buffer()
+    fn with_raw(&self, fun: impl FnOnce(&[u8]) -> MResult<()>) -> MResult<()> {
+        let buffer = self
+            .get_buffer()
             .ok_or(format_err!("Couldn't get buffer from frame!"))?;
 
-        let map = buffer.map_readable()
+        let map = buffer
+            .map_readable()
             .ok_or(format_err!("Couldn't get buffer from frame!"))?;
 
         fun(map.as_slice())
@@ -626,9 +594,7 @@ impl WithRaw for gstreamer::Sample {
 
 // Mostly for plain old images, since they come from image::open
 impl WithRaw for RgbaImage {
-    fn with_raw(&self,
-                fun: impl FnOnce(&[u8]) -> MResult<()>)
-                -> MResult<()> {
+    fn with_raw(&self, fun: impl FnOnce(&[u8]) -> MResult<()>) -> MResult<()> {
         let bytes = self.as_flat_samples();
 
         fun(bytes.as_slice())
@@ -640,38 +606,42 @@ enum RenderTarget {
     Unicode,
     #[cfg(feature = "sixel")]
     Sixel,
-    Kitty
+    Kitty,
 }
 
 impl RenderTarget {
-    fn send_image(&self,
-                  img: &(impl WithRaw+ImgSize),
-                  context: &Renderer) -> MResult<()> {
+    fn send_image(&self, img: &(impl WithRaw + ImgSize), context: &Renderer) -> MResult<()> {
         match self {
             #[cfg(feature = "sixel")]
             RenderTarget::Sixel => self.print_sixel(img)?,
             RenderTarget::Unicode => self.print_unicode(img)?,
-            RenderTarget::Kitty => self.print_kitty(img, context)?
+            RenderTarget::Kitty => self.print_kitty(img, context)?,
         }
         Ok(())
     }
 
-    fn print_unicode(&self, img: &(impl WithRaw+ImgSize)) -> MResult<()> {
+    fn print_unicode(&self, img: &(impl WithRaw + ImgSize)) -> MResult<()> {
         let (xsize, _) = img.size()?;
 
         img.with_raw(move |raw| -> MResult<()> {
-            let lines = raw.chunks(4*xsize*2).map(|two_lines_colors| {
-                let (upper_line,lower_line) = two_lines_colors.split_at(4*xsize);
-                upper_line.chunks(4)
-                    .zip(lower_line.chunks(4))
-                    .map(|(upper, lower)| {
-                        format!("{}{}▀{}",
+            let lines = raw
+                .chunks(4 * xsize * 2)
+                .map(|two_lines_colors| {
+                    let (upper_line, lower_line) = two_lines_colors.split_at(4 * xsize);
+                    upper_line
+                        .chunks(4)
+                        .zip(lower_line.chunks(4))
+                        .map(|(upper, lower)| {
+                            format!(
+                                "{}{}▀{}",
                                 Fg(Rgb(upper[0], upper[1], upper[2])),
                                 Bg(Rgb(lower[0], lower[1], lower[2])),
                                 termion::style::Reset
-                        )
-                    }).collect::<String>()
-            }).collect::<Vec<String>>();
+                            )
+                        })
+                        .collect::<String>()
+                })
+                .collect::<Vec<String>>();
 
             for line in lines {
                 println!("{}", line);
@@ -683,10 +653,8 @@ impl RenderTarget {
         })
     }
 
-    fn print_kitty(&self,
-                   img: &(impl WithRaw+ImgSize),
-                   context: &Renderer) -> MResult<()> {
-        let (w,h) = context.max_size(img);
+    fn print_kitty(&self, img: &(impl WithRaw + ImgSize), context: &Renderer) -> MResult<()> {
+        let (w, h) = context.max_size(img);
         let (img_x, img_y) = img.size()?;
 
         img.with_raw(move |raw| -> MResult<()> {
@@ -698,12 +666,10 @@ impl RenderTarget {
             let path = base64::encode("/tmp/img.raw");
 
             print!("\x1b_Ga=d\x1b\\");
-            println!("\x1b_Gf=32,s={},v={},c={},r={},a=T,t=f;{}\x1b\\",
-                     img_x,
-                     img_y,
-                     w,
-                     h,
-                     path);
+            println!(
+                "\x1b_Gf=32,s={},v={},c={},r={},a=T,t=f;{}\x1b\\",
+                img_x, img_y, w, h, path
+            );
             println!("");
 
             Ok(())
@@ -711,7 +677,7 @@ impl RenderTarget {
     }
 
     #[cfg(feature = "sixel")]
-    fn print_sixel(&self, img: &(impl WithRaw+ImgSize)) -> MResult<()> {
+    fn print_sixel(&self, img: &(impl WithRaw + ImgSize)) -> MResult<()> {
         use sixel_rs::encoder::{Encoder, QuickFrameBuilder};
         use sixel_rs::optflags::EncodePolicy;
 
@@ -719,10 +685,10 @@ impl RenderTarget {
 
         img.with_raw(move |raw| -> MResult<()> {
             let sixfail = |e| format_err!("Sixel failed with: {:?}", e);
-            let encoder = Encoder::new()
-                .map_err(sixfail)?;
+            let encoder = Encoder::new().map_err(sixfail)?;
 
-            encoder.set_encode_policy(EncodePolicy::Fast)
+            encoder
+                .set_encode_policy(EncodePolicy::Fast)
                 .map_err(sixfail)?;
 
             let frame = QuickFrameBuilder::new()
@@ -731,8 +697,7 @@ impl RenderTarget {
                 .format(sixel_sys::PixelFormat::RGBA8888)
                 .pixels(raw.to_vec());
 
-            encoder.encode_bytes(frame)
-                .map_err(sixfail)?;
+            encoder.encode_bytes(frame).map_err(sixfail)?;
 
             // No end of line printed by encoder
             println!("");
@@ -759,22 +724,26 @@ struct Renderer {
 }
 
 impl Renderer {
-    fn new(target: RenderTarget,
-           xsize: usize,
-           ysize: usize,
-           mut xpix: usize,
-           mut ypix: usize,
-           cell_ratio: f32) -> Renderer {
-
+    fn new(
+        target: RenderTarget,
+        xsize: usize,
+        ysize: usize,
+        mut xpix: usize,
+        mut ypix: usize,
+        cell_ratio: f32,
+    ) -> Renderer {
         #[cfg(feature = "sixel")]
         match std::env::var("TERM") {
             Ok(term) => {
-                if term == "xterm" &&
-                    target == RenderTarget::Sixel {
-                // xterm has a hard limit on graphics size
-                // maybe splitting the image into parts would work?
-                    if xpix > 1000 { xpix = 1000 };
-                    if ypix > 1000 { ypix = 1000 };
+                if term == "xterm" && target == RenderTarget::Sixel {
+                    // xterm has a hard limit on graphics size
+                    // maybe splitting the image into parts would work?
+                    if xpix > 1000 {
+                        xpix = 1000
+                    };
+                    if ypix > 1000 {
+                        ypix = 1000
+                    };
                 }
             }
             _ => {}
@@ -797,12 +766,14 @@ impl Renderer {
     }
 
     #[cfg(feature = "video")]
-    fn set_widget_size(&mut self,
-                      xsize: usize,
-                      ysize: usize,
-                      xpix: usize,
-                      ypix: usize,
-                      cell_ratio: f32) -> MResult<()> {
+    fn set_widget_size(
+        &mut self,
+        xsize: usize,
+        ysize: usize,
+        xpix: usize,
+        ypix: usize,
+        cell_ratio: f32,
+    ) -> MResult<()> {
         self.xsize = xsize;
         self.ysize = ysize;
         self.xpix = xpix;
@@ -817,28 +788,26 @@ impl Renderer {
     fn send_media_meta(&self, frame: &impl ImgSize) -> MResult<()> {
         let (_, height) = self.max_size(frame);
 
-        println!("{}", height+1);
+        println!("{}", height + 1);
         println!("{}", self.position);
         println!("{}", self.duration);
 
         Ok(())
     }
 
-
-
-
-    fn send_image(&self, image: &(impl WithRaw+ImgSize)) -> MResult<()> {
+    fn send_image(&self, image: &(impl WithRaw + ImgSize)) -> MResult<()> {
         self.target.send_image(image, &self)?;
 
         Ok(())
     }
 
     #[cfg(feature = "video")]
-    fn new_frame(&mut self,
-                 frame: gstreamer::sample::Sample,
-                 position: usize,
-                 duration: usize)
-                 -> MResult<()> {
+    fn new_frame(
+        &mut self,
+        frame: gstreamer::sample::Sample,
+        position: usize,
+        duration: usize,
+    ) -> MResult<()> {
         self.position = position;
         self.duration = duration;
 
@@ -856,16 +825,18 @@ impl Renderer {
         self.last_frame.as_ref().map(|frame| {
             let (xpix, ypix) = frame.size()?;
             frame.with_raw(|raw| {
-                let img = ImageBuffer::<Rgba<u8>, Vec<u8>>::from_raw(xpix as u32,
-                                                                     ypix as u32,
-                                                                     raw.to_vec())
-                    .ok_or(format_err!("Couldn't load last frame for rescaling!"))?;
+                let img = ImageBuffer::<Rgba<u8>, Vec<u8>>::from_raw(
+                    xpix as u32,
+                    ypix as u32,
+                    raw.to_vec(),
+                )
+                .ok_or(format_err!("Couldn't load last frame for rescaling!"))?;
 
                 let img = DynamicImage::ImageRgba8(img);
                 let (max_x, max_y) = self.max_size_pix(&img);
-                let img = img.resize_exact(max_x as u32,
-                                           max_y as u32,
-                                           image::FilterType::Gaussian).to_rgba();
+                let img = img
+                    .resize_exact(max_x as u32, max_y as u32, image::FilterType::Gaussian)
+                    .to_rgba();
 
                 self.send_image(&img)?;
                 self.send_media_meta(&img)?;
@@ -875,23 +846,19 @@ impl Renderer {
         Ok(())
     }
 
-    pub fn max_size(&self, image: &impl ImgSize) -> (usize, usize)
-    {
+    pub fn max_size(&self, image: &impl ImgSize) -> (usize, usize) {
         let xsize = self.xsize;
         let ysize = self.ysize;
         let (img_xsize, img_ysize) = image.size().unwrap();
         // Cells are not square, but almost 2:1
         let img_ratio = (img_xsize as f32 / img_ysize as f32) / self.cell_ratio;
 
-
         let (new_x, new_y) = fill_ratio(img_ratio, xsize, ysize);
-
 
         (new_x as usize, new_y as usize)
     }
 
-    pub fn max_size_pix(&self, image: &impl ImgSize) -> (usize, usize)
-    {
+    pub fn max_size_pix(&self, image: &impl ImgSize) -> (usize, usize) {
         let xsize = self.xpix;
         let ysize = self.ypix;
         let (img_xsize, img_ysize) = image.size().unwrap();
@@ -916,7 +883,7 @@ fn fill_ratio(ratio: f32, max_x: usize, max_y: usize) -> (usize, usize) {
     if ratio < 1 as f32 {
         new_x = (max_y as f32 * ratio) as usize;
         new_y = max_y;
-        // short / wide
+    // short / wide
     } else {
         new_x = max_x;
         new_y = (max_x as f32 / ratio) as usize;

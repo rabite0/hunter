@@ -3,12 +3,11 @@ use std::io::BufRead;
 use strip_ansi_escapes::strip;
 use termion::event::Key;
 
+use crate::dirty::Dirtyable;
+use crate::fail::{HError, HResult};
 use crate::files::File;
 use crate::term::sized_string_u;
 use crate::widget::{Widget, WidgetCore};
-use crate::fail::{HResult, HError};
-use crate::dirty::Dirtyable;
-
 
 #[derive(Debug, PartialEq)]
 pub struct TextView {
@@ -28,7 +27,7 @@ impl TextView {
             follow: false,
             offset: 0,
             file: None,
-            limited: false
+            limited: false,
         }
     }
 
@@ -38,25 +37,26 @@ impl TextView {
         Ok(view)
     }
 
-    pub fn new_from_file_limit_lines(core: &WidgetCore,
-                                     file: &File,
-                                     num: usize) -> HResult<TextView> {
-        let buf = std::fs::File::open(&file.path)
-            .map(|f| std::io::BufReader::new(f))?;
+    pub fn new_from_file_limit_lines(
+        core: &WidgetCore,
+        file: &File,
+        num: usize,
+    ) -> HResult<TextView> {
+        let buf = std::fs::File::open(&file.path).map(|f| std::io::BufReader::new(f))?;
 
-        let lines = buf.lines()
-                       .enumerate()
-                       .take_while(|(i, _)| num == 0 || i <= &num)
-                       .map(|(_, l)| {
-                           l.map_err(HError::from)
-                            .and_then(|l| {
-                                let l = strip(&l);
-                                Ok(String::from_utf8_lossy(&l?).to_string())
-                            })
-                            .map_err(HError::from)
-
-                       })
-                       .collect::<HResult<_>>()?;
+        let lines = buf
+            .lines()
+            .enumerate()
+            .take_while(|(i, _)| num == 0 || i <= &num)
+            .map(|(_, l)| {
+                l.map_err(HError::from)
+                    .and_then(|l| {
+                        let l = strip(&l);
+                        Ok(String::from_utf8_lossy(&l?).to_string())
+                    })
+                    .map_err(HError::from)
+            })
+            .collect::<HResult<_>>()?;
 
         Ok(TextView {
             lines: lines,
@@ -64,7 +64,7 @@ impl TextView {
             follow: false,
             offset: 0,
             file: Some(file.clone()),
-            limited: true
+            limited: true,
         })
     }
 
@@ -89,9 +89,7 @@ impl TextView {
         if self.limited {
             self.file
                 .as_ref()
-                .and_then(|f| {
-                    TextView::new_from_file(&self.core, f).ok()
-                })
+                .and_then(|f| TextView::new_from_file(&self.core, f).ok())
                 .map(|v| {
                     *self = v;
                     self.limited = false;
@@ -108,10 +106,12 @@ impl TextView {
         let offset = self.offset as isize;
         let len = self.lines.len() as isize;
 
-        if len <= ysize + offset { return }
+        if len <= ysize + offset {
+            return;
+        }
 
         if amount > 0 {
-            if  ysize + amount + offset + 1 >= len {
+            if ysize + amount + offset + 1 >= len {
                 // Too far down
                 self.offset = (len - ysize - 1) as usize;
             } else {
@@ -186,40 +186,38 @@ impl Widget for TextView {
 
         let mut output = crate::term::reset();
 
-        output += &self.lines
-                       .iter()
-                       .skip(self.offset)
-                       .take(ysize as usize)
-                       .enumerate()
-                       .map(|(i, line)| {
-                           format!(
-                               "{}{}",
-                               crate::term::goto_xy(xpos, i as u16 + ypos),
-                               sized_string_u(&line, (xsize-1) as usize))
-                       })
-                       .collect::<String>();
+        output += &self
+            .lines
+            .iter()
+            .skip(self.offset)
+            .take(ysize as usize)
+            .enumerate()
+            .map(|(i, line)| {
+                format!(
+                    "{}{}",
+                    crate::term::goto_xy(xpos, i as u16 + ypos),
+                    sized_string_u(&line, (xsize - 1) as usize)
+                )
+            })
+            .collect::<String>();
         Ok(output)
     }
 
     fn render_footer(&self) -> HResult<String> {
         let (xsize, ysize) = self.core.coordinates.size_u();
         let (_, ypos) = self.core.coordinates.position_u();
-        let lines = self.lines
-                        .len()
-                        .saturating_sub(1);
+        let lines = self.lines.len().saturating_sub(1);
         let current_line_top = self.offset;
-        let current_line_bot = std::cmp::min(current_line_top + ysize + 1,
-                                             lines);
-        let line_hint = format!("{} - {} / {}",
-                                current_line_top,
-                                current_line_bot,
-                                lines);
+        let current_line_bot = std::cmp::min(current_line_top + ysize + 1, lines);
+        let line_hint = format!("{} - {} / {}", current_line_top, current_line_bot, lines);
         let hint_xpos = xsize - line_hint.len();
         let hint_ypos = ysize + ypos + 1;
 
-        let footer = format!("{}{}",
-                             crate::term::goto_xy_u(hint_xpos, hint_ypos),
-                             line_hint);
+        let footer = format!(
+            "{}{}",
+            crate::term::goto_xy_u(hint_xpos, hint_ypos),
+            line_hint
+        );
 
         Ok(footer)
     }
@@ -232,7 +230,7 @@ impl Widget for TextView {
 use crate::keybind::{Acting, Bindings, Movement};
 
 impl Acting for TextView {
-    type Action=Movement;
+    type Action = Movement;
 
     fn search_in(&self) -> Bindings<Self::Action> {
         Bindings::default()
@@ -244,8 +242,18 @@ impl Acting for TextView {
         self.load_full();
 
         match movement {
-            Up(n) => { for _ in 0..*n { self.scroll_up(); }; self.refresh()?; }
-            Down(n) => { for _ in 0..*n { self.scroll_down(); }; self.refresh()?; }
+            Up(n) => {
+                for _ in 0..*n {
+                    self.scroll_up();
+                }
+                self.refresh()?;
+            }
+            Down(n) => {
+                for _ in 0..*n {
+                    self.scroll_down();
+                }
+                self.refresh()?;
+            }
             PageUp => self.page_up(),
             PageDown => self.page_down(),
             Top => self.scroll_top(),

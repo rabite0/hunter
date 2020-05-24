@@ -1,87 +1,79 @@
-#![feature(vec_remove_item)]
-#![feature(trivial_bounds)]
-#![feature(try_trait)]
 #![allow(dead_code)]
 
 extern crate termion;
 extern crate unicode_width;
 #[macro_use]
 extern crate lazy_static;
+extern crate chrono;
+extern crate clap;
+extern crate dirs_2;
 extern crate failure;
 extern crate failure_derive;
-extern crate natord;
-extern crate dirs_2;
-extern crate lscolors;
-extern crate users;
-extern crate chrono;
-extern crate rayon;
 extern crate libc;
+extern crate lscolors;
+extern crate mime;
+extern crate mime_guess;
+extern crate natord;
 extern crate notify;
 extern crate parse_ansi;
+extern crate rayon;
 extern crate signal_notify;
-extern crate tree_magic_fork;
-extern crate systemstat;
-extern crate mime_guess;
-extern crate mime;
-extern crate clap;
 extern crate strum;
+extern crate systemstat;
+extern crate tree_magic_fork;
+extern crate users;
 #[macro_use]
 extern crate strum_macros;
 #[macro_use]
 extern crate derivative;
+extern crate crossbeam;
 extern crate nix;
 extern crate strip_ansi_escapes;
-extern crate crossbeam;
 
+extern crate async_value;
 extern crate osstrtools;
 extern crate pathbuftools;
-extern crate async_value;
 
-use failure::Fail;
 use clap::{App, Arg};
+use failure::Fail;
 
 use std::panic;
 
+mod bookmarks;
+mod config;
+mod config_installer;
 mod coordinates;
+mod dirty;
+mod fail;
 mod file_browser;
 mod files;
+mod foldview;
+mod fscache;
+mod hbox;
+mod icon;
+mod imgview;
+mod keybind;
 mod listview;
+mod mediaview;
 mod miller_columns;
+mod minibuffer;
+mod paths;
 mod preview;
+mod proclist;
+mod quick_actions;
+mod stats;
+mod tabview;
 mod term;
 mod textview;
-mod widget;
-mod hbox;
-mod tabview;
-mod fail;
-mod minibuffer;
-mod proclist;
-mod bookmarks;
-mod paths;
-mod foldview;
-mod dirty;
-mod fscache;
-mod config;
-mod stats;
-mod icon;
-mod quick_actions;
 mod trait_ext;
-mod config_installer;
-mod imgview;
-mod mediaview;
-mod keybind;
+mod widget;
 
-
-
-
-
-use widget::{Widget, WidgetCore};
-use term::ScreenExt;
-use fail::{HResult, HError, MimeError, ErrorLog};
+use fail::{ErrorLog, HError, HResult, MimeError};
 use file_browser::FileBrowser;
 use tabview::TabView;
+use term::ScreenExt;
 use trait_ext::PathBufMime;
-
+use widget::{Widget, WidgetCore};
 
 fn reset_screen(core: &mut WidgetCore) -> HResult<()> {
     core.screen.suspend()
@@ -143,7 +135,6 @@ fn run(mut core: WidgetCore) -> HResult<()> {
     Ok(())
 }
 
-
 fn parse_args() -> clap::ArgMatches<'static> {
     App::new(clap::crate_name!())
         .version(clap::crate_version!())
@@ -195,16 +186,12 @@ fn parse_args() -> clap::ArgMatches<'static> {
         .get_matches()
 }
 
-
-
 fn process_args(args: clap::ArgMatches, core: WidgetCore) {
     let path = args.value_of("path");
 
     // Just print MIME and quit
     if args.is_present("mime") {
-        get_mime(path)
-            .map_err(|e| eprintln!("{}", e)).
-            ok();
+        get_mime(path).map_err(|e| eprintln!("{}", e)).ok();
         // If we get heres something went wrong.
         std::process::exit(1)
     }
@@ -214,18 +201,11 @@ fn process_args(args: clap::ArgMatches, core: WidgetCore) {
     }
 
     if let Some(path) = path {
-        std::env::set_current_dir(&path)
-            .map_err(HError::from)
-            .log();
+        std::env::set_current_dir(&path).map_err(HError::from).log();
     }
 
     crate::config::set_argv_config(args).log();
 }
-
-
-
-
-
 
 fn get_mime(path: Option<&str>) -> HResult<()> {
     let path = path.ok_or(MimeError::NoFileProvided)?;
