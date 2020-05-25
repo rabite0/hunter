@@ -40,7 +40,7 @@ fn main() -> MResult<()> {
         .expect("provide ysize in pixels")
         .parse::<usize>()
         .unwrap();
-    let cell_ratio = args.get(5)
+    let mut cell_ratio = args.get(5)
         .expect("Provide cell ratio")
         .parse::<f32>()
         .unwrap();
@@ -83,6 +83,7 @@ fn main() -> MResult<()> {
     if target == RenderTarget::Unicode {
         xpix = xsize;
         ypix = ysize * 2;
+        cell_ratio = 0.5;
     }
 
 
