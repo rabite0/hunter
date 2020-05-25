@@ -89,32 +89,30 @@ impl<T> HBox<T> where T: Widget + PartialEq {
         Ok(ratios)
     }
 
-    pub fn calculate_coordinates(&self)
-                                 -> HResult<Vec<Coordinates>> {
+    pub fn calculate_coordinates(&self) -> HResult<Vec<Coordinates>> {
         let box_coords = self.get_coordinates()?;
         let box_xsize = box_coords.xsize();
         let box_ysize = box_coords.ysize();
         let box_top = box_coords.top().y();
 
-        let mut ratios = match &self.ratios {
-            Some(ratios) => ratios.clone(),
+        let ratios = match self.ratios.clone() {
+            Some(ratios) => ratios,
             None => self.calculate_equal_ratios()?
         };
 
+        let ratios_sum: usize = ratios.iter().sum();
+
+        let mut ratios = ratios.iter()
+                               .map(|&r| (r as f64 * box_xsize as f64 / ratios_sum as f64).round() as usize)
+                               .map(|r| if r < 10 { 10 } else { r })
+                               .collect::<Vec<_>>();
+
         let mut ratios_sum: usize = ratios.iter().sum();
 
-        ratios = ratios.iter().map(|&r|
-            (r as f64 * box_xsize as f64 / ratios_sum as f64).round() as usize).collect();
-
-        for r in &mut ratios {
-            if *r < 10 { *r = 10 }
-        }
-
-        ratios_sum = ratios.iter().sum();
-
-        while ratios_sum + ratios.len() > box_xsize as usize {
+        while ratios_sum + ratios.len() > box_xsize as usize + 1 {
             let ratios_max = ratios.iter()
-                .position(|&r| r == *ratios.iter().max().unwrap()).unwrap();
+                                   .position(|&r| r == *ratios.iter().max().unwrap())
+                                   .unwrap();
             ratios[ratios_max] = ratios[ratios_max] - 1;
             ratios_sum -= 1;
         }
@@ -138,7 +136,7 @@ impl<T> HBox<T> where T: Widget + PartialEq {
                 size: Size((widget_xsize,
                             box_ysize)),
                 position: Position((widget_xpos,
-                                   box_top))
+                                    box_top))
             });
             coords
         });
