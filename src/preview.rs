@@ -1,7 +1,9 @@
 use async_value::{Async, Stale};
 use termion::event::Key;
+use parking_lot::Mutex;
 
-use std::sync::{Arc, Mutex};
+
+use std::sync::Arc;
 use std::path::PathBuf;
 
 use crate::files::{File, Files, Kind, Ticker};
@@ -26,7 +28,7 @@ fn kill_proc() -> HResult<()> {
     // Kill media previewer if it still runs
     ImgView::kill_running();
 
-    let mut pid = SUBPROC.lock()?;
+    let mut pid = SUBPROC.lock();
     pid.map(|pid|
             // Do this in another thread so we can wait on process to exit with SIGHUP
             std::thread::spawn(move || {
@@ -75,7 +77,10 @@ impl<W: Widget + Send + 'static> AsyncWidget<W> {
                                     closure(stale).map_err(|e| e.into()));
         widget.on_ready(move |_, stale| {
             if !stale.is_stale()? {
-                sender.lock().map(|s| s.send(crate::widget::Events::WidgetReady)).ok();
+                sender.lock()
+                      .send(crate::widget::Events::WidgetReady)
+                      .map_err(HError::from)
+                      .log();
             }
             Ok(())
         }).log();
@@ -104,8 +109,9 @@ impl<W: Widget + Send + 'static> AsyncWidget<W> {
         widget.on_ready(move |_, stale| {
             if !stale.is_stale()? {
                 sender.lock()
-                    .map(|s| s.send(crate::widget::Events::WidgetReady))
-                    .ok();
+                      .send(crate::widget::Events::WidgetReady)
+                      .map_err(HError::from)
+                      .log();
             }
             Ok(())
         }).log();
@@ -539,7 +545,7 @@ impl Previewer {
 
         let pid = process.id();
         {
-            let mut pid_ = SUBPROC.lock()?;
+            let mut pid_ = SUBPROC.lock();
             *pid_ = Some(pid);
         }
 
@@ -548,7 +554,7 @@ impl Previewer {
         if stale.is_stale()? { return Previewer::preview_failed(&file) }
 
         {
-            let mut pid_ = SUBPROC.lock()?;
+            let mut pid_ = SUBPROC.lock();
             *pid_ = None;
         }
 

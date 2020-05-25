@@ -1,10 +1,11 @@
-use std::sync::{Arc, Mutex, RwLock};
+use std::sync::Arc;
 use std::sync::mpsc::{Sender, Receiver, channel};
 use std::io::{Write, stdin};
 
 use termion::event::{Event, Key, MouseEvent};
 use termion::input::TermRead;
 use async_value::{Async, Stale};
+use parking_lot::{Mutex, RwLock};
 
 
 use crate::coordinates::{Coordinates, Position, Size};
@@ -91,17 +92,17 @@ impl WidgetCore {
             config: Arc::new(RwLock::new(config)) };
 
         let minibuffer = MiniBuffer::new(&core);
-        *core.minibuffer.lock().unwrap() = Some(minibuffer);
+        *core.minibuffer.lock() = Some(minibuffer);
         Ok(core)
     }
 
     pub fn get_sender(&self) -> Sender<Events> {
-        self.event_sender.lock().unwrap().clone()
+        self.event_sender.lock().clone()
     }
 
     pub fn draw_status(&self) -> HResult<()> {
         let xsize = term::xsize_u();
-        let status = match self.status_bar_content.lock()?.as_ref() {
+        let status = match self.status_bar_content.lock().as_ref() {
             Some(status) => status.to_string(),
             None => "".to_string(),
         };
@@ -121,7 +122,7 @@ impl WidgetCore {
     pub fn show_status(&self, status: &str) -> HResult<()> {
         HError::log::<()>(status).ok();
         {
-            let mut status_content = self.status_bar_content.lock()?;
+            let mut status_content = self.status_bar_content.lock();
             *status_content = Some(status.to_string());
         }
         self.draw_status()?;
@@ -129,7 +130,7 @@ impl WidgetCore {
     }
 
     pub fn clear_status(&self) -> HResult<()> {
-        if self.status_bar_content.lock()?.take().is_some() {
+        if self.status_bar_content.lock().take().is_some() {
             self.draw_status().log();
         }
         Ok(())
@@ -137,7 +138,7 @@ impl WidgetCore {
 
     pub fn minibuffer_clear(&self) -> HResult<()> {
         self.minibuffer
-            .lock()?
+            .lock()
             .as_mut()?
             .clear();
 
@@ -146,7 +147,7 @@ impl WidgetCore {
 
     pub fn minibuffer(&self, query: &str) -> HResult<String> {
         let answer = self.minibuffer
-            .lock()?
+            .lock()
             .as_mut()?
             .query(query, false);
         let mut screen = self.screen()?;
@@ -156,7 +157,7 @@ impl WidgetCore {
 
     pub fn minibuffer_continuous(&self, query: &str) -> HResult<String> {
         let answer = self.minibuffer
-            .lock()?
+            .lock()
             .as_mut()?
             .query(query, true);
         let mut screen = self.screen()?;
@@ -203,9 +204,9 @@ impl WidgetCore {
 
     fn get_conf(&self) -> HResult<Config> {
         let conf = self.config
-            .read()?
-            .get()?
-            .clone();
+                       .read()
+                       .get()?
+                       .clone();
         Ok(conf)
     }
 }
@@ -397,7 +398,10 @@ pub trait Widget {
                     HError::input_updated(input)?
                 }
                 Events::ConfigLoaded => {
-                    self.get_core_mut()?.config.write()?.pull_async()?;
+                    self.get_core_mut()?
+                        .config
+                        .write()
+                        .pull_async()?;
                 }
                 _ => {}
             }
@@ -472,7 +476,7 @@ pub trait Widget {
 
     fn handle_input(&mut self) -> HResult<()> {
         let (tx_internal_event, rx_internal_event) = channel();
-        let rx_global_event = self.get_core()?.event_receiver.lock()?.take()?;
+        let rx_global_event = self.get_core()?.event_receiver.lock().take()?;
 
         dispatch_events(tx_internal_event, rx_global_event, self.get_core()?.screen()?);
 
@@ -492,7 +496,11 @@ pub trait Widget {
                     self.get_core()?.screen()?.clear().log();
                 }
                 Events::ConfigLoaded => {
-                    self.get_core_mut()?.config.write()?.pull_async().ok();
+                    self.get_core_mut()?
+                        .config
+                        .write()
+                        .pull_async()
+                        .ok();
                     self.config_loaded().log();
                 }
                 _ => {}
@@ -536,7 +544,7 @@ fn dispatch_events(tx_internal: Sender<Events>,
             match &event {
                 Events::ExclusiveEvent(tx_event) => {
                     tx_exclusive_event = match tx_event {
-                        Some(locked_sender) => locked_sender.lock().unwrap().take(),
+                        Some(locked_sender) => locked_sender.lock().take(),
                         None => None
                     }
                 }

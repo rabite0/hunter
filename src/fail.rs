@@ -5,9 +5,10 @@ use failure::Fail;
 
 
 use termion::event::Key;
+use parking_lot::Mutex;
 
 use std::path::PathBuf;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 
 use crate::foldview::LogEntry;
 use crate::mediaview::MediaError;
@@ -191,12 +192,12 @@ lazy_static! {
 }
 
 pub fn get_logs() -> HResult<Vec<LogEntry>> {
-    let logs = LOG.lock()?.drain(..).collect();
+    let logs = LOG.lock().drain(..).collect();
     Ok(logs)
 }
 
 pub fn put_log<L: Into<LogEntry>>(log: L) -> HResult<()> {
-    LOG.lock()?.push(log.into());
+    LOG.lock().push(log.into());
     Ok(())
 }
 

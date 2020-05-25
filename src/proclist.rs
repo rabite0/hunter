@@ -1,4 +1,4 @@
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 use std::sync::mpsc::Sender;
 use std::process::{Child, Command};
 use std::os::unix::process::{CommandExt, ExitStatusExt};
@@ -10,6 +10,7 @@ use termion::event::Key;
 use unicode_width::UnicodeWidthStr;
 use osstrtools::{OsStringTools, OsStrTools, OsStrConcat};
 use async_value::Stale;
+use parking_lot::Mutex;
 
 use crate::listview::{Listable, ListView};
 use crate::textview::TextView;
@@ -133,10 +134,10 @@ impl Process {
         let success = self.success.clone();
         let sender = self.sender.clone();
         let cmd = self.cmd.clone();
-        let pid = self.handle.lock()?.id();
+        let pid = self.handle.lock().id();
 
         std::thread::spawn(move || -> HResult<()> {
-            let stdout = handle.lock()?.stdout.take()?;
+            let stdout = handle.lock().stdout.take()?;
             let mut stdout = BufReader::new(stdout);
             let mut processor = move |cmd, sender: &Sender<Events>| -> HResult<()> {
                 loop {
@@ -146,7 +147,7 @@ impl Process {
 
                     if len == 0 { return Ok(()) }
 
-                    output.lock()?.push_str(&buffer);
+                    output.lock().push_str(&buffer);
 
                     let status = format!("{}: read {} chars!", cmd, len);
                     sender.send(Events::Status(status))?;
@@ -159,15 +160,15 @@ impl Process {
             };
             processor(&cmd, &sender).log();
 
-            if let Ok(proc_status) = handle.lock()?.wait() {
+            if let Ok(proc_status) = handle.lock().wait() {
                 let proc_success = proc_status.success();
                 let proc_status = match proc_status.code() {
                     Some(status) => status,
                     None => proc_status.signal().unwrap_or(-1)
                 };
 
-                *success.lock()? = Some(proc_success);
-                *status.lock()? = Some(proc_status);
+                *success.lock() = Some(proc_success);
+                *status.lock() = Some(proc_status);
 
                 let color_success =
                     if proc_success {
@@ -363,7 +364,7 @@ impl ListView<Vec<Process>> {
 
     fn kill_proc(&mut self) -> HResult<()> {
         let proc = self.selected_proc()?;
-        proc.handle.lock()?.kill()?;
+        proc.handle.lock().kill()?;
         Ok(())
     }
 
@@ -380,8 +381,8 @@ impl ListView<Vec<Process>> {
     }
 
     pub fn render_proc(&self, proc: &Process) -> HResult<String> {
-        let pid = proc.handle.lock()?.id();
-        let status = match *proc.status.lock()? {
+        let pid = proc.handle.lock().id();
+        let status = match *proc.status.lock() {
             Some(status) => format!("{}", status),
             None => format!("<{}>", pid),
         };
@@ -392,7 +393,7 @@ impl ListView<Vec<Process>> {
         let padding = sized_string.len() - sized_string.width_cjk();
         let padding = xsize - padding as u16;
 
-        let color_status = match *proc.success.lock().unwrap() {
+        let color_status = match *proc.success.lock() {
             Some(false) => { format!("{}{}", term::color_red(), status) }
             _ => { status }
         };
@@ -530,7 +531,7 @@ impl ProcView {
         if Some(self.get_listview_mut().get_selection()) == self.viewing {
             return Ok(());
         }
-        let output = self.get_listview_mut().selected_proc()?.output.lock()?.clone();
+        let output = self.get_listview_mut().selected_proc()?.output.lock().clone();
 
         let animator = self.animator.clone();
         animator.set_fresh().log();
@@ -601,7 +602,7 @@ impl Widget for ProcView {
         let procs_running = listview
             .content
             .iter()
-            .filter(|proc| proc.status.lock().unwrap().is_none())
+            .filter(|proc| proc.status.lock().is_none())
             .count();
 
         let header = format!("Running processes: {} / {}",
@@ -617,9 +618,9 @@ impl Widget for ProcView {
 
         if let Some(proc) = listview.content.get(selection) {
             let cmd = &proc.cmd;
-            let pid = proc.handle.lock()?.id();
-            let proc_status = proc.status.lock()?;
-            let proc_success = proc.success.lock()?;
+            let pid = proc.handle.lock().id();
+            let proc_status = proc.status.lock();
+            let proc_success = proc.success.lock();
 
             let procinfo = if proc_status.is_some() {
                 let color_success =

@@ -46,6 +46,7 @@ itertools = "0.8"
 nix = "0.17"
 strip-ansi-escapes = "0.1"
 crossbeam = "0.7"
+parking_lot = "0.10"
 
 
 image = { version = "0.21.1", optional = true }

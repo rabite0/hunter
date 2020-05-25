@@ -1,5 +1,5 @@
 use std::io::{Stdout, Write, BufWriter, BufRead};
-use std::sync::{Arc, Mutex, RwLock};
+use std::sync::Arc;
 
 use termion;
 use termion::screen::AlternateScreen;
@@ -7,6 +7,7 @@ use termion::raw::{IntoRawMode, RawTerminal};
 
 use parse_ansi::parse_bytes;
 use crate::unicode_width::{UnicodeWidthStr, UnicodeWidthChar};
+use parking_lot::{Mutex, RwLock};
 
 use crate::fail::{HResult, ErrorLog};
 use crate::trait_ext::ExtractResult;
@@ -35,23 +36,23 @@ impl Screen {
     }
 
     pub fn set_size(&self, size: (usize, usize)) -> HResult<()> {
-        *self.size.write()? = Some(size);
+        *self.size.write() = Some(size);
         Ok(())
     }
 
     pub fn is_resized(&self) -> HResult<bool> {
-        Ok(self.size.read()?.is_some())
+        Ok(self.size.read().is_some())
     }
 
     pub fn get_size(&self) -> HResult<(usize, usize)> {
-        match self.size.read()?.clone() {
+        match self.size.read().clone() {
             Some((xsize, ysize)) => Ok((xsize, ysize)),
             None => Ok((self.xsize()?, self.ysize()?))
         }
     }
 
     pub fn take_size(&self) -> HResult<(usize, usize)> {
-        Ok(self.size.write()?.take()?)
+        Ok(self.size.write().take()?)
     }
 
     pub fn set_title(&mut self, title: &str) -> HResult<()> {
@@ -71,16 +72,12 @@ impl Write for Screen {
     fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
         self.screen
             .lock()
-            .map_err(|_| std::io::Error::new(std::io::ErrorKind::Other,
-                                             "Screen Mutex poisoned!"))
-            .and_then(|mut s| s.write(buf))
+            .write(buf)
     }
     fn flush(&mut self) -> std::io::Result<()> {
         self.screen
             .lock()
-            .map_err(|_| std::io::Error::new(std::io::ErrorKind::Other,
-                                             "Screen Mutex poisoned!"))
-            .and_then(|mut s| s.flush())
+            .flush()
     }
 }
 
@@ -155,13 +152,13 @@ pub trait ScreenExt: Write {
 impl ScreenExt for Screen {
     fn suspend_raw_mode(&mut self) -> HResult<()> {
         self.screen
-            .lock()?
+            .lock()
             .suspend_raw_mode()
     }
 
     fn activate_raw_mode(&mut self) -> HResult<()> {
         self.screen
-            .lock()?
+            .lock()
             .activate_raw_mode()
     }
 }

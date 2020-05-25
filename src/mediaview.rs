@@ -1,6 +1,7 @@
 use lazy_static;
 use termion::event::Key;
 use failure::{self, Fail};
+use parking_lot::{Mutex, RwLock};
 
 use crate::widget::{Widget, WidgetCore};
 use crate::coordinates::Coordinates;
@@ -9,7 +10,7 @@ use crate::fail::{HResult, HError, ErrorLog, ErrorCause};
 use crate::imgview::ImgView;
 
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, Mutex, RwLock,
+use std::sync::{Arc,
                 mpsc::{channel, Sender}};
 
 use std::io::{BufRead, BufReader, Write};
@@ -120,7 +121,7 @@ impl MediaView {
                 // Use current size. Widget could have been resized at some point
                 let (xsize, ysize, xpix, ypix) =
                 {
-                    let view = thread_imgview.lock()?;
+                    let view = thread_imgview.lock();
                     let (xsize, ysize) = view.core.coordinates.size_u();
                     let (xpix, ypix) = view.core.coordinates.size_pixels()?;
                     (xsize, ysize, xpix, ypix)
@@ -159,7 +160,7 @@ impl MediaView {
                 let mut stdout = BufReader::new(previewer.stdout.take()?);
                 let mut stdin = previewer.stdin.take()?;
 
-                cprocess.lock().map(|mut p| *p = Some(previewer))?;
+                *cprocess.lock() = Some(previewer);
 
                 let mut frame = vec![];
                 let newline = String::from("\n");
@@ -167,7 +168,7 @@ impl MediaView {
                 let rx_cmd = rx_cmd.clone();
 
                 std::thread::spawn(move || -> HResult<()> {
-                    for cmd in rx_cmd.lock()?.iter() {
+                    for cmd in rx_cmd.lock().iter() {
                         write!(stdin, "{}", cmd)?;
                         write!(stdin, "\n")?;
                         stdin.flush()?;
@@ -177,9 +178,10 @@ impl MediaView {
 
                 loop {
                     // Check if preview-gen finished and break out of loop to restart
-                    if let Ok(Some(code)) = cprocess.lock()?
-                        .as_mut()?
-                        .try_wait() {
+                    if let Ok(Some(code)) = cprocess.lock()
+                                                    .as_mut()?
+                                                    .try_wait()
+                    {
                         if code.success() {
                             break;
                         } else {
@@ -200,7 +202,7 @@ impl MediaView {
                         stdout.read_line(&mut line_buf)?;
                         let h = line_buf.trim().parse::<usize>()?;
 
-                        let mut height = height.lock().unwrap();
+                        let mut height = height.lock();
                         if *height != h {
                             new_height = true;
                         } else {
@@ -212,26 +214,25 @@ impl MediaView {
                         line_buf.clear();
                         stdout.read_line(&mut line_buf)?;
                         let pos = &line_buf.trim();
-                        *position.lock().unwrap() = pos
+                        *position.lock() = pos
                             .parse::<usize>()?;
 
 
                         line_buf.clear();
                         stdout.read_line(&mut line_buf)?;
                         let dur = &line_buf.trim();
-                        *duration.lock().unwrap() = dur
+                        *duration.lock() = dur
                             .parse::<usize>()?;
 
 
-                        if let Ok(mut imgview) = thread_imgview.lock() {
-                            if new_height {
-                                imgview.core.clear()?;
-                            }
-                            imgview.set_image_data(frame);
-                            sender.send(crate::widget::Events::WidgetReady)
-                                .map_err(|e| HError::from(e))
-                                .log();
+                        let mut imgview = thread_imgview.lock();
+                        if new_height {
+                            imgview.core.clear()?;
                         }
+                        imgview.set_image_data(frame);
+                        sender.send(crate::widget::Events::WidgetReady)
+                              .map_err(|e| HError::from(e))
+                              .log();
 
                         line_buf.clear();
                         frame = vec![];
@@ -304,8 +305,8 @@ impl MediaView {
     pub fn progress_bar(&self) -> HResult<String> {
         let xsize = self.core.coordinates.xsize_u();
 
-        let position = self.position.lock()?.clone();
-        let duration = self.duration.lock()?.clone();
+        let position = self.position.lock().clone();
+        let duration = self.duration.lock().clone();
 
         if duration == 0 || position == 0 {
             Ok(format!("{:elements$}", "|", elements=xsize))
@@ -323,8 +324,8 @@ impl MediaView {
     }
 
     pub fn progress_string(&self) -> HResult<String> {
-        let position = self.position.lock()?.clone();
-        let duration = self.duration.lock()?.clone();
+        let position = self.position.lock().clone();
+        let duration = self.duration.lock().clone();
 
         let fposition = self.format_secs(position);
         let fduration = self.format_secs(duration);
@@ -342,7 +343,7 @@ impl MediaView {
 
         let mut icons = String::new();
 
-        if *MUTE.read()? == true {
+        if *MUTE.read() == true {
             icons += &crate::term::goto_xy_u(xpos+xsize-2, ypos+lines);
             icons += mute_char;
         } else {
@@ -351,7 +352,7 @@ impl MediaView {
             icons += "  ";
         }
 
-        if *AUTOPLAY.read()? == true {
+        if *AUTOPLAY.read() == true {
             icons += &crate::term::goto_xy_u(xpos+xsize-4, ypos+lines);
             icons += play_char;
         } else {
@@ -371,8 +372,8 @@ impl MediaView {
     }
 
     pub fn toggle_pause(&mut self) -> HResult<()> {
-        let auto = AUTOPLAY.read()?.clone();
-        let pos = self.position.lock()?.clone();
+        let auto = AUTOPLAY.read().clone();
+        let pos = self.position.lock().clone();
 
         // This combination means only first frame was shown, since
         // self.paused will be false, even with autoplay off
@@ -410,40 +411,31 @@ impl MediaView {
     }
 
     pub fn autoplay(&self) -> bool {
-        if let Ok(autoplay) = AUTOPLAY.read() {
-            return *autoplay;
-        }
-        return true;
+        *AUTOPLAY.read()
     }
 
     pub fn mute(&self) -> bool {
-        if let Ok(mute) = MUTE.read() {
-            return *mute;
-        }
-        return false;
+        *MUTE.read()
     }
 
     pub fn toggle_autoplay(&self) {
-        if let Ok(mut autoplay) = AUTOPLAY.write() {
-            *autoplay = !*autoplay;
-        }
+        *AUTOPLAY.write() = !*AUTOPLAY.read();
     }
 
     pub fn toggle_mute(&self) {
-        if let Ok(mut mute) = MUTE.write() {
-            *mute = !*mute;
-            if *mute {
-                self.controller.send(String::from("m")).ok();
-            } else {
-                self.controller.send(String::from("u")).ok();
-            }
+        let mut mute = MUTE.write();
+        *mute = !*mute;
+        if *mute {
+            self.controller.send(String::from("m")).ok();
+        } else {
+            self.controller.send(String::from("u")).ok();
         }
     }
 
     pub fn kill(&mut self) -> HResult<()> {
         let proc = self.process.clone();
         std::thread::spawn(move || -> HResult<()> {
-            proc.lock()?
+            proc.lock()
                 .as_mut()
                 .map(|p| {
                     p.kill().map_err(|e| HError::from(e)).log();
@@ -470,7 +462,7 @@ impl Widget for MediaView {
 
         self.core.coordinates = coordinates.clone();
 
-        let mut imgview = self.imgview.lock()?;
+        let mut imgview = self.imgview.lock();
         imgview.set_image_data(vec![]);
         imgview.set_coordinates(&coordinates)?;
 
@@ -497,13 +489,13 @@ impl Widget for MediaView {
 
     fn get_drawlist(&self) -> HResult<String> {
         let (xpos, ypos) = self.core.coordinates.position_u();
-        let height = *self.height.lock()?;
+        let height = *self.height.lock();
         let progress_str = self.progress_string()?;
         let progress_bar = self.progress_bar()?;
 
-        let frame= self.imgview
-            .lock()
-            .map(|img| img.get_drawlist())?;
+        let frame = self.imgview
+                       .lock()
+                       .get_drawlist();
 
         let mut frame = frame?;
 

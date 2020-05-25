@@ -1,10 +1,12 @@
 use termion::event::Key;
+use parking_lot::{Mutex, RwLock};
+
 use pathbuftools::PathBufTools;
 use osstrtools::OsStrTools;
 use async_value::Stale;
 
 use std::io::Write;
-use std::sync::{Arc, Mutex, RwLock};
+use std::sync::Arc;
 use std::path::PathBuf;
 use std::ffi::OsString;
 use std::os::unix::ffi::OsStringExt;
@@ -193,8 +195,15 @@ impl Tabbable for TabView<FileBrowser> {
                 dirs
             });
 
-        self.active_tab_mut_().fs_cache.watch_only(open_dirs).log();
-        self.active_tab_mut_().fs_stat.write()?.refresh().log();
+        self.active_tab_mut_()
+            .fs_cache
+            .watch_only(open_dirs)
+            .log();
+        self.active_tab_mut_()
+            .fs_stat
+            .write()
+            .refresh()
+            .log();
         Ok(())
     }
 
@@ -461,7 +470,9 @@ impl FileBrowser {
             tab_paths: None
         };
 
-        self.proc_view.lock()?.run_proc_raw(cmd)?;
+        self.proc_view
+            .lock()
+            .run_proc_raw(cmd)?;
 
         Ok(())
     }
@@ -618,10 +629,15 @@ impl FileBrowser {
             None => &self.cwd
         }.path.to_string_lossy().to_string();
 
-        self.bookmarks.lock()?.set_coordinates(&self.core.coordinates).log();
+        self.bookmarks
+            .lock()
+            .set_coordinates(&self.core.coordinates)
+            .log();
 
         loop {
-            let bookmark =  self.bookmarks.lock()?.pick(cwd.to_string());
+            let bookmark = self.bookmarks
+                               .lock()
+                               .pick(cwd.to_string());
 
             if let Err(HError::TerminalResizedError) = bookmark {
                 self.core.screen.clear().log();
@@ -633,7 +649,10 @@ impl FileBrowser {
 
             if let Err(HError::WidgetResizedError) = bookmark {
                 let coords = &self.core.coordinates;
-                self.bookmarks.lock()?.set_coordinates(&coords).log();
+                self.bookmarks
+                    .lock()
+                    .set_coordinates(&coords)
+                    .log();
                 self.core.screen.clear().log();
                 self.refresh().log();
                 self.draw().log();
@@ -660,8 +679,14 @@ impl FileBrowser {
     pub fn add_bookmark(&mut self) -> HResult<()> {
         let cwd = self.cwd.path.to_string_lossy().to_string();
         let coords = &self.core.coordinates;
-        self.bookmarks.lock()?.set_coordinates(&coords).log();
-        self.bookmarks.lock()?.add(&cwd)?;
+
+        self.bookmarks
+            .lock()
+            .set_coordinates(&coords)
+            .log();
+        self.bookmarks
+            .lock()
+            .add(&cwd)?;
         Ok(())
     }
 
@@ -1074,10 +1099,11 @@ impl FileBrowser {
     fn external_select(&mut self) -> HResult<()> {
         let shell = std::env::var("SHELL").unwrap_or("bash".into());
         let cmd = self.core
-            .config.read()?
-            .get()?
-            .select_cmd
-            .clone();
+                      .config
+                      .read()
+                      .get()?
+                      .select_cmd
+                      .clone();
 
         self.core.get_sender().send(Events::InputEnabled(false))?;
         self.core.screen.suspend().log();
@@ -1182,10 +1208,11 @@ impl FileBrowser {
     fn external_cd(&mut self) -> HResult<()> {
         let shell = std::env::var("SHELL").unwrap_or("bash".into());
         let cmd = self.core
-            .config.read()?
-            .get()?
-            .cd_cmd
-            .clone();
+                      .config
+                      .read()
+                      .get()?
+                      .cd_cmd
+                      .clone();
 
         self.core.get_sender().send(Events::InputEnabled(false))?;
         self.core.screen.suspend().log();
@@ -1272,7 +1299,9 @@ impl FileBrowser {
             tab_paths: Some(tab_dirs)
         };
 
-        self.proc_view.lock()?.run_proc_subshell(cmd)?;
+        self.proc_view
+            .lock()
+            .run_proc_subshell(cmd)?;
 
         Ok(())
     }
@@ -1309,7 +1338,7 @@ impl FileBrowser {
         self.preview_widget().map(|preview| preview.cancel_animation()).log();
         let procview = self.proc_view.clone();
         loop {
-            match procview.lock()?.popup() {
+            match procview.lock().popup() {
                 // Ignore refresh
                 Err(HError::RefreshParent) => continue,
                 Err(HError::TerminalResizedError) |
@@ -1323,7 +1352,9 @@ impl FileBrowser {
     pub fn show_log(&mut self) -> HResult<()> {
         self.preview_widget().map(|preview| preview.cancel_animation()).log();
         loop {
-            let res = self.log_view.lock()?.popup();
+            let res = self.log_view
+                          .lock()
+                          .popup();
 
             if let Err(HError::RefreshParent) = res {
                 continue
@@ -1382,7 +1413,10 @@ impl FileBrowser {
         let count_xpos = xsize - file_count.len() as u16;
         let count_ypos = ypos + self.get_coordinates()?.ysize();
 
-        let fs = self.fs_stat.read()?.find_fs(&file.path)?.clone();
+        let fs = self.fs_stat
+                     .read()
+                     .find_fs(&file.path)?
+                     .clone();
 
         let dev = fs.get_dev().unwrap_or(String::from(""));
         let free_space = fs.get_free();
@@ -1429,9 +1463,19 @@ impl Widget for FileBrowser {
     fn set_coordinates(&mut self, coordinates: &Coordinates) -> HResult<()> {
         self.core.coordinates = coordinates.clone();
         self.columns.set_coordinates(&coordinates).log();
-        self.proc_view.lock()?.set_coordinates(&coordinates).log();
-        self.log_view.lock()?.set_coordinates(&coordinates).log();
-        self.bookmarks.lock()?.set_coordinates(&coordinates).log();
+
+        self.proc_view
+            .lock()
+            .set_coordinates(&coordinates)
+            .log();
+        self.log_view
+            .lock()
+            .set_coordinates(&coordinates)
+            .log();
+        self.bookmarks
+            .lock()
+            .set_coordinates(&coordinates)
+            .log();
         Ok(())
     }
 
@@ -1468,7 +1512,7 @@ impl Widget for FileBrowser {
         let xsize = term::xsize_u();
         let mut status = self.get_core()?
                              .status_bar_content
-                             .lock()?;
+                             .lock();
         let status = status.as_mut()
                            .take();
         let active = self.columns

@@ -1,13 +1,12 @@
 use mime_guess::Mime;
 use termion::event::Key;
+use parking_lot::Mutex;
 
 use async_value::Async;
 
 use std::path::PathBuf;
-use std::sync::{
-    Arc, Mutex,
-    mpsc::Sender,
-};
+use std::sync::{Arc,
+                mpsc::Sender};
 use std::ffi::OsString;
 use std::str::FromStr;
 
@@ -420,9 +419,7 @@ impl QuickAction {
 
             proc_view
                 .lock()
-                .map(|mut proc_view| {
-                    proc_view.run_proc_raw(cmd)
-                })??;
+                .run_proc_raw(cmd)?;
 
             Ok(())
         }
