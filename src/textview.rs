@@ -204,11 +204,9 @@ impl Widget for TextView {
     fn render_footer(&self) -> HResult<String> {
         let (xsize, ysize) = self.core.coordinates.size_u();
         let (_, ypos) = self.core.coordinates.position_u();
-        let lines = self.lines
-                        .len()
-                        .saturating_sub(1);
-        let current_line_top = self.offset;
-        let current_line_bot = std::cmp::min(current_line_top + ysize + 1,
+        let lines = self.lines.len();
+        let current_line_top = self.offset + 1;
+        let current_line_bot = std::cmp::min(current_line_top + (ysize + 1),
                                              lines);
         let line_hint = format!("{} - {} / {}",
                                 current_line_top,
