@@ -419,7 +419,7 @@ impl MediaView {
     }
 
     pub fn toggle_autoplay(&self) {
-        *AUTOPLAY.write() = !*AUTOPLAY.read();
+        *AUTOPLAY.write() = !self.autoplay()
     }
 
     pub fn toggle_mute(&self) {
