@@ -492,6 +492,8 @@ impl Previewer {
 
         if stale.is_stale()? { return Previewer::preview_failed(&file) }
 
+        // Start loading metadata during animation
+        file_list.refresh()?;
         file_list.animate_slide_up(Some(animator))?;
         file_list.core.set_clean();
 
