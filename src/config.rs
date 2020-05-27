@@ -87,6 +87,7 @@ pub struct Config {
     pub show_hidden: bool,
     pub select_cmd: String,
     pub cd_cmd: String,
+    pub open_cmd: String,
     pub icons: bool,
     pub icons_space: bool,
     pub media_autoplay: bool,
@@ -113,6 +114,7 @@ impl Config {
             show_hidden: false,
             select_cmd: "find -type f | fzf -m".to_string(),
             cd_cmd: "find -type d | fzf".to_string(),
+            open_cmd: "xdg-open".to_string(),
             icons: false,
             icons_space: false,
             media_autoplay: false,
@@ -157,6 +159,10 @@ impl Config {
                 Ok(("cd_cmd", cmd)) => {
                     let cmd = cmd.to_string();
                     config.cd_cmd = cmd;
+                }
+                Ok(("open_cmd", cmd)) => {
+                    let cmd = cmd.to_string();
+                    config.open_cmd = cmd;
                 }
                 Ok(("media_autoplay", "on")) => config.media_autoplay = true,
                 Ok(("media_autoplay", "off")) => config.media_autoplay = false,

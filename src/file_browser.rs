@@ -402,7 +402,13 @@ impl FileBrowser {
             self.core.get_sender().send(Events::InputEnabled(false))?;
             self.core.screen.suspend().log();
 
-            let status = std::process::Command::new("xdg-open")
+            let cmd = self.core
+                .config.read()?
+                .get()?
+                .open_cmd
+                .clone();
+
+            let status = std::process::Command::new(cmd.clone())
                 .args(file.path.file_name())
                 .status();
 
@@ -414,10 +420,10 @@ impl FileBrowser {
             match status {
                 Ok(status) =>
                     self.core.show_status(&format!("\"{}\" exited with {}",
-                                                   "xdg-open", status)).log(),
+                                                   cmd, status)).log(),
                 Err(err) =>
                     self.core.show_status(&format!("Can't run this \"{}\": {}",
-                                                   "xdg-open", err)).log()
+                                                   cmd, err)).log()
             }
         }
 
