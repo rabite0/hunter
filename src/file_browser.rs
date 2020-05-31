@@ -928,6 +928,37 @@ impl FileBrowser {
             .log();
     }
 
+    pub fn help_menu(&mut self) -> HResult<()> {
+        self.core.get_sender().send(Events::InputEnabled(false))?;
+        self.preview_widget().map(|preview| preview.cancel_animation()).log();
+        self.core.screen.suspend().log();
+
+        let pager_result = (|| {
+            let pager = std::env::var("PAGER").unwrap_or("less".into());
+            let mut pager_proc = std::process::Command::new(pager.as_str())
+                .stdin(std::process::Stdio::piped())
+                .spawn()?;
+            let pager_stdin = pager_proc.stdin.as_mut().unwrap();
+            writeln!(pager_stdin, "hunter version {}", env!("CARGO_PKG_VERSION"))?;
+            writeln!(pager_stdin, "github: https://github.com/rabite0/hunter")?;
+            writeln!(pager_stdin, "irc: #hunter @ Freenode https://webchat.freenode.net/#hunter")?;
+            writeln!(pager_stdin)?;
+            write!(pager_stdin, "{}", self.core.config().keybinds)?;
+            pager_proc.wait()
+        })();
+
+        self.core.screen.activate().log();
+        self.core.get_sender().send(Events::InputEnabled(true))?;
+
+        match pager_result {
+            Err(err) =>
+                self.core.show_status(&format!("Couldn't open help menu: {}", err)).log(),
+            Ok(_) => {}
+        }
+
+        Ok(())
+    }
+
     pub fn quit_with_dir(&self) -> HResult<()> {
         let cwd = self.cwd()?.clone().path;
         let selected_file = self.selected_file()?;
@@ -1631,7 +1662,8 @@ impl Acting for FileBrowser {
             ToggleColumns => self.toggle_colums(),
             ZoomPreview => self.zoom_preview(),
             // Tab implementation needs to call exec_cmd because ALL files are needed
-            ExecCmd => Err(HError::FileBrowserNeedTabFiles)?
+            ExecCmd => Err(HError::FileBrowserNeedTabFiles)?,
+            HelpMenu => self.help_menu()?,
         }
         Ok(())
     }

@@ -119,6 +119,74 @@ impl Default for KeyBinds {
     }
 }
 
+impl Display for KeyBinds {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+
+        writeln!(f, "[movement]")?;
+        display_group(f, &self.movement)?;
+        writeln!(f)?;
+
+        writeln!(f, "[filebrowser]")?;
+        display_group(f, &self.filebrowser)?;
+        writeln!(f)?;
+
+        writeln!(f, "[filelist]")?;
+        display_group(f, &self.filelist)?;
+        writeln!(f)?;
+
+        writeln!(f, "[tab]")?;
+        display_group(f, &self.tab)?;
+        writeln!(f)?;
+
+        writeln!(f, "[media]")?;
+        display_group(f, &self.media)?;
+        writeln!(f)?;
+
+        writeln!(f, "[bookmark]")?;
+        display_group(f, &self.bookmark)?;
+        writeln!(f)?;
+
+        writeln!(f, "[process]")?;
+        display_group(f, &self.process)?;
+        writeln!(f)?;
+
+        writeln!(f, "[minibuffer]")?;
+        display_group(f, &self.minibuffer)?;
+        writeln!(f)?;
+
+        writeln!(f, "[fold]")?;
+        display_group(f, &self.fold)?;
+        writeln!(f)?;
+
+        writeln!(f, "[log]")?;
+        display_group(f, &self.log)?;
+        writeln!(f)?;
+
+        writeln!(f, "[quickaction]")?;
+        display_group(f, &self.quickaction)?;
+        Ok(())
+    }
+}
+
+fn display_group<A>(f: &mut std::fmt::Formatter<'_>, bindings: &Bindings<A>) -> std::fmt::Result
+where
+    A: Display + Ord
+{
+    let mut by_action = std::collections::BTreeMap::new();
+    for (key, action) in bindings.0.iter() {
+        by_action.entry(action).or_insert(vec![]).push(key);
+    }
+
+    for (action, keys) in by_action {
+        let key_str = keys
+            .into_iter()
+            .map(|k| k.to_string())
+            .collect::<Vec<_>>()
+            .join(", ");
+        writeln!(f, "{} = {}", action, key_str)?;
+    }
+    Ok(())
+}
 
 impl KeyBinds {
     pub fn load() -> HResult<KeyBinds> {
@@ -448,7 +516,7 @@ where
 
 
 
-#[derive(EnumString, EnumIter, Copy, Clone, Display, Debug)]
+#[derive(EnumString, EnumIter, Copy, Clone, Display, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Movement {
     Up(usize),
     Down(usize),
@@ -462,7 +530,7 @@ pub enum Movement {
 
 
 
-#[derive(EnumString, EnumIter, Copy, Clone, Display, Debug)]
+#[derive(EnumString, EnumIter, Copy, Clone, Display, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum FileBrowserAction {
     LeftColumnDown,
     LeftColumnUp,
@@ -482,12 +550,13 @@ pub enum FileBrowserAction {
     RunSubshell,
     ToggleColumns,
     ZoomPreview,
-    ExecCmd
+    ExecCmd,
+    HelpMenu,
 }
 
 
 
-#[derive(EnumString, EnumIter, Copy, Clone, Display, Debug)]
+#[derive(EnumString, EnumIter, Copy, Clone, Display, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum FileListAction {
     Search,
     SearchNext,
@@ -508,7 +577,7 @@ pub enum FileListAction {
 
 
 
-#[derive(EnumString, EnumIter, Copy, Clone, Display, Debug)]
+#[derive(EnumString, EnumIter, Copy, Clone, Display, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum TabAction {
     NewTab,
     CloseTab,
@@ -519,7 +588,7 @@ pub enum TabAction {
 
 
 
-#[derive(EnumString, EnumIter, Copy, Clone, Display, Debug)]
+#[derive(EnumString, EnumIter, Copy, Clone, Display, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum MediaAction {
     TogglePause,
     ToggleMute,
@@ -529,7 +598,7 @@ pub enum MediaAction {
 
 
 
-#[derive(EnumString, EnumIter, Copy, Clone, Display, Debug)]
+#[derive(EnumString, EnumIter, Copy, Clone, Display, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum BookmarkAction {
     GotoLastCwd,
     Goto(char),
@@ -538,7 +607,7 @@ pub enum BookmarkAction {
 
 
 
-#[derive(EnumString, EnumIter, Copy, Clone, Display, Debug)]
+#[derive(EnumString, EnumIter, Copy, Clone, Display, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum ProcessAction {
     Close,
     Remove,
@@ -554,7 +623,7 @@ pub enum ProcessAction {
 
 
 
-#[derive(EnumString, EnumIter, Copy, Clone, Display, Debug)]
+#[derive(EnumString, EnumIter, Copy, Clone, Display, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum MiniBufferAction {
     InsertChar(char),
     InsertTab(usize),
@@ -573,17 +642,17 @@ pub enum MiniBufferAction {
     CursorToEnd
 }
 
-#[derive(EnumString, EnumIter, Copy, Clone, Display, Debug)]
+#[derive(EnumString, EnumIter, Copy, Clone, Display, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum FoldAction {
     ToggleFold
 }
 
-#[derive(EnumString, EnumIter, Copy, Clone, Display, Debug)]
+#[derive(EnumString, EnumIter, Copy, Clone, Display, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum LogAction {
     Close
 }
 
-#[derive(EnumString, EnumIter, Copy, Clone, Display, Debug)]
+#[derive(EnumString, EnumIter, Copy, Clone, Display, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum QuickActionAction {
     Close,
     SelectOrRun(char)
@@ -688,7 +757,8 @@ impl Default for Bindings<FileBrowserAction> {
                 RunSubshell => Char('z'),
                 ToggleColumns => Char('c'),
                 ZoomPreview => Char('C'),
-                ExecCmd => Char('!')
+                ExecCmd => Char('!'),
+                HelpMenu => Char('H'),
             };
 
             filebrowser.insert(key, action.as_default());
