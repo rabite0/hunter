@@ -1,6 +1,3 @@
-#![feature(vec_remove_item)]
-#![feature(trivial_bounds)]
-#![feature(try_trait)]
 #![allow(dead_code)]
 
 extern crate termion;

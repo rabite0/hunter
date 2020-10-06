@@ -4,7 +4,7 @@ use systemstat::data::Filesystem;
 use std::path::{Path, PathBuf, Component};
 use std::collections::HashMap;
 
-use crate::fail::{HResult, ErrorLog};
+use crate::fail::{HResult, ErrorLog, HError};
 
 #[derive(Debug,Clone)]
 pub struct FsStat {
@@ -52,7 +52,7 @@ impl FsStat {
                 }
                deepest
             });
-        let fs = self.stats.get(&deepest_match)?;
+        let fs = self.stats.get(&deepest_match).ok_or_else(|| HError::NoneError)?;
         Ok(fs)
     }
 }

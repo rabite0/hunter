@@ -6,7 +6,7 @@ use parking_lot::Mutex;
 use std::sync::Arc;
 use std::path::PathBuf;
 
-use crate::files::{File, Files, Kind, Ticker};
+use crate::files::{File, Files, Kind};
 use crate::fscache::FsCache;
 use crate::listview::{ListView, FileSource};
 use crate::textview::TextView;
@@ -76,6 +76,7 @@ impl<W: Widget + Send + 'static> AsyncWidget<W> {
         let mut widget = Async::new(move |stale|
                                     closure(stale).map_err(|e| e.into()));
         widget.on_ready(move |_, stale| {
+            crate::files::stop_ticking();
             if !stale.is_stale()? {
                 sender.lock()
                       .send(crate::widget::Events::WidgetReady)
@@ -85,6 +86,7 @@ impl<W: Widget + Send + 'static> AsyncWidget<W> {
             Ok(())
         }).log();
 
+        crate::files::start_ticking(core.get_sender());
         widget.run().log();
 
         AsyncWidget {
@@ -101,12 +103,14 @@ impl<W: Widget + Send + 'static> AsyncWidget<W> {
 
         let sender = Mutex::new(self.get_core()?.get_sender());
         let core = self.get_core()?.clone();
+        let closure_core = core.clone();
 
         let mut widget = Async::new(move |stale| {
-            Ok(closure(stale, core.clone())?)
+            Ok(closure(stale, closure_core)?)
         });
 
         widget.on_ready(move |_, stale| {
+            crate::files::stop_ticking();
             if !stale.is_stale()? {
                 sender.lock()
                       .send(crate::widget::Events::WidgetReady)
@@ -116,6 +120,7 @@ impl<W: Widget + Send + 'static> AsyncWidget<W> {
             Ok(())
         }).log();
 
+        crate::files::start_ticking(core.get_sender());
         widget.run().log();
 
         self.widget = widget;
@@ -234,7 +239,7 @@ enum ExtPreviewer {
 
 fn find_previewer(file: &File, g_mode: bool) -> HResult<ExtPreviewer> {
     let path = crate::paths::previewers_path()?;
-    let ext = file.path.extension()?;
+    let ext = file.path.extension().ok_or_else(|| HError::NoneError)?;
 
     // Try to find a graphical previewer first
     if g_mode {
@@ -273,7 +278,7 @@ fn find_previewer(file: &File, g_mode: bool) -> HResult<ExtPreviewer> {
         }
     }
 
-    Ok(ExtPreviewer::Text(previewer??))
+    Ok(ExtPreviewer::Text(previewer.ok_or_else(|| HError::NoneError)??))
 }
 
 
@@ -417,7 +422,6 @@ impl Previewer {
                         }
                         "image" if has_media => {
                             // Show animation while image is loading, Drop stops it automatically
-                            Ticker::start_ticking(core.get_sender());
                             let imgview = ImgView::new_from_file(core.clone(),
                                                                  &file.path())?;
                             return Ok(PreviewWidget::ImgView(imgview));
@@ -505,9 +509,6 @@ impl Previewer {
                     stale: &Stale,
                     animator: &Stale)
                     -> HResult<PreviewWidget> {
-        // Show animation while text is loading
-        let mut ticker = Ticker::start_ticking(core.get_sender());
-
         let lines = core.coordinates.ysize() as usize;
 
         let mut textview
@@ -521,8 +522,6 @@ impl Previewer {
 
         if stale.is_stale()? { return Previewer::preview_failed(&file) }
 
-        // Prevent flicker during slide up
-        ticker.stop_ticking();
         textview.animate_slide_up(Some(animator))?;
         Ok(PreviewWidget::TextView(textview))
     }
@@ -577,9 +576,6 @@ impl Previewer {
                         stale: &Stale,
                         animator: &Stale)
                         -> HResult<PreviewWidget> {
-        // Show animation while preview is being generated
-        let mut ticker = Ticker::start_ticking(core.get_sender());
-
         let previewer = if core.config().graphics.as_str() != "unicode" {
              find_previewer(&file, true)?
         } else {
@@ -596,15 +592,13 @@ impl Previewer {
                 textview.set_lines(lines)?;
                 textview.set_coordinates(&core.coordinates).log();
                 textview.refresh().log();
-                // Prevent flicker during slide up
-                ticker.stop_ticking();
                 textview.animate_slide_up(Some(animator)).log();
 
                 Ok(PreviewWidget::TextView(textview))
             },
             ExtPreviewer::Graphics(previewer) => {
                 let lines = Previewer::run_external(previewer, file, stale)?;
-                let gfile = lines.first()?;
+                let gfile = lines.first().ok_or_else(|| HError::NoneError)?;
                 let imgview = ImgView::new_from_file(core.clone(),
                                                      &PathBuf::from(&gfile))?;
                 Ok(PreviewWidget::ImgView(imgview))

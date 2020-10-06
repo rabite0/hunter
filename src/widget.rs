@@ -139,7 +139,8 @@ impl WidgetCore {
     pub fn minibuffer_clear(&self) -> HResult<()> {
         self.minibuffer
             .lock()
-            .as_mut()?
+            .as_mut()
+            .ok_or_else(|| HError::NoneError)?
             .clear();
 
         Ok(())
@@ -148,7 +149,8 @@ impl WidgetCore {
     pub fn minibuffer(&self, query: &str) -> HResult<String> {
         let answer = self.minibuffer
             .lock()
-            .as_mut()?
+            .as_mut()
+            .ok_or_else(|| HError::NoneError)?
             .query(query, false);
         let mut screen = self.screen()?;
         screen.cursor_hide().log();
@@ -158,7 +160,8 @@ impl WidgetCore {
     pub fn minibuffer_continuous(&self, query: &str) -> HResult<String> {
         let answer = self.minibuffer
             .lock()
-            .as_mut()?
+            .as_mut()
+            .ok_or_else(|| HError::NoneError)?
             .query(query, true);
         let mut screen = self.screen()?;
         screen.cursor_hide().log();
@@ -452,7 +455,7 @@ pub trait Widget {
             self.set_coordinates(&ani_coords).log();
             let buffer = self.get_drawlist()?;
 
-            if !animator.as_ref()?.is_stale()? {
+            if !animator.as_ref().ok_or_else(|| HError::NoneError)?.is_stale()? {
                 self.get_core()?.write_to_screen(&buffer).log();
             }
 
@@ -476,7 +479,7 @@ pub trait Widget {
 
     fn handle_input(&mut self) -> HResult<()> {
         let (tx_internal_event, rx_internal_event) = channel();
-        let rx_global_event = self.get_core()?.event_receiver.lock().take()?;
+        let rx_global_event = self.get_core()?.event_receiver.lock().take().ok_or_else(|| HError::NoneError)?;
 
         dispatch_events(tx_internal_event, rx_global_event, self.get_core()?.screen()?);
 

@@ -54,7 +54,7 @@ impl<T> TabView<T> where T: Widget, TabView<T>: Tabbable {
     }
 
     pub fn pop_widget(&mut self) -> HResult<T> {
-        let widget = self.widgets.pop()?;
+        let widget = self.widgets.pop().ok_or_else(|| HError::NoneError)?;
         if self.widgets.len() <= self.active {
             self.active -= 1;
         }

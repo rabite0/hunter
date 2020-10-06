@@ -61,7 +61,7 @@ impl FoldableWidgetExt for ListView<Vec<QuickActions>> {
     }
 
     fn render_header(&self) -> HResult<String> {
-        let mime = &self.content.get(0)?.mime;
+        let mime = &self.content.get(0).ok_or_else(|| HError::NoneError)?.mime;
         Ok(format!("QuickActions for MIME: {}", mime))
     }
 
@@ -154,7 +154,7 @@ impl ListView<Vec<QuickActions>> {
     fn run_action(&mut self, num: Option<usize>) -> HResult<()> {
         num.map(|num| self.set_selection(num));
 
-        let current_fold = self.current_fold()?;
+        let current_fold = self.current_fold().ok_or_else(|| HError::NoneError)?;
         let fold_start_pos = self.fold_start_pos(current_fold);
         let selection = self.get_selection();
         let selected_action_index = selection - fold_start_pos;
@@ -390,7 +390,7 @@ impl QuickAction {
                 }
             })?;
 
-        let cwd = files.get(0)?.parent_as_file()?;
+        let cwd = files.get(0).ok_or_else(|| HError::NoneError)?.parent_as_file()?;
 
         let files: Vec<OsString> = files.iter()
             .map(|f| OsString::from(&f.path))

@@ -2,22 +2,22 @@ use dirs_2;
 
 use std::path::PathBuf;
 
-use crate::fail::HResult;
+use crate::fail::{HError, HResult};
 
 pub fn home_path() -> HResult<PathBuf> {
-    let home = dirs_2::home_dir()?;
+    let home = dirs_2::home_dir().ok_or_else(|| HError::NoneError)?;
     Ok(home)
 }
 
 pub fn ranger_path() -> HResult<PathBuf> {
-    let mut ranger_path = dirs_2::config_dir()?;
+    let mut ranger_path = dirs_2::config_dir().ok_or_else(|| HError::NoneError)?;
     ranger_path.push("ranger/");
     Ok(ranger_path)
 }
 
 #[cfg(not(target_os = "macos"))]
 pub fn hunter_path() -> HResult<PathBuf> {
-    let mut hunter_path = dirs_2::config_dir()?;
+    let mut hunter_path = dirs_2::config_dir().ok_or_else(|| HError::NoneError)?;
     hunter_path.push("hunter/");
     Ok(hunter_path)
 }

@@ -327,12 +327,12 @@ impl<T> From<std::sync::TryLockError<T>> for HError {
     }
 }
 
-impl From<std::option::NoneError> for HError {
-    fn from(_error: std::option::NoneError) -> Self {
-        let err = HError::NoneError;
-        err
-    }
-}
+// impl From<std::option::NoneError> for HError {
+//     fn from(_error: std::option::NoneError) -> Self {
+//         let err = HError::NoneError;
+//         err
+//     }
+// }
 
 impl From<std::path::StripPrefixError> for HError {
     fn from(error: std::path::StripPrefixError) -> Self {

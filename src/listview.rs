@@ -545,13 +545,7 @@ impl ListView<Files>
         self.selected_file_mut().toggle_selection();
 
         if !self.content.filter_selected {
-            let oldpos = self.get_selection();
             self.move_down();
-            let newpos = self.get_selection();
-
-            if newpos > oldpos {
-                self.update_selected_file(oldpos);
-            }
         } else {
             if self.content.filter_selected && self.content.len() == 0 {
                 self.content.toggle_filter_selected();
@@ -654,7 +648,7 @@ impl ListView<Files>
         if self.searching.is_none() {
             self.core.show_status("No search pattern set!").log();
         }
-        let prev_search = self.searching.clone()?;
+        let prev_search = self.searching.clone().ok_or_else(|| HError::NoneError)?;
         let selection = self.get_selection();
 
         let file = self.content
@@ -682,7 +676,7 @@ impl ListView<Files>
         if self.searching.is_none() {
             self.core.show_status("No search pattern set!").log();
         }
-        let prev_search = self.searching.clone()?;
+        let prev_search = self.searching.clone().ok_or_else(|| HError::NoneError)?;
 
 
         self.reverse_sort();

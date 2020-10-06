@@ -5,7 +5,7 @@ use std::sync::atomic::{AtomicU32, Ordering};
 
 use crate::widget::{Widget, WidgetCore};
 use crate::coordinates::Coordinates;
-use crate::fail::{HResult, ErrorCause};
+use crate::fail::{HResult, ErrorCause, HError};
 use crate::mediaview::MediaError;
 
 
@@ -39,7 +39,7 @@ impl ImgView {
         let (xpix, ypix) = self.core.coordinates.size_pixels()?;
         let cell_ratio = crate::term::cell_ratio()?;
 
-        let file = &self.file.as_ref()?;
+        let file = &self.file.as_ref().ok_or_else(|| HError::NoneError)?;
         let media_previewer = self.core.config().media_previewer;
         let g_mode = self.core.config().graphics;
 

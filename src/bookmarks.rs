@@ -24,7 +24,7 @@ impl Bookmarks {
         Ok(())
     }
     pub fn get(&self, key: char) -> HResult<&String> {
-        let path = self.mapping.get(&key)?;
+        let path = self.mapping.get(&key).ok_or_else(|| HError::NoneError)?;
         Ok(path)
     }
     pub fn load(&mut self) -> HResult<()> {
@@ -105,7 +105,7 @@ impl BMPopup {
         self.get_core()?.clear()?;
 
         let bookmark = self.bookmark_path.take();
-        Ok(bookmark?)
+        Ok(bookmark.ok_or_else(|| HError::NoneError)?)
     }
 
     pub fn add(&mut self, path: &str) -> HResult<()> {
@@ -169,7 +169,7 @@ impl Widget for BMPopup {
         let mut drawlist = String::new();
 
         if !self.add_mode {
-            let cwd = self.bookmark_path.as_ref()?;
+            let cwd = self.bookmark_path.as_ref().ok_or_else(|| HError::NoneError)?;
             drawlist += &self.render_line(ypos, &'`', cwd);
         }
 
@@ -191,7 +191,7 @@ impl Widget for BMPopup {
             Key::Char('`') => return HError::popup_finnished(),
             Key::Char(key) => {
                 if self.add_mode {
-                    let path = self.bookmark_path.take()?;
+                    let path = self.bookmark_path.take().ok_or_else(|| HError::NoneError)?;
                     self.bookmarks.add(key, &path)?;
                     self.add_mode = false;
                     self.bookmarks.save().log();

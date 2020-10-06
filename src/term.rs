@@ -9,7 +9,7 @@ use parse_ansi::parse_bytes;
 use crate::unicode_width::{UnicodeWidthStr, UnicodeWidthChar};
 use parking_lot::{Mutex, RwLock};
 
-use crate::fail::{HResult, ErrorLog};
+use crate::fail::{HResult, ErrorLog, HError};
 use crate::trait_ext::ExtractResult;
 
 pub type TermMode = AlternateScreen<RawTerminal<BufWriter<Stdout>>>;
@@ -52,7 +52,7 @@ impl Screen {
     }
 
     pub fn take_size(&self) -> HResult<(usize, usize)> {
-        Ok(self.size.write().take()?)
+        Ok(self.size.write().take().ok_or_else(|| HError::NoneError)?)
     }
 
     pub fn set_title(&mut self, title: &str) -> HResult<()> {
