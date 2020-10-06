@@ -103,6 +103,7 @@ impl<W: Widget + Send + 'static> AsyncWidget<W> {
 
         let sender = Mutex::new(self.get_core()?.get_sender());
         let core = self.get_core()?.clone();
+        let closure_core = core.clone();
 
         let mut widget = Async::new(move |stale| {
             Ok(closure(stale, closure_core)?)
