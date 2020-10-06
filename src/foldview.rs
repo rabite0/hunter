@@ -180,7 +180,7 @@ impl FoldableWidgetExt for  ListView<Vec<LogEntry>> {
     }
 
     fn render_footer(&self) -> HResult<String> {
-        let current = self.current_fold()?;
+        let current = self.current_fold().ok_or_else(|| HError::NoneError)?;
         if let Some(logentry) = self.content.get(current) {
             let (xsize, ysize) = self.core.coordinates.size_u();
             let (_, ypos) = self.core.coordinates.position_u();
@@ -273,7 +273,7 @@ where
     Bindings<<ListView<Vec<F>> as ActingExt>::Action>: Default {
 
     pub fn toggle_fold(&mut self) -> HResult<()> {
-        let fold = self.current_fold()?;
+        let fold = self.current_fold().ok_or_else(|| HError::NoneError)?;
         let fold_pos = self.fold_start_pos(fold);
 
         self.content[fold].toggle_fold();

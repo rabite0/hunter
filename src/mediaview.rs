@@ -157,8 +157,8 @@ impl MediaView {
                         MediaError::NoPreviewer(msg)
                     })?;
 
-                let mut stdout = BufReader::new(previewer.stdout.take()?);
-                let mut stdin = previewer.stdin.take()?;
+                let mut stdout = BufReader::new(previewer.stdout.take().ok_or_else(|| HError::NoneError)?);
+                let mut stdin = previewer.stdin.take().ok_or_else(|| HError::NoneError)?;
 
                 *cprocess.lock() = Some(previewer);
 
@@ -179,7 +179,8 @@ impl MediaView {
                 loop {
                     // Check if preview-gen finished and break out of loop to restart
                     if let Ok(Some(code)) = cprocess.lock()
-                                                    .as_mut()?
+                                                    .as_mut()
+                                                    .ok_or_else(|| HError::NoneError)?
                                                     .try_wait()
                     {
                         if code.success() {

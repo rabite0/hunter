@@ -203,9 +203,11 @@ impl FsCache {
         Ok(self.tab_settings
            .read()?
            .get(&dir)
-           .as_ref()?
+           .as_ref()
+           .ok_or_else(|| HError::NoneError)?
            .selection
-           .as_ref()?
+           .as_ref()
+           .ok_or_else(|| HError::NoneError)?
            .clone())
     }
 
@@ -367,7 +369,7 @@ impl FsCache {
         let dir = &files.directory;
         let tab_settings = cache.tab_settings.read()?.get(&dir).cloned();
         if tab_settings.is_none() { return Ok(()) }
-        let tab_settings = tab_settings?;
+        let tab_settings = tab_settings.ok_or_else(|| HError::NoneError)?;
 
         if files.show_hidden != tab_settings.dir_settings.show_hidden ||
             files.filter != tab_settings.dir_settings.filter ||
@@ -480,7 +482,7 @@ impl TryFrom<DebouncedEvent> for FsEvent {
             DebouncedEvent::Rescan
                 => Err(HError::INotifyError("Need to rescan".to_string()))?,
             // Ignore NoticeRemove/NoticeWrite
-            _ => None?,
+            _ => None.ok_or_else(|| HError::NoneError)?,
         };
 
         Ok(event)

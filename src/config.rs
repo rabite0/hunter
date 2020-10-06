@@ -93,7 +93,7 @@ pub struct Config {
     pub media_mute: bool,
     pub media_previewer: String,
     pub media_previewer_exists: bool,
-    pub ratios: Vec::<usize>,
+    pub ratios: Vec<usize>,
     pub graphics: String,
     pub keybinds: KeyBinds,
 }

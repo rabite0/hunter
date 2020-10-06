@@ -396,7 +396,7 @@ where
     }
 
     fn parse_section(ini: &Ini) -> HResult<Bindings<Self>> {
-        let section = ini.section(Some(Self::section()))?;
+        let section = ini.section(Some(Self::section())).ok_or_else(|| HError::NoneError)?;
 
         let mut bindings = Bindings::new();
 

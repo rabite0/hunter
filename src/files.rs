@@ -60,7 +60,7 @@ pub fn start_ticking(sender: Sender<Events>) {
     use std::time::Duration;
 
     IOTICK_CLIENTS.fetch_add(1, Ordering::Relaxed);
-    if IOTICK_CLIENTS.load(Ordering::Relaxed) == 1 {
+    if IOTICK_CLIENTS.load(Ordering::Acquire) == 1 {
         std::thread::spawn(move || {
             IOTICK.store(0, Ordering::Relaxed);
 
@@ -76,7 +76,7 @@ pub fn start_ticking(sender: Sender<Events>) {
                       .unwrap();
 
                 // All jobs done?
-                if IOTICK_CLIENTS.load(Ordering::Relaxed) == 0 {
+                if IOTICK_CLIENTS.load(Ordering::Acquire) == 0 {
                     IOTICK.store(0, Ordering::Relaxed);
                     return;
                 }
@@ -948,11 +948,16 @@ impl Files {
         self.recalculate_len();
     }
 
+    fn remove_placeholder_and_update_files(&mut self, placeholder: &File) -> Option<File> {
+        let position = self.files.iter().position(|element| *element == *placeholder)?;
+        Some(self.files.remove(position))
+    }
+
     fn remove_placeholder(&mut self) {
         let dirpath = self.directory.path.clone();
         self.find_file_with_path(&dirpath).cloned()
             .map(|placeholder| {
-                self.files.remove_item(&placeholder);
+                self.remove_placeholder_and_update_files(&placeholder);
                 if self.len > 0 {
                     self.len -= 1;
                 }
@@ -971,7 +976,7 @@ impl Files {
                 self.stale.as_ref().map(|s| s.set_fresh());
                 refresh.pull_async()?;
                 let mut refresh = refresh.value?;
-                self.files = refresh.new_files.take()?;
+                self.files = refresh.new_files.take().ok_or_else(|| HError::NoneError)?;
                 self.jobs.append(&mut refresh.jobs);
                 if refresh.new_len != self.len() {
                     self.len = refresh.new_len;
@@ -1247,7 +1252,7 @@ impl File {
     }
 
     pub fn rename(&mut self, new_path: &Path) -> HResult<()> {
-        self.name = new_path.file_name()?.to_string_lossy().to_string();
+        self.name = new_path.file_name().ok_or_else(|| HError::NoneError)?.to_string_lossy().to_string();
         self.path = new_path.into();
         Ok(())
     }
@@ -1427,7 +1432,7 @@ impl File {
     }
 
     pub fn parent_as_file(&self) -> HResult<File> {
-        let pathbuf = self.parent()?;
+        let pathbuf = self.parent().ok_or_else(|| HError::NoneError)?;
         File::new_from_path(&pathbuf)
     }
 
@@ -1436,7 +1441,7 @@ impl File {
     }
 
     pub fn grand_parent_as_file(&self) -> HResult<File> {
-        let pathbuf = self.grand_parent()?;
+        let pathbuf = self.grand_parent().ok_or_else(|| HError::NoneError)?;
         File::new_from_path(&pathbuf)
     }
 
@@ -1542,15 +1547,23 @@ impl File {
     }
 
     pub fn is_readable(&self) -> HResult<bool> {
-        let meta = self.meta()?;
-        let meta = meta.as_ref()?;
-        let current_user = get_current_username()?.to_string_lossy().to_string();
-        let current_group = get_current_groupname()?.to_string_lossy().to_string();
-        let file_user = get_user_by_uid(meta.uid())?
+        let meta = self.meta().ok_or_else(|| HError::NoneError)?;
+        let meta = meta.as_ref().ok_or_else(|| HError::NoneError)?;
+        let current_user = get_current_username()
+            .ok_or_else(|| HError::NoneError)?
+            .to_string_lossy()
+            .to_string();
+        let current_group = get_current_groupname()
+            .ok_or_else(|| HError::NoneError)?
+            .to_string_lossy()
+            .to_string();
+        let file_user = get_user_by_uid(meta.uid())
+            .ok_or_else(|| HError::NoneError)?
             .name()
             .to_string_lossy()
             .to_string();
-        let file_group = get_group_by_gid(meta.gid())?
+        let file_group = get_group_by_gid(meta.gid())
+            .ok_or_else(|| HError::NoneError)?
             .name()
             .to_string_lossy()
             .to_string();
@@ -1572,8 +1585,8 @@ impl File {
     }
 
     pub fn pretty_print_permissions(&self) -> HResult<String> {
-        let meta = self.meta()?;
-        let meta = meta.as_ref()?;
+        let meta = self.meta().ok_or_else(|| HError::NoneError)?;
+        let meta = meta.as_ref().ok_or_else(|| HError::NoneError)?;
 
         let perms: usize = format!("{:o}", meta.mode()).parse().unwrap();
         let perms: usize  = perms % 800;
@@ -1650,29 +1663,29 @@ impl File {
 
 
 
-// Small wrapper that simplifies stopping with more complex control flow
-pub struct Ticker {
-    invalidated: bool
-}
+// // Small wrapper that simplifies stopping with more complex control flow
+// pub struct Ticker {
+//     invalidated: bool
+// }
 
-impl Ticker {
-    pub fn start_ticking(sender: Sender<Events>) -> Self {
-        start_ticking(sender);
-        Ticker {
-            invalidated: false
-        }
-    }
+// impl Ticker {
+//     pub fn start_ticking(sender: Sender<Events>) -> Self {
+//         start_ticking(sender);
+//         Ticker {
+//             invalidated: false
+//         }
+//     }
 
-    pub fn stop_ticking(&mut self) {
-        stop_ticking();
-        self.invalidated = true;
-    }
-}
+//     pub fn stop_ticking(&mut self) {
+//         stop_ticking();
+//         self.invalidated = true;
+//     }
+// }
 
-impl Drop for Ticker {
-    fn drop(&mut self) {
-        if !self.invalidated {
-            self.stop_ticking();
-        }
-    }
-}
+// impl Drop for Ticker {
+//     fn drop(&mut self) {
+//         if !self.invalidated {
+//             self.stop_ticking();
+//         }
+//     }
+// }

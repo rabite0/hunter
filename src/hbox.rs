@@ -31,7 +31,7 @@ impl<T> HBox<T> where T: Widget + PartialEq {
 
         if self.zoom_active {
             let coords = self.core.coordinates.clone();
-            self.active_widget_mut()?.set_coordinates(&coords).log();
+            self.active_widget_mut().ok_or_else(|| HError::NoneError)?.set_coordinates(&coords).log();
             return Ok(());
         }
 
@@ -178,12 +178,12 @@ impl<T> Widget for HBox<T> where T: Widget + PartialEq {
     }
 
     fn render_header(&self) -> HResult<String> {
-        self.active_widget()?.render_header()
+        self.active_widget().ok_or_else(|| HError::NoneError)?.render_header()
     }
 
     fn refresh(&mut self) -> HResult<()> {
         if self.zoom_active {
-            self.active_widget_mut()?.refresh().log();
+            self.active_widget_mut().ok_or_else(|| HError::NoneError)?.refresh().log();
             return Ok(());
         }
 
@@ -196,7 +196,7 @@ impl<T> Widget for HBox<T> where T: Widget + PartialEq {
 
     fn get_drawlist(&self) -> HResult<String> {
         if self.zoom_active {
-            return self.active_widget()?.get_drawlist();
+            return self.active_widget().ok_or_else(|| HError::NoneError)?.get_drawlist();
         }
 
         Ok(self.widgets.iter().map(|child| {
@@ -205,11 +205,11 @@ impl<T> Widget for HBox<T> where T: Widget + PartialEq {
     }
 
     fn on_event(&mut self, event: Event) -> HResult<()> {
-        self.active_widget_mut()?.on_event(event)?;
+        self.active_widget_mut().ok_or_else(|| HError::NoneError)?.on_event(event)?;
         Ok(())
     }
 
     fn on_key(&mut self, key: termion::event::Key) -> HResult<()> {
-        self.active_widget_mut()?.on_key(key)
+        self.active_widget_mut().ok_or_else(|| HError::NoneError)?.on_key(key)
     }
 }

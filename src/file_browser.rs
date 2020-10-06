@@ -274,7 +274,8 @@ impl FileBrowser {
                            .take(1)
                            .map(|path| {
                                std::path::PathBuf::from(path)
-                           }).last()?;
+                           }).last()
+                           .ok_or_else(|| HError::NoneError)?;
         let left_path = main_path.parent().map(|p| p.to_path_buf());
 
         let cache = fs_cache.clone();
@@ -433,7 +434,7 @@ impl FileBrowser {
             .find(|&file| file.is_dir())
             .cloned();
 
-        self.main_widget_goto(&next_dir?).log();
+        self.main_widget_goto(&next_dir.ok_or_else(|| HError::NoneError)?).log();
 
         Ok(())
     }
@@ -450,7 +451,7 @@ impl FileBrowser {
             .find(|&file| file.is_dir())
             .cloned();
 
-        self.main_widget_goto(&next_dir?).log();
+        self.main_widget_goto(&next_dir.ok_or_else(|| HError::NoneError)?).log();
 
         Ok(())
     }
@@ -612,7 +613,7 @@ impl FileBrowser {
     }
 
     pub fn goto_prev_cwd(&mut self) -> HResult<()> {
-        let prev_cwd = self.prev_cwd.take()?;
+        let prev_cwd = self.prev_cwd.take().ok_or_else(|| HError::NoneError)?;
         self.main_widget_goto(&prev_cwd)?;
         Ok(())
     }
@@ -820,7 +821,7 @@ impl FileBrowser {
     }
 
     pub fn main_async_widget_mut(&mut self) -> HResult<&mut AsyncWidget<ListView<Files>>> {
-        let widget = self.columns.active_widget_mut()?;
+        let widget = self.columns.active_widget_mut().ok_or_else(|| HError::NoneError)?;
 
         let widget = match widget {
             FileBrowserWidgets::FileList(filelist) => filelist,
@@ -830,7 +831,7 @@ impl FileBrowser {
     }
 
     pub fn main_widget(&self) -> HResult<&ListView<Files>> {
-        let widget = self.columns.active_widget()?;
+        let widget = self.columns.active_widget().ok_or_else(|| HError::NoneError)?;
 
         let widget = match widget {
             FileBrowserWidgets::FileList(filelist) => filelist.widget(),
@@ -840,7 +841,7 @@ impl FileBrowser {
     }
 
     pub fn main_widget_mut(&mut self) -> HResult<&mut ListView<Files>> {
-        let widget = self.columns.active_widget_mut()?;
+        let widget = self.columns.active_widget_mut().ok_or_else(|| HError::NoneError)?;
 
         let widget = match widget {
             FileBrowserWidgets::FileList(filelist) => filelist.widget_mut(),
@@ -850,7 +851,7 @@ impl FileBrowser {
     }
 
     pub fn left_async_widget_mut(&mut self) -> HResult<&mut AsyncWidget<ListView<Files>>> {
-        let widget = match self.columns.widgets.get_mut(0)? {
+        let widget = match self.columns.widgets.get_mut(0).ok_or_else(|| HError::NoneError)? {
             FileBrowserWidgets::FileList(filelist) => filelist,
             _ => { return HError::wrong_widget("previewer", "filelist"); }
         };
@@ -858,7 +859,7 @@ impl FileBrowser {
     }
 
     pub fn left_widget(&self) -> HResult<&ListView<Files>> {
-        let widget = match self.columns.widgets.get(0)? {
+        let widget = match self.columns.widgets.get(0).ok_or_else(|| HError::NoneError)? {
             FileBrowserWidgets::FileList(filelist) => filelist.widget(),
             _ => { return HError::wrong_widget("previewer", "filelist"); }
         };
@@ -866,7 +867,7 @@ impl FileBrowser {
     }
 
     pub fn left_widget_mut(&mut self) -> HResult<&mut ListView<Files>> {
-        let widget = match self.columns.widgets.get_mut(0)? {
+        let widget = match self.columns.widgets.get_mut(0).ok_or_else(|| HError::NoneError)? {
             FileBrowserWidgets::FileList(filelist) => filelist.widget_mut(),
             _ => { return HError::wrong_widget("previewer", "filelist"); }
         };
@@ -874,14 +875,14 @@ impl FileBrowser {
     }
 
     pub fn preview_widget(&self) -> HResult<&Previewer> {
-        match self.columns.widgets.get(2)? {
+        match self.columns.widgets.get(2).ok_or_else(|| HError::NoneError)? {
             FileBrowserWidgets::Previewer(previewer) => Ok(previewer),
             _ => { return HError::wrong_widget("filelist", "previewer"); }
         }
     }
 
     pub fn preview_widget_mut(&mut self) -> HResult<&mut Previewer> {
-        match self.columns.widgets.get_mut(2)? {
+        match self.columns.widgets.get_mut(2).ok_or_else(|| HError::NoneError)? {
             FileBrowserWidgets::Previewer(previewer) => Ok(previewer),
             _ => { return HError::wrong_widget("filelist", "previewer"); }
         }
@@ -938,11 +939,11 @@ impl FileBrowser {
             format!("\"{}\" ", &f.path.to_string_lossy())
         }).collect::<String>();
 
-        let mut filepath = dirs_2::home_dir()?;
+        let mut filepath = dirs_2::home_dir().ok_or_else(|| HError::NoneError)?;
         filepath.push(".hunter_cwd");
 
         let output = format!("HUNTER_CWD=\"{}\"\nF=\"{}\"\nMF=({})\n",
-                             cwd.to_str()?,
+                             cwd.to_str().ok_or_else(|| HError::NoneError)?,
                              selected_file,
                              selected_files);
 
@@ -1174,7 +1175,7 @@ impl FileBrowser {
                                 continue;
                             }
 
-                            let dir_path = file_path.parent()?;
+                            let dir_path = file_path.parent().ok_or_else(|| HError::NoneError)?;
                             if self.cwd.path != dir_path {
                                 let file_dir = File::new_from_path(&dir_path);
 
@@ -1555,7 +1556,7 @@ impl Widget for FileBrowser {
                 return Ok(());
             }
             (_, Some(2)) => {
-                self.columns.active_widget_mut()?.on_key(key)?;
+                self.columns.active_widget_mut().ok_or_else(|| HError::NoneError)?.on_key(key)?;
                 return Ok(());
             }
             _ => {}

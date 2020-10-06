@@ -137,7 +137,7 @@ impl Process {
         let pid = self.handle.lock().id();
 
         std::thread::spawn(move || -> HResult<()> {
-            let stdout = handle.lock().stdout.take()?;
+            let stdout = handle.lock().stdout.take().ok_or_else(|| HError::NoneError)?;
             let mut stdout = BufReader::new(stdout);
             let mut processor = move |cmd, sender: &Sender<Events>| -> HResult<()> {
                 loop {
@@ -363,7 +363,7 @@ impl ListView<Vec<Process>> {
     }
 
     fn kill_proc(&mut self) -> HResult<()> {
-        let proc = self.selected_proc()?;
+        let proc = self.selected_proc().ok_or_else(|| HError::NoneError)?;
         proc.handle.lock().kill()?;
         Ok(())
     }
@@ -531,7 +531,10 @@ impl ProcView {
         if Some(self.get_listview_mut().get_selection()) == self.viewing {
             return Ok(());
         }
-        let output = self.get_listview_mut().selected_proc()?.output.lock().clone();
+        let output = self.get_listview_mut()
+                         .selected_proc()
+                         .ok_or_else(|| HError::NoneError)?
+                         .output.lock().clone();
 
         let animator = self.animator.clone();
         animator.set_fresh().log();
