@@ -27,6 +27,10 @@ matrix:
     - env: TARGET=i686-unknown-freebsd ARCH=bsd-intel-32
     - env: TARGET=x86_64-unknown-freebsd ARCH=bsd-intel-64
 
+before_install:
+  - sudo apt-get update
+  - sudo apt-get install --yes libglib2.0-dev
+
 install:
   - command -v cross || cargo install cross
 
@@ -53,4 +57,4 @@ deploy:
 
 notifications:
   email:
-  on_success: never
+    on_success: never
