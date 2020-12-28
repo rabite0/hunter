@@ -73,7 +73,7 @@ fn main() -> MResult<()> {
             match term.as_str() {
                 "kitty" => RenderTarget::Kitty,
                 #[cfg(feature = "sixel")]
-                "xterm" => RenderTarget::Sixel,
+                "foot" | "xterm" => RenderTarget::Sixel,
                 _ => RenderTarget::Unicode,
             }
         }
