@@ -4,13 +4,49 @@ hunter
 
 ![hunter](https://raw.githubusercontent.com/rabite0/hunter-stuff/master/player.png)
 
-NEW
+##### NEW
 - [**FASTER**] hunter is now *much* faster
 - [Custom Keybindings] Customize keys to your liking
 - [Graphics] High quality support for graphics using SIXEL/kitty protocols
 - [QuickActions] Added quick action creator/customizer
 - [Previews] New and improved preview customization
 - [**[IRC channel](https://webchat.freenode.net/?channels=hunter)**] Problems? Bugs? Praise? Chat with us: [#hunter @ Freenode](https://webchat.freenode.net/?channels=hunter)!
+
+## Table of content
+- [NEW](#new)
+- [Features](#features)
+- [Known to work on](#known-to-work-on)
+- [PREREQUISITES](#prerequisites)
+  - [PREVIEWERS](#previewers)
+  - [Debian/Ubuntu](#debianubuntu)
+- [INSTALLATION](#installation)
+  - [Install rustup](#install-rustup)
+  - [Build with cargo](#build-with-cargo)
+  - [Build from source](#build-from-source)
+  - [Packaging status](#packaging-status)
+- [Configuration](#configuration)
+- [Keys](#keys)
+    - [NOTE](#note)
+- [Previews](#previews)
+- [Quick Actions](#quick-actions)
+- [Startup options](#startup-options)
+  - [Warning](#warning)
+- [Drop into hunter cwd on quit](#drop-into-hunter-cwd-on-quit)
+- [Filename Substitution](#filename-substitution)
+- [KEYBINDINGS](#keybindings)
+  - [Movement](#movement)
+  - [File Browser](#file-browser-global-effects)
+  - [File List](#file-list-affects-current-directory)
+  - [Tabs](#tabs)
+  - [Media](#media)
+  - [Bookmarks](#bookmarks)
+  - [Processes](#processes)
+  - [MiniBuffer](#minibuffer)
+  - [Folds](#folds)
+  - [Log](#log)
+  - [QuickActions](#quickactions)
+
+
 
 
 
