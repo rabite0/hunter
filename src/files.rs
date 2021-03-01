@@ -952,7 +952,9 @@ impl Files {
         let dirpath = self.directory.path.clone();
         self.find_file_with_path(&dirpath).cloned()
             .map(|placeholder| {
-                self.files.remove_item(&placeholder);
+                if let Some(pos) = self.files.iter().position(|x| *x == placeholder) {
+                    self.files.remove(pos);
+                }
                 if self.len > 0 {
                     self.len -= 1;
                 }
