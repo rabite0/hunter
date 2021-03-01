@@ -362,7 +362,7 @@ impl QuickAction {
            files: Vec<File>,
            core: &WidgetCore,
            proc_view: Arc<Mutex<ProcView>>) -> HResult<()> {
-        use crate::minibuffer::MiniBufferEvent::*;;
+        use crate::minibuffer::MiniBufferEvent::*;
 
         let answers = self.queries
             .iter()
