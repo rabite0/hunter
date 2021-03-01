@@ -499,7 +499,7 @@ pub fn from_getdents(fd: i32, path: &Path, nothidden: &AtomicUsize)  -> Result<V
 
                     let name: &OsStr = {
                         // Safe as long as d_name is NULL terminated
-                        let true_len = unsafe { libc::strlen(d.d_name.as_ptr() as *const i8) };
+                        let true_len = unsafe { libc::strlen(d.d_name.as_ptr() as *const u8) };
                         // Safe if strlen returned without SEGFAULT on OOB (if d_name weren't NULL terminated)
                         let bytes: &[u8] = unsafe { std::slice::from_raw_parts(d.d_name.as_ptr() as *const u8,
                                                                                true_len) };
@@ -952,7 +952,9 @@ impl Files {
         let dirpath = self.directory.path.clone();
         self.find_file_with_path(&dirpath).cloned()
             .map(|placeholder| {
-                self.files.remove_item(&placeholder);
+                if let Some(pos) = self.files.iter().position(|x| *x == placeholder) {
+                    self.files.remove(pos);
+                }
                 if self.len > 0 {
                     self.len -= 1;
                 }
