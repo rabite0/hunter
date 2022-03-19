@@ -58,7 +58,7 @@ If it works on a system not mentioned here, please open an issue. Also feel free
 ## PREREQUISITES:
 
 * gcc
-* Rust-nighly compiler
+* Rust-nightly compiler
 * GStreamer for video/audio previews (optional)
 * libsixel (optional)
 
