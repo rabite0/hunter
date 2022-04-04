@@ -12,7 +12,7 @@ fn main() -> Result<(),()> {
         eprint!("{}", termion::color::Fg(termion::color::Red));
         eprint!("{}", termion::style::Bold);
         eprint!("{}", termion::style::Underline);
-        eprintln!("NIHGTLY COMPILER required");
+        eprintln!("NIGHTLY COMPILER required");
         eprintln!("Please install a nighlty compiler to proceed: https://rustup.rs/");
         eprint!("{}", termion::style::Reset);
         eprintln!("rustup toolchain install nightly");
