@@ -1,6 +1,18 @@
 hunter
 ======
 
+## The fork I made has precompiled binaries (without errors).
+## "Hunter now works like it should!!!" ~ Webmaster Exit 1
+
+-----------------------------------------------------------
+
+Copy these files and folders into ~/.config/hunter == `actions  previewers  config  hunter_cd.sh  keys  keys~`
+then copy/or move `hunter` & `hunter-media` to your bin directory. ex. /usr/bin or ~/.bin, which ever you have set in your $PATH should be fine.
+And you're done.
+Simply just run `hunter` from any in the file system. Videos and Audio now work perfectly.
+Your welcome frenz. :)
+
+-------------------------------------------------------------
 
 ![hunter](https://raw.githubusercontent.com/rabite0/hunter-stuff/master/player.png)
 
