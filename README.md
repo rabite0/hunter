@@ -1,18 +1,27 @@
-hunter
-======
+<!-- markdownlint-disable -->
+<!DOCTYPE html>
+<html>
+<head>
+</head>
+<body>
 
-## The fork I made has precompiled binaries (without errors).
-## "Hunter now works like it should!!!" ~ Webmaster Exit 1
+<h1>hunter</h1>
+===============
+
+<h2>The fork I made has precompiled binaries (without errors).</h2>
+<h2>"Hunter now works like it should!!!" ~ Webmaster Exit 1</h2>
 
 -----------------------------------------------------------
 
-Copy these files and folders into ~/.config/hunter == `actions  previewers  config  hunter_cd.sh  keys  keys~`
-then copy/or move `hunter` & `hunter-media` to your bin directory. ex. /usr/bin or ~/.bin, which ever you have set in your $PATH should be fine.
-And you're done.
-Simply just run `hunter` from anywhere in the file system. Videos and Audio now work perfectly.
-Your welcome frenz. :)
+<p>Copy these files and folders into ~/.config/hunter == `actions  previewers  config  hunter_cd.sh  keys  keys~`<br>
+then copy/or move `hunter` & `hunter-media` to your bin directory. ex. /usr/bin or ~/.bin, which ever you have set in your $PATH should be fine.<br>
+And you're done.<br>
+Simply just run `hunter` from anywhere in the file system. Videos and Audio now work perfectly.<br>
+Your welcome frenz. :)</p>
 
 -------------------------------------------------------------
+
+<iframe width="640" height="360" frameborder="0" src="https://mega.nz/embed/sslXSYJY#RBySUKm0qUe8wajvIJPAkCViYizy_BJ8R3HpkiuX2OA!1a" allow="autoplay;"></iframe>
 
 ![hunter](https://raw.githubusercontent.com/rabite0/hunter-stuff/master/player.png)
 
@@ -362,3 +371,6 @@ Note: ```_``` means any key.
 |-----------------|-------------|
 |Close            | a, Esc, C-a |
 |SelectOrRun(\_)  | _           |
+
+</body>
+</html>
