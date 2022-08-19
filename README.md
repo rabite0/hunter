@@ -1,5 +1,5 @@
 <!-- markdownlint-disable -->
-<!DOCTYPE html>
+<!DOCTYPE markdown>
 <html>
 <head>
 </head>
@@ -20,8 +20,12 @@ Simply just run `hunter` from anywhere in the file system. Videos and Audio now 
 Your welcome frenz. :)</p>
 
 -------------------------------------------------------------
+    
 
-![hunter](https://raw.githubusercontent.com/rabite0/hunter-stuff/master/player.png)
+https://user-images.githubusercontent.com/98633966/185645538-fc2074ba-f70d-4c0e-a7c5-03c45a7c6394.mp4
+
+
+
 
 NEW
 - [**FASTER**] hunter is now *much* faster
