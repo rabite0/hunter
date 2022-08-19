@@ -21,8 +21,6 @@ Your welcome frenz. :)</p>
 
 -------------------------------------------------------------
 
-<iframe width="640" height="360" frameborder="0" src="https://mega.nz/embed/sslXSYJY#RBySUKm0qUe8wajvIJPAkCViYizy_BJ8R3HpkiuX2OA!1a" allow="autoplay;"></iframe>
-
 ![hunter](https://raw.githubusercontent.com/rabite0/hunter-stuff/master/player.png)
 
 NEW
