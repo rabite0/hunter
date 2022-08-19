@@ -1,0 +1,55 @@
+#!/bin/sh
+
+FILE="${1}"
+
+function exists() {
+    command -v "${1}" >/dev/null
+    return $?
+}
+
+
+function run_other {
+    exists 7z &&
+	7z l -p -- "${FILE}" | tail --lines="+11" && exit $?
+    exists als &&
+	als "${FILE}" && exit $? ||
+	    echo "Can't find bsdtar, 7z, or atools!" && exit 1
+
+}
+
+
+# Parse output and rearrange it to be more suitable for possibly narrow column
+function run_bsdtar() {
+    # Check if bsdtar is present
+    exists bsdtar || return 1
+
+    bsdtar -v -t -f "${FILE}" 2>/dev/null |
+	 awk '{
+		# Only show two digits
+		CONVFMT = "%2.2f"
+
+		# Calculate human reatable size
+		split( "B KB MB GB" , v );
+		s=1;
+		while( $5>1024 ) {
+		       $5/=1024;
+		       s++
+		}
+
+		# Print everything with tab as separator
+		print $(9) $(10) $(11) "\t" \
+			  $(1) "\t" $(2) "\t" $(3) "\t" $(4) "\t" \
+			  $(5) v[s] "\t" \
+			  $(6) "\t" $(7) "\t" $(8)
+		}' |
+	 column -t \
+		-N NAME,PERMISSION,XATTR,USER,GROUP,SIZE,MON,DAY,TIME \
+		-O name,size,permission,user,group,mon,day,time,xattr \
+		-R permission,xattr,user,group,size,mon,day,time \
+		-H xattr \
+		-T name,permission,user,group,size,mon,day,time \
+		-W name
+}
+
+# Try bsdtar, if it fails try the others
+run_bsdtar "${1}" || run_other "${1}"

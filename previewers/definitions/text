@@ -1,0 +1,9 @@
+#!/bin/sh
+
+bat --plain --color=always --paging=never "${1}" --line-range 1:100 --tabs 8
+2>/dev/null && exit 5
+
+highlight --replace-tabs=4 --force -- "${1}"
+2>/dev/null && exit 5
+
+cat "${1}"

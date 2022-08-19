@@ -1,0 +1,11 @@
+tryanimation=off
+show_hidden=off
+select_cmd=find -type f | fzf
+cd_cmd=find -type d | fzf
+icons=on
+ratios=20,39,50
+media_autostart=on
+media_mute=on
+media_previewer=hunter-media
+graphics=kitty
+video=mpv

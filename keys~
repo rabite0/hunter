@@ -1,0 +1,109 @@
+[movement]
+Up(1)=k, Up
+Down(1)=j, Down
+Left=b, Left
+Right=f, Right
+Top=<, Home
+Bottom=>, End
+Up(10)=K
+Down(10)=J
+PageUp=C-v, PageUp
+PageDown=M-v, PageDown
+
+[filebrowser]
+Quit=q
+QuitWithDir=Q
+LeftColumnDown=]
+LeftColumnUp=[
+GotoHome=~
+TurboCd=/
+SelectExternal=M-Space
+EnterDirExternal=M-/
+RunInBackground=F
+GotoPrevCwd=-
+ShowBookmarks=`
+AddBookmark=b
+ShowProcesses=w
+ShowLog=g
+ShowQuickActions=a
+RunSubshell=z
+ToggleColumns=c
+ExecCmd=!
+
+[filelist]
+Search=S
+SearchNext=M-s
+SearchPrev=M-S
+Filter=C-f
+Select=Space
+InvertSelection=v
+ClearSelection=V
+FilterSelection=M-v
+ToggleTag=t
+ToggleHidden=h
+ReverseSort=r
+CycleSort=s
+ToNextMtime=K
+ToPrevMtime=k
+ToggleDirsFirst=d
+
+
+
+[tabs]
+NewTab=C-t
+CloseTab=C-w
+NextTab=Tab
+PrevTab=BackTab
+GotoTab(_)=F_
+
+
+[media]
+TogglePause=M-m
+ToggleMute=M-M
+SeekForward=M->
+SeekBackward=M-<
+
+[bookmarks]
+GotoLastCwd=`
+Goto(_)=_
+Delete(_)=M-_
+
+[processes]
+Close=w, Esc
+Remove=d
+Kill=k
+FollowOutput=f
+ScrollOutputUp=C-p
+ScrollOutputDown=C-n
+ScrollOutputPageUp=C-V
+ScrollOutputPageDown=C-v
+ScrollOutputTop=C-<
+ScrollOutputBottom=>
+
+[minibuffer]
+InsertChar(_)=_
+InsertTab(_)=F_
+Cancel=C-c, Esc
+Finish=Enter
+Complete=Tab
+DeleteChar=C-d, Delete
+BackwardDeleteChar=Backspace
+CursorLeft=C-b, Left
+CursorRight=C-f, Right
+HistoryUp=C-p, M-p, Up
+HistoryDown=C-n, M-n, Down
+ClearLine=C-u
+DeleteWord=C-h
+CursorToStart=C-a, Home
+CursorToEnd=C-e, End
+
+
+[fold]
+ToggleFold=t,Tab
+
+[log]
+Close=g,Esc
+
+[quickaction]
+Close=a, Esc, C-a
+SelectOrRun(_)=_
