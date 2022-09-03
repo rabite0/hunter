@@ -22,10 +22,12 @@ Then copy/or move `hunter` & `hunter-media` to your bin directory.
 Example: 
 ```bash
 sudo mv hunter hunter-media /usr/bin/
+sudo mv actions previewers config hunter_cd.sh keys keys~ ${HOME}/.config/hunter/  
 ```
  OR 
 ```bash
 cp hunter hunter-media ~/.bin
+cp actions previewers config hunter_cd.sh keys keys~ ~/.config/hunter/
 ```
 which ever you have set in your `$PATH` should be fine.<br>
 And you're done.<br>
