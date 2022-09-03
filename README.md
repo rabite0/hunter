@@ -5,26 +5,42 @@
 </head>
 <body>
 
-<h1>hunter</h1>
-===============
+<h1>Video File View</h1>
 
-<h2>The fork I made has precompiled binaries (without errors).</h2>
-<h2>"Hunter now works like it should!!!" ~ Webmaster Exit 1</h2>
 
------------------------------------------------------------
+<h4>A fork of project "Hunter" I fixed and made precompiled binaries (without errors).</h2>
+<h4>The License says to change the name which I assume means the project name but the code still uses the "hunter" name</h2>
 
-<p>Copy these files and folders into ~/.config/hunter == `actions  previewers  config  hunter_cd.sh  keys  keys~`<br>
-then copy/or move `hunter` & `hunter-media` to your bin directory. ex. /usr/bin or ~/.bin, which ever you have set in your $PATH should be fine.<br>
+Copy these files and folders into `~/.config/hunter`: <br>
+`actions 
+ previewers 
+ config 
+ hunter_cd.sh 
+ keys 
+ keys~`<br>
+Then copy/or move `hunter` & `hunter-media` to your bin directory. 
+Example: 
+```bash
+sudo mv hunter hunter-media /usr/bin/
+```
+ OR 
+```bash
+cp hunter hunter-media ~/.bin
+```
+which ever you have set in your `$PATH` should be fine.<br>
 And you're done.<br>
-Simply just run `hunter` from anywhere in the file system. Videos and Audio now work perfectly.<br>
-Your welcome frenz. :)</p>
+Simply just run `hunter` from anywhere in the file system in the `Kitty Terminal`.
+Videos and Audio now work perfectly.<br>
+Your welcome frenz. :)
 
 -------------------------------------------------------------
     
 
 https://user-images.githubusercontent.com/98633966/185645538-fc2074ba-f70d-4c0e-a7c5-03c45a7c6394.mp4
 
+-------------------------------------------------------------
 
+<h2>From this point below is the original README.md file from the original project</h2>
 
 
 NEW
