@@ -28,7 +28,7 @@ Simply just run `hunter` from anywhere in the file system in the `Kitty Terminal
 Videos and Audio now work perfectly.<br>
 Your welcome frenz. :)<br>
 
-<iframe width="640" height="480" frameborder="0" src="https://mega.nz/embed/sslXSYJY#RBySUKm0qUe8wajvIJPAkCViYizy_BJ8R3HpkiuX2OA!" allowfullscreen ></iframe>
+<embed src="https://mega.nz/embed/sslXSYJY#RBySUKm0qUe8wajvIJPAkCViYizy_BJ8R3HpkiuX2OA!"></embed>
 
 <h2>From this point below is the original README.md file from the original project</h2>
 
