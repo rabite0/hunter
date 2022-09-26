@@ -1,0 +1,5 @@
+#!/bin/sh
+
+pdftotext -l 10  -layout -nopgbrk -q "${1}" -||
+mutool draw -F txt -i -- "${1}" ||
+exiftool "${1}" 2> /dev/null

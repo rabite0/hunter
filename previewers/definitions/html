@@ -1,0 +1,6 @@
+#!/bin/sh
+
+w3m -dump "${1}" ||
+links -dump "${1}" ||
+elinks -dump "${1}" ||
+lynx -dump "${1}"
